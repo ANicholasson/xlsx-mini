@@ -1,4 +1,9 @@
-import { createPackage, type PackagePart } from "./opc/index.js";
+import {
+  type CompressionMode,
+  createPackage,
+  type PackagePart,
+  selectCompression,
+} from "./opc/index.js";
 import { createStringTable } from "./shared-strings/index.js";
 import { createStyleTable } from "./styles/index.js";
 import {
@@ -15,6 +20,12 @@ import { type Coerce, renderWorksheet } from "./worksheet/index.js";
 export interface WriteOptions {
   /** Converts values the writer does not handle natively; see `Coerce`. */
   readonly coerce?: Coerce;
+  /**
+   * `"deflate"` (the default) compresses every part through the runtime's `CompressionStream`.
+   * `"none"` writes STORE entries: larger, but byte-identical on every platform, which is what
+   * golden tests want. Runtimes that cannot deflate get STORE either way.
+   */
+  readonly compression?: CompressionMode;
 }
 
 const encoder = new TextEncoder();
@@ -23,7 +34,8 @@ const encoder = new TextEncoder();
  * Writes a workbook to the bytes of an .xlsx file.
  *
  * The result is a plain `Uint8Array`: hand it to `fs.writeFile`, a `Response`, or `new Blob([bytes])`.
- * Identical input gives identical bytes. Throws `XlsxMiniError` on input Excel would refuse.
+ * Identical input gives identical bytes for `compression: "none"`. Throws `XlsxMiniError` on input Excel
+ * would refuse.
  *
  * @example
  * const bytes = await writeXlsx({
@@ -46,15 +58,19 @@ export async function writeXlsx(
     sheetParts.push(part(`xl/worksheets/sheet${i + 1}.xml`, renderWorksheet(sheets[i]!, context)));
   }
 
-  return createPackage([
-    part("[Content_Types].xml", renderContentTypes(sheets.length)),
-    part("_rels/.rels", renderRootRelationships()),
-    part("xl/workbook.xml", renderWorkbook(sheets.map((sheet) => sheet.name))),
-    part("xl/_rels/workbook.xml.rels", renderWorkbookRelationships(sheets.length)),
-    part("xl/styles.xml", styles.render()),
-    part("xl/sharedStrings.xml", strings.render()),
-    ...sheetParts,
-  ]);
+  const compression = selectCompression(options.compression ?? "deflate");
+  return createPackage(
+    [
+      part("[Content_Types].xml", renderContentTypes(sheets.length)),
+      part("_rels/.rels", renderRootRelationships()),
+      part("xl/workbook.xml", renderWorkbook(sheets.map((sheet) => sheet.name))),
+      part("xl/_rels/workbook.xml.rels", renderWorkbookRelationships(sheets.length)),
+      part("xl/styles.xml", styles.render()),
+      part("xl/sharedStrings.xml", strings.render()),
+      ...sheetParts,
+    ],
+    compression,
+  );
 }
 
 function part(path: string, xml: string): PackagePart {

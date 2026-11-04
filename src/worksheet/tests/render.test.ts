@@ -18,6 +18,15 @@ function render(sheet: Sheet, overrides: Partial<WorksheetContext> = {}): string
   });
 }
 
+const failure = (sheet: Sheet, overrides: Partial<WorksheetContext> = {}): XlsxMiniError => {
+  try {
+    render(sheet, overrides);
+  } catch (error) {
+    return error as XlsxMiniError;
+  }
+  throw new Error("expected a throw");
+};
+
 const plainDate = {
   [Symbol.toStringTag]: "Temporal.PlainDate",
   year: 2026,
@@ -89,6 +98,15 @@ describe("renderWorksheet", () => {
     expect(xml).toContain('<row r="1"><c r="A1"><v>7</v></c><c r="C1" t="s"><v>0</v></c></row>');
   });
 
+  it("treats a null-prototype object with a value property as a cell object too", () => {
+    const bare = Object.assign(Object.create(null) as Record<string, unknown>, { value: 3 });
+    expect(render({ name: "S", rows: [[unsafe(bare)]] })).toContain('<c r="A1"><v>3</v></c>');
+    const nothing = Object.create(null) as Record<string, unknown>;
+    expect(failure({ name: "S", rows: [[unsafe(nothing)]] })).toMatchObject({
+      code: "UNSUPPORTED_VALUE",
+    });
+  });
+
   it("skips null and undefined cells but keeps their position", () => {
     const xml = render({ name: "S", rows: [[null, undefined, 7]] });
     expect(xml).toContain('<row r="1"><c r="C1"><v>7</v></c></row>');
@@ -145,15 +163,6 @@ describe("renderWorksheet", () => {
   });
 
   describe("errors", () => {
-    const failure = (sheet: Sheet, overrides: Partial<WorksheetContext> = {}) => {
-      try {
-        render(sheet, overrides);
-      } catch (error) {
-        return error as XlsxMiniError;
-      }
-      throw new Error("expected a throw");
-    };
-
     it("rejects NaN and infinite numbers with the cell path", () => {
       expect(failure({ name: "S", rows: [[1], [2, Number.NaN]] })).toMatchObject({
         code: "INVALID_NUMBER",

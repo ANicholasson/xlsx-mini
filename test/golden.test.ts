@@ -1,19 +1,22 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WriteOptions, type Workbook, writeXlsx } from "../src/index.js";
 import { cellTypesOptions, cellTypesWorkbook, minimalWorkbook } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
+/** Golden fixtures are written with STORE entries: byte-deterministic on every platform. */
+const STORE: WriteOptions = { compression: "none" };
+
 async function golden(
   name: string,
   workbook: Workbook,
-  options?: WriteOptions,
+  options: WriteOptions = {},
 ): Promise<Uint8Array> {
-  const bytes = await writeXlsx(workbook, options);
+  const bytes = await writeXlsx(workbook, { ...options, ...STORE });
   const file = join(fixturesDir, name);
   if (process.env["UPDATE_FIXTURES"] === "1" || !existsSync(file)) {
     writeFileSync(file, bytes);
@@ -117,5 +120,40 @@ describe("cell types workbook (golden)", () => {
     expect(styles).toContain('<cellXfs count="3">');
     expect(styles).toContain('numFmtId="14"');
     expect(styles).toContain('numFmtId="22"');
+  });
+});
+
+describe("compression", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const partsOf = (bytes: Uint8Array) =>
+    unzip(bytes).map((e) => [e.name, e.method, new TextDecoder().decode(e.data)] as const);
+
+  it("is on by default and decompresses part by part to the STORE output", async () => {
+    const stored = await writeXlsx(minimalWorkbook, STORE);
+    const deflated = await writeXlsx(minimalWorkbook);
+    expect(unzip(deflated).every((e) => e.method === 8)).toBe(true);
+    expect(partsOf(deflated).map(([name, , text]) => [name, text])).toEqual(
+      partsOf(stored).map(([name, , text]) => [name, text]),
+    );
+    expect(deflated.byteLength).toBeLessThan(stored.byteLength * 0.6);
+  });
+
+  it("matches the committed deflate fixture part by part (bytes differ by compressor)", async () => {
+    const file = join(fixturesDir, "minimal-deflate.xlsx");
+    if (process.env["UPDATE_FIXTURES"] === "1" || !existsSync(file)) {
+      writeFileSync(file, await writeXlsx(minimalWorkbook));
+    }
+    const committed = new Uint8Array(readFileSync(file));
+    expect(unzip(committed).every((e) => e.method === 8)).toBe(true);
+    expect(partsOf(committed).map(([name, , text]) => [name, text])).toEqual(
+      partsOf(await writeXlsx(minimalWorkbook, STORE)).map(([name, , text]) => [name, text]),
+    );
+  });
+
+  it("falls back to STORE, byte-identical to the golden file, when the runtime cannot deflate", async () => {
+    vi.stubGlobal("CompressionStream", undefined);
+    const bytes = await writeXlsx(minimalWorkbook);
+    expect(bytes).toEqual(new Uint8Array(readFileSync(join(fixturesDir, "minimal.xlsx"))));
   });
 });

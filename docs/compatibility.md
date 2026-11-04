@@ -25,3 +25,14 @@ Note for the headless conversion: with the sheet-selection token set to `-1` in 
 | Apple Numbers    | 14.4     | macOS    | clean   | Opened from the shell; imported table read back cell by cell, dates shown as dates, booleans as TRUE/FALSE, newline kept   | 2026-11-04 |
 | Google Sheets    | web      | browser  | pending | Needs a manual upload and a visual check                                                                                   |            |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean   | Headless CSV conversion matches every cell, dates rendered from their formats                                              | 2026-11-04 |
+
+## minimal-deflate.xlsx (the minimal workbook with DEFLATE entries; compared part by part, not byte by byte, because compressor output differs by platform)
+
+| Application      | Version  | Platform | Result  | How it was checked                                                | Date       |
+| ---------------- | -------- | -------- | ------- | ----------------------------------------------------------------- | ---------- |
+| Microsoft Excel  | 16.114.3 | macOS    | clean   | Opened from the shell; all 15 cells read back through AppleScript | 2026-11-04 |
+| Apple Numbers    | 14.4     | macOS    | clean   | Opened from the shell; imported table read back cell by cell      | 2026-11-04 |
+| Google Sheets    | web      | browser  | pending | Needs a manual upload and a visual check                          |            |
+| LibreOffice Calc | 26.8.2.2 | macOS    | clean   | Headless CSV conversion matches every cell                        | 2026-11-04 |
+
+Independent inflate checks on the same fixture: `unzip -t` and Python's `zipfile` both report no errors.

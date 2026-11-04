@@ -1,4 +1,5 @@
 export { type ErrorCode, XlsxMiniError } from "./errors/index.js";
+export type { CompressionMode } from "./opc/index.js";
 export { type WriteOptions, writeXlsx } from "./write-xlsx.js";
 export type { Workbook } from "./workbook/index.js";
 export type {

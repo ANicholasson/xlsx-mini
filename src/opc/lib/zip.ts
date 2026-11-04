@@ -1,4 +1,5 @@
 import { XlsxMiniError } from "../../errors/index.js";
+import type { Compression } from "./compression.js";
 import { crc32 } from "./crc32.js";
 
 /** A file inside the package: its zip entry name (forward slashes, no leading slash) and bytes. */
@@ -14,7 +15,6 @@ const LOCAL_HEADER_SIZE = 30;
 const CENTRAL_HEADER_SIZE = 46;
 const END_OF_CENTRAL_DIRECTORY_SIZE = 22;
 const VERSION_2_0 = 20;
-const METHOD_STORE = 0;
 /** 1980-01-01 00:00:00, the DOS epoch. Fixed so identical input gives identical bytes. */
 const DOS_TIME = 0x0000;
 const DOS_DATE = 0x0021;
@@ -23,20 +23,29 @@ const MAX_32_BIT = 0xffffffff;
 const encoder = new TextEncoder();
 
 /**
- * Packs parts into a zip archive using STORE entries, in the order given, with a central
- * directory and no data descriptors. Every size and offset is known up front, so the
- * archive is written into one preallocated buffer.
+ * Packs parts into a zip archive in the order given, with a central directory and no data
+ * descriptors. Parts are compressed up front so every size and offset is known, and the archive
+ * is then written into one preallocated buffer.
  */
-export function createPackage(parts: readonly PackagePart[]): Uint8Array {
+export async function createPackage(
+  parts: readonly PackagePart[],
+  compression: Compression,
+): Promise<Uint8Array> {
   const count = parts.length;
   const names: Uint8Array[] = [];
+  const payloads: Uint8Array[] = [];
+  const checksums = new Uint32Array(count);
   let localBytes = 0;
   let centralBytes = 0;
   for (let i = 0; i < count; i++) {
     const part = parts[i]!;
     const name = encoder.encode(part.path);
+    // Sequential on purpose: one part in flight keeps peak memory at one compressed copy.
+    const payload = await compression.compress(part.data);
     names.push(name);
-    localBytes += LOCAL_HEADER_SIZE + name.length + part.data.length;
+    payloads.push(payload);
+    checksums[i] = crc32(part.data);
+    localBytes += LOCAL_HEADER_SIZE + name.length + payload.length;
     centralBytes += CENTRAL_HEADER_SIZE + name.length;
   }
   const total = localBytes + centralBytes + END_OF_CENTRAL_DIRECTORY_SIZE;
@@ -50,32 +59,31 @@ export function createPackage(parts: readonly PackagePart[]): Uint8Array {
 
   const out = new Uint8Array(total);
   const view = new DataView(out.buffer);
-  const checksums = new Uint32Array(count);
   const offsets = new Uint32Array(count);
+  const method = compression.method;
 
   let cursor = 0;
   for (let i = 0; i < count; i++) {
     const part = parts[i]!;
     const name = names[i]!;
-    const checksum = crc32(part.data);
-    checksums[i] = checksum;
+    const payload = payloads[i]!;
     offsets[i] = cursor;
     view.setUint32(cursor, LOCAL_HEADER_SIGNATURE, true);
     view.setUint16(cursor + 4, VERSION_2_0, true);
     view.setUint16(cursor + 6, 0, true); // general purpose flags
-    view.setUint16(cursor + 8, METHOD_STORE, true);
+    view.setUint16(cursor + 8, method, true);
     view.setUint16(cursor + 10, DOS_TIME, true);
     view.setUint16(cursor + 12, DOS_DATE, true);
-    view.setUint32(cursor + 14, checksum, true);
-    view.setUint32(cursor + 18, part.data.length, true);
+    view.setUint32(cursor + 14, checksums[i]!, true);
+    view.setUint32(cursor + 18, payload.length, true);
     view.setUint32(cursor + 22, part.data.length, true);
     view.setUint16(cursor + 26, name.length, true);
     view.setUint16(cursor + 28, 0, true); // extra field length
     cursor += LOCAL_HEADER_SIZE;
     out.set(name, cursor);
     cursor += name.length;
-    out.set(part.data, cursor);
-    cursor += part.data.length;
+    out.set(payload, cursor);
+    cursor += payload.length;
   }
 
   const centralDirectoryOffset = cursor;
@@ -86,11 +94,11 @@ export function createPackage(parts: readonly PackagePart[]): Uint8Array {
     view.setUint16(cursor + 4, VERSION_2_0, true); // version made by
     view.setUint16(cursor + 6, VERSION_2_0, true); // version needed
     view.setUint16(cursor + 8, 0, true); // general purpose flags
-    view.setUint16(cursor + 10, METHOD_STORE, true);
+    view.setUint16(cursor + 10, method, true);
     view.setUint16(cursor + 12, DOS_TIME, true);
     view.setUint16(cursor + 14, DOS_DATE, true);
     view.setUint32(cursor + 16, checksums[i]!, true);
-    view.setUint32(cursor + 20, part.data.length, true);
+    view.setUint32(cursor + 20, payloads[i]!.length, true);
     view.setUint32(cursor + 24, part.data.length, true);
     view.setUint16(cursor + 28, name.length, true);
     view.setUint16(cursor + 30, 0, true); // extra field length
