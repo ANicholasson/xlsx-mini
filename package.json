@@ -1,5 +1,5 @@
 {
-  "name": "mini-xlsx",
+  "name": "xlsx-mini",
   "version": "0.0.0",
   "private": true,
   "description": "Zero-dependency .xlsx writer for TypeScript that runs everywhere.",
@@ -11,13 +11,13 @@
     "xlsx",
     "zero-dependency"
   ],
-  "homepage": "https://github.com/ANicholasson/mini-xlsx#readme",
-  "bugs": "https://github.com/ANicholasson/mini-xlsx/issues",
+  "homepage": "https://github.com/ANicholasson/xlsx-mini#readme",
+  "bugs": "https://github.com/ANicholasson/xlsx-mini/issues",
   "license": "MIT",
   "author": "Aron Nicholasson",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ANicholasson/mini-xlsx.git"
+    "url": "git+https://github.com/ANicholasson/xlsx-mini.git"
   },
   "files": [
     "dist",

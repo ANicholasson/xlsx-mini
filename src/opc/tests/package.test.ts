@@ -33,7 +33,7 @@ describe("createPackage", () => {
   });
 
   it("passes the system unzip integrity test", () => {
-    const dir = mkdtempSync(join(tmpdir(), "mini-xlsx-"));
+    const dir = mkdtempSync(join(tmpdir(), "xlsx-mini-"));
     const file = join(dir, "package.zip");
     writeFileSync(file, createPackage(parts));
     const report = execFileSync("unzip", ["-t", file], { encoding: "utf8" });
