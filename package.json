@@ -1,0 +1,52 @@
+{
+  "name": "mini-xlsx",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zero-dependency .xlsx writer for TypeScript that runs everywhere.",
+  "keywords": [
+    "excel",
+    "export",
+    "spreadsheet",
+    "typescript",
+    "xlsx",
+    "zero-dependency"
+  ],
+  "homepage": "https://github.com/ANicholasson/mini-xlsx#readme",
+  "bugs": "https://github.com/ANicholasson/mini-xlsx/issues",
+  "license": "MIT",
+  "author": "Aron Nicholasson",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ANicholasson/mini-xlsx.git"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "vp check",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run",
+    "fixtures:update": "UPDATE_FIXTURES=1 vp test run test/golden.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "7.0.2",
+    "vite-plus": "1.4.0"
+  },
+  "engines": {
+    "node": "^20.12.0 || >=22"
+  },
+  "packageManager": "pnpm@12.16.1"
+}
