@@ -33,8 +33,8 @@ export interface WorksheetContext {
 export interface RenderedSheetData {
   /** The `<row>` elements, or an empty string when no cell was written. */
   readonly rows: string;
-  /** The `<dimension>` element, or an empty string when no cell was written. */
-  readonly dimension: string;
+  /** The used range such as `A1:C4`, or an empty string when no cell was written. */
+  readonly range: string;
 }
 
 /** Renders every row with at least one cell. Positions survive because rows and cells carry `r`. */
@@ -79,11 +79,8 @@ export function renderSheetData(
     lastRowWithCells = rowNumber;
   }
 
-  if (lastRowWithCells === 0) return { rows: "", dimension: "" };
-  return {
-    rows: chunks.join(""),
-    dimension: `<dimension ref="A1:${columnLetter(maxColumn)}${lastRowWithCells}"/>`,
-  };
+  if (lastRowWithCells === 0) return { rows: "", range: "" };
+  return { rows: chunks.join(""), range: `A1:${columnLetter(maxColumn)}${lastRowWithCells}` };
 }
 
 function renderCell(

@@ -125,3 +125,26 @@ export const stylesWorkbook: Workbook = {
     },
   ],
 };
+
+/** The workbook behind layout.xlsx: column widths, a frozen header row and first column, an autofilter. */
+export const layoutWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Orders 2026",
+      columns: [{ width: 12 }, { width: 32 }, { width: 14, style: kroner }],
+      freeze: { rows: 1, columns: 1 },
+      autoFilter: true,
+      rows: [
+        [
+          { value: "Order", style: header },
+          { value: "Customer", style: header },
+          { value: "Total", style: header },
+        ],
+        ["A-1001", "Kari Nordmann", 1234.5],
+        ["A-1002", "Ola Nordmann", 99],
+        ["A-1003", "Per O'Brien", 100000],
+      ],
+    },
+    { name: "Notes", rows: [["No filter here"]] },
+  ],
+};

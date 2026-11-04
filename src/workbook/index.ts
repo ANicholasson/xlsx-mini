@@ -36,17 +36,42 @@ export function renderRootRelationships(): string {
   );
 }
 
-/** Renders `xl/workbook.xml`: the sheet list, in tab order, each pointing at its relationship. */
-export function renderWorkbook(sheetNames: readonly string[]): string {
+/** What the workbook part needs per sheet: its name and, when filtered, its autofilter range. */
+export interface SheetEntry {
+  readonly name: string;
+  readonly filterRange: string | undefined;
+}
+
+/**
+ * Renders `xl/workbook.xml`: the sheet list in tab order, each pointing at its relationship, and
+ * the hidden `_xlnm._FilterDatabase` name Excel keeps for every autofilter.
+ */
+export function renderWorkbook(entries: readonly SheetEntry[]): string {
   let sheets = "";
-  for (let i = 0; i < sheetNames.length; i++) {
-    sheets += `<sheet name="${escapeXml(sheetNames[i]!)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`;
+  let definedNames = "";
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i]!;
+    sheets += `<sheet name="${escapeXml(entry.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`;
+    if (entry.filterRange !== undefined) {
+      definedNames += `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${escapeXml(quoteSheetName(entry.name))}!${absolute(entry.filterRange)}</definedName>`;
+    }
   }
   return (
     `${XML_DECLARATION}<workbook xmlns="${SPREADSHEET_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">` +
     `<sheets>${sheets}</sheets>` +
+    (definedNames.length === 0 ? "" : `<definedNames>${definedNames}</definedNames>`) +
     "</workbook>"
   );
+}
+
+/** A sheet name as a formula reference: quoted, with apostrophes doubled. */
+function quoteSheetName(name: string): string {
+  return `'${name.replaceAll("'", "''")}'`;
+}
+
+/** `A1:C4` as `$A$1:$C$4`. */
+function absolute(range: string): string {
+  return range.replace(/([A-Z]+)(\d+)/g, "$$$1$$$2");
 }
 
 /** Renders `xl/_rels/workbook.xml.rels`: sheets first (rId1..N), then styles and shared strings. */

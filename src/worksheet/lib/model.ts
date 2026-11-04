@@ -91,8 +91,16 @@ export type Row = readonly Cell[];
 
 /** What a column carries for every cell in it. Positions match the row arrays: index 0 is column A. */
 export interface Column {
+  /** Width in Excel's character units (the unit the column-width dialog shows), from above 0 to 255. */
+  readonly width?: number;
   /** Default style for the column's cells; a cell's own style properties win. */
   readonly style?: CellStyle;
+}
+
+/** Rows from the top and columns from the left that stay in place while the sheet scrolls. */
+export interface Freeze {
+  readonly rows?: number;
+  readonly columns?: number;
 }
 
 /**
@@ -111,6 +119,10 @@ export interface Sheet {
   readonly rows: Iterable<Row>;
   /** Per-column settings, by position; leave a slot `undefined` for a column with none. */
   readonly columns?: readonly (Column | undefined)[];
+  /** Freeze panes: the header rows and the leading columns that stay visible. */
+  readonly freeze?: Freeze;
+  /** Filter dropdowns on row 1 across the used range. */
+  readonly autoFilter?: boolean;
 }
 
 /**

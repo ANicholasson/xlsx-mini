@@ -9,6 +9,7 @@ export type {
   CellValue,
   Coerce,
   Column,
+  Freeze,
   Register,
   Registered,
   Row,

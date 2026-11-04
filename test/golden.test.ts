@@ -9,6 +9,7 @@ import {
   minimalWorkbook,
   multiSheetWorkbook,
   stylesWorkbook,
+  layoutWorkbook,
 } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
@@ -256,5 +257,45 @@ describe("styles workbook (golden)", () => {
     const rows = Array.from({ length: 10_000 }, (_, i) => [{ value: i, style: money }]);
     const bytes = await writeXlsx({ sheets: [{ name: "S", rows }] }, STORE);
     expect(readPart(bytes, "xl/styles.xml")).toContain('<cellXfs count="2">');
+  });
+});
+
+describe("layout workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("layout.xlsx", layoutWorkbook);
+  });
+
+  it("declares the hidden filter name for the filtered sheet only, with the sheet name quoted", async () => {
+    const workbook = readPart(await writeXlsx(layoutWorkbook, STORE), "xl/workbook.xml");
+    expect(workbook).toContain(
+      '</sheets><definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">&apos;Orders 2026&apos;!$A$1:$C$4</definedName></definedNames></workbook>',
+    );
+    expect(workbook.match(/definedName /g)).toHaveLength(1);
+  });
+
+  it("doubles apostrophes in a sheet name inside the filter reference", async () => {
+    const workbook = readPart(
+      await writeXlsx(
+        { sheets: [{ name: "Per O'Brien", autoFilter: true, rows: [["a"]] }] },
+        STORE,
+      ),
+      "xl/workbook.xml",
+    );
+    expect(workbook).toContain(">&apos;Per O&apos;&apos;Brien&apos;!$A$1:$A$1</definedName>");
+  });
+
+  it("writes no definedNames element when nothing is filtered", async () => {
+    expect(readPart(await writeXlsx(minimalWorkbook, STORE), "xl/workbook.xml")).not.toContain(
+      "definedNames",
+    );
+  });
+
+  it("carries widths, the frozen pane and the autofilter in the sheet part", async () => {
+    const sheet = readPart(await writeXlsx(layoutWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<col min="2" max="2" width="32" customWidth="1"/>');
+    expect(sheet).toContain(
+      '<pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/>',
+    );
+    expect(sheet).toContain('<autoFilter ref="A1:C4"/>');
   });
 });

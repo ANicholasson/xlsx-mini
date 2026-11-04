@@ -18,7 +18,7 @@ function render(sheet: Sheet, overrides: Partial<WorksheetContext> = {}): string
     coerce: undefined,
     sheetIndex: 0,
     ...overrides,
-  });
+  }).xml;
 }
 
 const failure = (sheet: Sheet, overrides: Partial<WorksheetContext> = {}): XlsxMiniError => {
@@ -297,6 +297,97 @@ describe("renderWorksheet", () => {
       };
       render({ name: "S", rows: [[new Date(0)]] }, { coerce });
       expect(calls).toBe(1);
+    });
+  });
+
+  describe("layout", () => {
+    it("writes column widths in character units only for columns that set one", () => {
+      const xml = render({
+        name: "S",
+        columns: [{ width: 12 }, undefined, { width: 32.5, style: { bold: true } }],
+        rows: [[1, 2, 3]],
+      });
+      expect(xml).toContain(
+        '<cols><col min="1" max="1" width="12" customWidth="1"/><col min="3" max="3" width="32.5" customWidth="1"/></cols>',
+      );
+      expect(xml.indexOf("<cols>")).toBeLessThan(xml.indexOf("<sheetData>"));
+    });
+
+    it("writes no cols element when no column sets a width", () => {
+      expect(
+        render({ name: "S", columns: [{ style: { bold: true } }], rows: [[1]] }),
+      ).not.toContain("<cols>");
+    });
+
+    it("freezes rows, columns, or both, with the pane Excel expects", () => {
+      expect(render({ name: "S", freeze: { rows: 1 }, rows: [[1]] })).toContain(
+        '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
+      );
+      expect(render({ name: "S", freeze: { columns: 2 }, rows: [[1]] })).toContain(
+        '<pane xSplit="2" topLeftCell="C1" activePane="topRight" state="frozen"/>',
+      );
+      expect(render({ name: "S", freeze: { rows: 3, columns: 1 }, rows: [[1]] })).toContain(
+        '<pane xSplit="1" ySplit="3" topLeftCell="B4" activePane="bottomRight" state="frozen"/>',
+      );
+      expect(render({ name: "S", freeze: { rows: 0, columns: 0 }, rows: [[1]] })).not.toContain(
+        "<sheetViews>",
+      );
+    });
+
+    it("puts the autofilter over the used range, after the data, and skips it on an empty sheet", () => {
+      const xml = render({
+        name: "S",
+        autoFilter: true,
+        rows: [
+          ["a", "b", "c"],
+          [1, 2, 3],
+          [4, 5, 6],
+        ],
+      });
+      expect(xml).toContain('</sheetData><autoFilter ref="A1:C3"/></worksheet>');
+      expect(render({ name: "S", autoFilter: true, rows: [] })).not.toContain("<autoFilter");
+    });
+
+    it("keeps the schema order: dimension, sheetViews, cols, sheetData, autoFilter", () => {
+      const xml = render({
+        name: "S",
+        columns: [{ width: 9 }],
+        freeze: { rows: 1 },
+        autoFilter: true,
+        rows: [["h"], [1]],
+      });
+      const order = ["<dimension", "<sheetViews>", "<cols>", "<sheetData>", "<autoFilter"].map(
+        (tag) => xml.indexOf(tag),
+      );
+      expect(order).toEqual([...order].sort((a, b) => a - b));
+      expect(order.every((i) => i >= 0)).toBe(true);
+    });
+
+    it("rejects widths and freeze counts Excel would refuse, at their path", () => {
+      for (const width of [0, -1, 256, Number.NaN, Number.POSITIVE_INFINITY]) {
+        expect(
+          failure({ name: "S", columns: [undefined, { width }], rows: [] }, { sheetIndex: 1 }),
+        ).toMatchObject({
+          code: "INVALID_COLUMN_WIDTH",
+          path: "sheets[1].columns[1].width",
+        });
+      }
+      expect(failure({ name: "S", freeze: { rows: -1 }, rows: [] })).toMatchObject({
+        code: "INVALID_FREEZE",
+        path: "sheets[0].freeze.rows",
+      });
+      expect(failure({ name: "S", freeze: { rows: 1.5 }, rows: [] })).toMatchObject({
+        code: "INVALID_FREEZE",
+        path: "sheets[0].freeze.rows",
+      });
+      expect(failure({ name: "S", freeze: { columns: 16384 }, rows: [] })).toMatchObject({
+        code: "INVALID_FREEZE",
+        path: "sheets[0].freeze.columns",
+      });
+      expect(failure({ name: "S", freeze: { rows: 1048576 }, rows: [] })).toMatchObject({
+        code: "INVALID_FREEZE",
+        path: "sheets[0].freeze.rows",
+      });
     });
   });
 

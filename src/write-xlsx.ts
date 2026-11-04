@@ -7,6 +7,7 @@ import {
 import { createStringTable } from "./shared-strings/index.js";
 import { createStyleTable } from "./styles/index.js";
 import {
+  type SheetEntry,
   type Workbook,
   renderContentTypes,
   renderRootRelationships,
@@ -53,9 +54,13 @@ export async function writeXlsx(
 
   // Sheets render first: they fill the shared-strings and styles tables those parts are built from.
   const sheetParts: PackagePart[] = [];
+  const entries: SheetEntry[] = [];
   for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i]!;
     const context = { strings, styles, coerce: options.coerce, sheetIndex: i };
-    sheetParts.push(part(`xl/worksheets/sheet${i + 1}.xml`, renderWorksheet(sheets[i]!, context)));
+    const rendered = renderWorksheet(sheet, context);
+    sheetParts.push(part(`xl/worksheets/sheet${i + 1}.xml`, rendered.xml));
+    entries.push({ name: sheet.name, filterRange: rendered.filterRange });
   }
 
   const compression = selectCompression(options.compression ?? "deflate");
@@ -63,7 +68,7 @@ export async function writeXlsx(
     [
       part("[Content_Types].xml", renderContentTypes(sheets.length)),
       part("_rels/.rels", renderRootRelationships()),
-      part("xl/workbook.xml", renderWorkbook(sheets.map((sheet) => sheet.name))),
+      part("xl/workbook.xml", renderWorkbook(entries)),
       part("xl/_rels/workbook.xml.rels", renderWorkbookRelationships(sheets.length)),
       part("xl/styles.xml", styles.render()),
       part("xl/sharedStrings.xml", strings.render()),
