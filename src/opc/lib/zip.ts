@@ -1,3 +1,4 @@
+import { XlsxMiniError } from "../../errors/index.js";
 import { crc32 } from "./crc32.js";
 
 /** A file inside the package: its zip entry name (forward slashes, no leading slash) and bytes. */
@@ -40,7 +41,11 @@ export function createPackage(parts: readonly PackagePart[]): Uint8Array {
   }
   const total = localBytes + centralBytes + END_OF_CENTRAL_DIRECTORY_SIZE;
   if (total > MAX_32_BIT) {
-    throw new RangeError("package exceeds the 4 GiB limit of a plain zip archive");
+    throw new XlsxMiniError(
+      "PACKAGE_TOO_LARGE",
+      "workbook",
+      "The package exceeds the 4 GiB limit of a plain zip archive",
+    );
   }
 
   const out = new Uint8Array(total);

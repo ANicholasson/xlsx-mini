@@ -2,29 +2,18 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { writeXlsx, type Workbook } from "../src/index.js";
+import { type WriteOptions, type Workbook, writeXlsx } from "../src/index.js";
+import { cellTypesOptions, cellTypesWorkbook, minimalWorkbook } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
-/** The workbook behind fixtures/minimal.xlsx. Change it only together with the fixture. */
-export const minimalWorkbook: Workbook = {
-  sheets: [
-    {
-      name: "Sheet1",
-      rows: [
-        ["Name", "City", "Amount"],
-        ["Kari Nordmann", "Oslo", 1234.5],
-        ["Ola <Nordmann> & co", "Tromsø", -42],
-        ["Ærlig «ekte» 🎉", null, 1e21],
-        [" padded ", "", 0],
-      ],
-    },
-  ],
-};
-
-async function golden(name: string, workbook: Workbook): Promise<Uint8Array> {
-  const bytes = await writeXlsx(workbook);
+async function golden(
+  name: string,
+  workbook: Workbook,
+  options?: WriteOptions,
+): Promise<Uint8Array> {
+  const bytes = await writeXlsx(workbook, options);
   const file = join(fixturesDir, name);
   if (process.env["UPDATE_FIXTURES"] === "1" || !existsSync(file)) {
     writeFileSync(file, bytes);
@@ -88,5 +77,45 @@ describe("minimal workbook (golden)", () => {
     expect(sheet).toContain('<c r="C3"><v>-42</v></c>');
     expect(sheet).toContain('<c r="C4"><v>1e+21</v></c>');
     expect(sheet).toContain('<c r="C5"><v>0</v></c>');
+  });
+});
+
+describe("cell types workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("cell-types.xlsx", cellTypesWorkbook, cellTypesOptions);
+  });
+
+  it("writes every supported kind of value", async () => {
+    const sheet = readPart(
+      await writeXlsx(cellTypesWorkbook, cellTypesOptions),
+      "xl/worksheets/sheet1.xml",
+    );
+    expect(sheet).toContain('<c r="B3"><v>3.14</v></c>');
+    expect(sheet).toContain('<c r="B4" t="b"><v>1</v></c>');
+    expect(sheet).toContain('<c r="B5" t="b"><v>0</v></c>');
+    expect(sheet).toContain('<c r="B6" s="1"><v>46330.57326388889</v></c>');
+    expect(sheet).toContain('<c r="B7" s="2"><v>46330</v></c>');
+    expect(sheet).toContain('<c r="B8" s="1"><v>46330.57326388889</v></c>');
+    expect(sheet).toContain('<c r="B9" s="1"><v>46330.57326388889</v></c>');
+    expect(sheet).toContain('<c r="B10" s="1"><v>46330.57326388889</v></c>');
+    expect(sheet).toContain('<c r="B11"><v>42</v></c>');
+    expect(sheet).not.toContain('r="B12"');
+    expect(sheet).toContain('<c r="B15"><v>12345678901234</v></c>');
+  });
+
+  it("strips control characters and keeps newlines in text", async () => {
+    const sst = readPart(
+      await writeXlsx(cellTypesWorkbook, cellTypesOptions),
+      "xl/sharedStrings.xml",
+    );
+    expect(sst).toContain("<t>abc</t>");
+    expect(sst).toContain("<t>line1\nline2</t>");
+  });
+
+  it("declares the date styles the cells reference", async () => {
+    const styles = readPart(await writeXlsx(cellTypesWorkbook, cellTypesOptions), "xl/styles.xml");
+    expect(styles).toContain('<cellXfs count="3">');
+    expect(styles).toContain('numFmtId="14"');
+    expect(styles).toContain('numFmtId="22"');
   });
 });

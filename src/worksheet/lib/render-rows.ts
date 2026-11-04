@@ -1,6 +1,22 @@
+import { XlsxMiniError } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
-import type { Row } from "./model.js";
 import { columnLetter } from "./cell-ref.js";
+import type { Cell, CellObject, Coerce, Row, TemporalLike } from "./model.js";
+import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
+
+const MAX_ROWS = 1_048_576;
+const MAX_COLUMNS = 16_384;
+const MAX_TEXT_LENGTH = 32_767;
+
+/** Everything a worksheet needs from its surroundings to render. */
+export interface WorksheetContext {
+  readonly strings: StringTable;
+  /** What the worksheet needs from the styles feature: an index for each date format it uses. */
+  readonly styles: { dateOnly(): number; dateTime(): number };
+  readonly coerce: Coerce | undefined;
+  /** Zero-based position of the sheet in the workbook, for error paths. */
+  readonly sheetIndex: number;
+}
 
 export interface RenderedSheetData {
   /** The `<row>` elements, or an empty string when no cell was written. */
@@ -10,26 +26,39 @@ export interface RenderedSheetData {
 }
 
 /** Renders every row with at least one cell. Positions survive because rows and cells carry `r`. */
-export function renderSheetData(rows: Iterable<Row>, strings: StringTable): RenderedSheetData {
+export function renderSheetData(rows: Iterable<Row>, context: WorksheetContext): RenderedSheetData {
   const chunks: string[] = [];
-  let rowNumber = 0;
+  let rowIndex = -1;
   let lastRowWithCells = 0;
   let maxColumn = -1;
 
   for (const row of rows) {
-    rowNumber++;
+    rowIndex++;
+    if (rowIndex >= MAX_ROWS) {
+      throw new XlsxMiniError(
+        "TOO_MANY_ROWS",
+        rowPath(context, rowIndex),
+        `Excel allows at most ${MAX_ROWS} rows`,
+      );
+    }
+    if (row.length > MAX_COLUMNS) {
+      throw new XlsxMiniError(
+        "TOO_MANY_COLUMNS",
+        rowPath(context, rowIndex),
+        `Excel allows at most ${MAX_COLUMNS} columns`,
+      );
+    }
     let cells = "";
     for (let column = 0; column < row.length; column++) {
-      const value = row[column];
-      if (value === null || value === undefined) continue;
-      const reference = columnLetter(column) + rowNumber;
-      cells +=
-        typeof value === "string"
-          ? `<c r="${reference}" t="s"><v>${strings.intern(value)}</v></c>`
-          : `<c r="${reference}"><v>${value}</v></c>`;
+      const cell = row[column];
+      if (cell === null || cell === undefined) continue;
+      const rendered = renderCell(cell, column, rowIndex, context);
+      if (rendered.length === 0) continue;
+      cells += rendered;
       if (column > maxColumn) maxColumn = column;
     }
     if (cells.length === 0) continue;
+    const rowNumber = rowIndex + 1;
     chunks.push(`<row r="${rowNumber}">${cells}</row>`);
     lastRowWithCells = rowNumber;
   }
@@ -39,4 +68,182 @@ export function renderSheetData(rows: Iterable<Row>, strings: StringTable): Rend
     rows: chunks.join(""),
     dimension: `<dimension ref="A1:${columnLetter(maxColumn)}${lastRowWithCells}"/>`,
   };
+}
+
+function renderCell(
+  cell: Cell,
+  column: number,
+  rowIndex: number,
+  context: WorksheetContext,
+): string {
+  let value: unknown = cell;
+  if (isWrapper(value)) {
+    value = value.value;
+    if (isWrapper(value)) {
+      throw new XlsxMiniError(
+        "UNSUPPORTED_VALUE",
+        cellPath(context, rowIndex, column),
+        "A cell object cannot wrap another cell object",
+      );
+    }
+  }
+  return renderValue(
+    value,
+    columnLetter(column) + (rowIndex + 1),
+    column,
+    rowIndex,
+    context,
+    false,
+  );
+}
+
+function renderValue(
+  value: unknown,
+  reference: string,
+  column: number,
+  rowIndex: number,
+  context: WorksheetContext,
+  coerced: boolean,
+): string {
+  if (value === null || value === undefined) return "";
+  switch (typeof value) {
+    case "string": {
+      if (value.length > MAX_TEXT_LENGTH) {
+        throw new XlsxMiniError(
+          "CELL_TEXT_TOO_LONG",
+          cellPath(context, rowIndex, column),
+          `Excel allows at most ${MAX_TEXT_LENGTH} characters in a cell`,
+        );
+      }
+      return `<c r="${reference}" t="s"><v>${context.strings.intern(value)}</v></c>`;
+    }
+    case "number": {
+      if (!Number.isFinite(value)) {
+        throw new XlsxMiniError(
+          "INVALID_NUMBER",
+          cellPath(context, rowIndex, column),
+          `${value} cannot be written to a cell`,
+        );
+      }
+      return `<c r="${reference}"><v>${value}</v></c>`;
+    }
+    case "boolean":
+      return `<c r="${reference}" t="b"><v>${value ? 1 : 0}</v></c>`;
+    default:
+      break;
+  }
+
+  // Everything else: Date, Temporal-like, registered, or unsupported. The coerce hook sees it once.
+  if (!coerced && context.coerce !== undefined) {
+    const next = context.coerce(value as Date | TemporalLike, cellPath(context, rowIndex, column));
+    return renderValue(next, reference, column, rowIndex, context, true);
+  }
+  if (value instanceof Date) {
+    const millis = value.getTime();
+    if (Number.isNaN(millis)) {
+      throw new XlsxMiniError(
+        "INVALID_DATE",
+        cellPath(context, rowIndex, column),
+        "Invalid Date cannot be written to a cell",
+      );
+    }
+    return dateCell(
+      reference,
+      serialFromEpochMillis(millis),
+      context.styles.dateTime(),
+      column,
+      rowIndex,
+      context,
+    );
+  }
+  if (typeof value === "object") {
+    const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+    switch (tag) {
+      case "Temporal.PlainDate": {
+        const date = value as { year: number; month: number; day: number };
+        const serial = serialFromCivil(date.year, date.month, date.day, 0, 0, 0, 0);
+        return dateCell(reference, serial, context.styles.dateOnly(), column, rowIndex, context);
+      }
+      case "Temporal.PlainDateTime":
+      case "Temporal.ZonedDateTime": {
+        const time = value as {
+          year: number;
+          month: number;
+          day: number;
+          hour: number;
+          minute: number;
+          second: number;
+          millisecond: number;
+          microsecond: number;
+          nanosecond: number;
+        };
+        const millisecond =
+          time.millisecond + time.microsecond / 1000 + time.nanosecond / 1_000_000;
+        const serial = serialFromCivil(
+          time.year,
+          time.month,
+          time.day,
+          time.hour,
+          time.minute,
+          time.second,
+          millisecond,
+        );
+        return dateCell(reference, serial, context.styles.dateTime(), column, rowIndex, context);
+      }
+      case "Temporal.Instant": {
+        const serial = serialFromEpochMillis(
+          (value as { epochMilliseconds: number }).epochMilliseconds,
+        );
+        return dateCell(reference, serial, context.styles.dateTime(), column, rowIndex, context);
+      }
+      default:
+        break;
+    }
+  }
+  throw new XlsxMiniError(
+    "UNSUPPORTED_VALUE",
+    cellPath(context, rowIndex, column),
+    `A value of type ${describe(value)} cannot be written to a cell; register the type and convert it in coerce`,
+  );
+}
+
+function dateCell(
+  reference: string,
+  serial: number,
+  style: number,
+  column: number,
+  rowIndex: number,
+  context: WorksheetContext,
+): string {
+  if (Number.isNaN(serial)) {
+    throw new XlsxMiniError(
+      "DATE_OUT_OF_RANGE",
+      cellPath(context, rowIndex, column),
+      "Excel dates run from 1900-01-01 to 9999-12-31",
+    );
+  }
+  return `<c r="${reference}" s="${style}"><v>${serial}</v></c>`;
+}
+
+/** A plain object with a `value` property is a cell object; class instances never are. */
+function isWrapper(value: unknown): value is CellObject {
+  if (typeof value !== "object" || value === null) return false;
+  const prototype = Object.getPrototypeOf(value) as unknown;
+  return (prototype === Object.prototype || prototype === null) && "value" in value;
+}
+
+function describe(value: unknown): string {
+  if (typeof value !== "object" || value === null) return typeof value;
+  const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+  if (typeof tag === "string") return tag;
+  const constructor = (value as { constructor?: { name?: string } }).constructor;
+  return constructor?.name ?? "object";
+}
+
+function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {
+  return `sheets[${context.sheetIndex}].rows[${rowIndex}][${column}]`;
+}
+
+function rowPath(context: WorksheetContext, rowIndex: number): string {
+  return `sheets[${context.sheetIndex}].rows[${rowIndex}]`;
 }

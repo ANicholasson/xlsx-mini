@@ -1,6 +1,21 @@
-export { writeXlsx } from "./write-xlsx.js";
+export { type ErrorCode, XlsxMiniError } from "./errors/index.js";
+export { type WriteOptions, writeXlsx } from "./write-xlsx.js";
 export type { Workbook } from "./workbook/index.js";
-export type { Cell, CellValue, Row, Sheet } from "./worksheet/index.js";
+export type {
+  Cell,
+  CellObject,
+  CellValue,
+  Coerce,
+  Register,
+  Registered,
+  Row,
+  Sheet,
+  TemporalInstantLike,
+  TemporalLike,
+  TemporalPlainDateLike,
+  TemporalPlainDateTimeLike,
+  TemporalZonedDateTimeLike,
+} from "./worksheet/index.js";
 
 /**
  * The media type of an .xlsx file, for `Content-Type` headers and `Blob` construction.

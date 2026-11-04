@@ -1,15 +1,7 @@
-import type { Sheet } from "../worksheet/index.js";
 import { XML_DECLARATION, escapeXml } from "../xml/index.js";
 
-/**
- * Everything `writeXlsx` needs: the sheets, in tab order.
- *
- * @example
- * const workbook: Workbook = { sheets: [{ name: "Sheet1", rows: [["Hello", 42]] }] };
- */
-export interface Workbook {
-  readonly sheets: readonly Sheet[];
-}
+export type { Workbook } from "./lib/model.js";
+export { validateWorkbook } from "./lib/validate.js";
 
 const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
 const RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
