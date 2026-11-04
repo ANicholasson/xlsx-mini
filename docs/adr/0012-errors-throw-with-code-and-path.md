@@ -1,0 +1,3 @@
+# One error class with a code and a path; fail fast; strip only invalid XML characters
+
+Every error reaching a caller is `XlsxMiniError` with `code` from a string-literal union and `path` such as `sheets[1].rows[40][2]`. Validation fails on the first problem. Excel's limits (rows, columns, cell text length) are enforced, sheet names are validated and never auto-renamed, and NaN or infinite numbers are rejected. The one silent fix is stripping characters XML 1.0 cannot carry (tab, newline and carriage return are kept), because a stray control byte from a database should not kill an export. A Result-type return was rejected for a single-call API.

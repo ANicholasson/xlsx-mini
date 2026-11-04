@@ -1,0 +1,3 @@
+# A web-standard core that runs on every JavaScript runtime
+
+The core uses only web-standard APIs (`TextEncoder`, `Uint8Array`, `CompressionStream`): no `node:` modules, no DOM globals, no `Buffer`. Runtime-specific behaviour lives in subpath entries such as `xlsx-mini/browser`, following the pattern of libraries that ship adapters as subpaths. Supported engines are Node `^20.12 || >=22`, evergreen browsers and edge runtimes, and "works everywhere" is a tested property: the runtime matrix in CI produces a workbook in Node (ESM and CommonJS), Cloudflare workerd, Bun, Deno and the Vercel edge runtime. Lint rules forbid the restricted globals and imports in the core so the property cannot erode silently.

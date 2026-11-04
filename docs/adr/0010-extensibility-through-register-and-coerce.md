@@ -1,0 +1,3 @@
+# Extensibility through an augmentable Register interface and a coerce hook
+
+Consumers extend the accepted value types by augmenting an empty exported `Register` interface (the pattern TanStack libraries use), which widens `CellValue` and types the `coerce` option to exactly the registered types. `coerce` receives every object value once (registered types, `Date`, Temporal values) and its result goes through normal handling, so it is both the extension point and the override point; primitives never reach it and nothing runs when it is unset. All public types are interfaces so declaration merging works. There is no runtime plugin system, and augmenting a style with fields the writer does not render is a non-goal.

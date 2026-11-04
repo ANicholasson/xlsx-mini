@@ -1,0 +1,3 @@
+# Feature slices as deep modules, enforced by dependency-cruiser
+
+Code is organised by spreadsheet concept: `workbook`, `worksheet`, `styles`, `shared-strings` (later `drawing`) each own their model, validation and part rendering behind one root entry file; `xml` and `opc` are kernels that know nothing about spreadsheets. Features reach each other only through entry points, and cross-feature needs are passed as small ports (a string interner, a style indexer). Named patterns: flyweight registries for styles and strings, a strategy for compression, a `Part` interface composed by the packager. dependency-cruiser enforces the boundaries and forbids cycles; it parses with swc because version 18 cannot read TypeScript 7 through the `typescript` package.

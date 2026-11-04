@@ -1,5 +1,5 @@
 import type { StringTable } from "../../shared-strings/index.js";
-import type { Row } from "../index.js";
+import type { Row } from "./model.js";
 import { columnLetter } from "./cell-ref.js";
 
 export interface RenderedSheetData {
