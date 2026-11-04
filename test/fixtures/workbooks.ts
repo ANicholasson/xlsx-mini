@@ -67,3 +67,26 @@ export const cellTypesWorkbook: Workbook = {
 export const cellTypesOptions: WriteOptions = {
   coerce: (value) => (typeof value === "bigint" ? Number(value) : value),
 };
+
+/** The workbook behind multi-sheet.xlsx: three sheets, names that need escaping, text shared across sheets. */
+export const multiSheetWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Orders & Returns",
+      rows: [
+        ["Order", "Status"],
+        ["A-1001", "shipped"],
+        ["A-1002", "returned"],
+      ],
+    },
+    {
+      name: "Ærlig <oversikt>",
+      rows: [
+        ["Status", "Count"],
+        ["shipped", 1],
+        ["returned", 1],
+      ],
+    },
+    { name: "Empty", rows: [] },
+  ],
+};

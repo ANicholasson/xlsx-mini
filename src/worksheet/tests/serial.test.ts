@@ -40,6 +40,7 @@ describe("Excel serial dates", () => {
         fc.date({
           min: new Date(utc("1900-01-01T00:00:00")),
           max: new Date(utc("9999-12-31T23:59:59.999")),
+          noInvalidDate: true,
         }),
         (date) => {
           const fromMillis = serialFromEpochMillis(date.getTime());
@@ -58,7 +59,7 @@ describe("Excel serial dates", () => {
     );
   });
 
-  it("advances by exactly one per day", () => {
+  it("advances by one per day, within the precision a double keeps near serial 3 million", () => {
     fc.assert(
       fc.property(
         fc.integer({ min: utc("1900-03-01T00:00:00"), max: utc("9999-12-30T00:00:00") }),
