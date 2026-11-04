@@ -1,3 +1,5 @@
+import type { CellStyle } from "../../styles/index.js";
+
 /**
  * Augment this interface to let your own types into cells, then convert them in `coerce`.
  * See the README section "Extending accepted value types".
@@ -75,9 +77,10 @@ export type CellValue =
   | undefined
   | Registered;
 
-/** A cell written as a plain object, for when the value needs company (a style, later). */
+/** A cell written as a plain object, so the value can carry a style. */
 export interface CellObject {
   readonly value: CellValue;
+  readonly style?: CellStyle;
 }
 
 /** One cell of a row: a bare value, or a plain `{ value }` object. */
@@ -86,16 +89,28 @@ export type Cell = CellValue | CellObject;
 /** One row, left to right from column A. */
 export type Row = readonly Cell[];
 
+/** What a column carries for every cell in it. Positions match the row arrays: index 0 is column A. */
+export interface Column {
+  /** Default style for the column's cells; a cell's own style properties win. */
+  readonly style?: CellStyle;
+}
+
 /**
  * One sheet of a workbook.
  *
  * @example
- * const sheet: Sheet = { name: "Orders", rows: [["Order", "Total"], ["A-1001", 1234.5]] };
+ * const sheet: Sheet = {
+ *   name: "Orders",
+ *   columns: [undefined, { style: { numberFormat: '#,##0.00 "kr"' } }],
+ *   rows: [["Order", "Total"], ["A-1001", 1234.5]],
+ * };
  */
 export interface Sheet {
   readonly name: string;
   /** Any iterable of rows, so a generator or database cursor can feed a sheet without an array. */
   readonly rows: Iterable<Row>;
+  /** Per-column settings, by position; leave a slot `undefined` for a column with none. */
+  readonly columns?: readonly (Column | undefined)[];
 }
 
 /**

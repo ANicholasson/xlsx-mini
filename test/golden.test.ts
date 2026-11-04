@@ -8,6 +8,7 @@ import {
   cellTypesWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
+  stylesWorkbook,
 } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
@@ -219,5 +220,41 @@ describe("multi-sheet workbook (golden)", () => {
       code: "DUPLICATE_SHEET_NAME",
       path: "sheets[1].name",
     });
+  });
+});
+
+describe("styles workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("styles.xlsx", stylesWorkbook);
+  });
+
+  it("declares exactly one font, number format and cell format per distinct style used", async () => {
+    const styles = readPart(await writeXlsx(stylesWorkbook, STORE), "xl/styles.xml");
+    expect(styles).toContain('<numFmts count="3">');
+    expect(styles).toContain('<numFmt numFmtId="164" formatCode="#,##0.00 &quot;kr&quot;"/>');
+    expect(styles).toContain('<numFmt numFmtId="165" formatCode="0.0%"/>');
+    expect(styles).toContain('<numFmt numFmtId="166" formatCode="yyyy-mm-dd"/>');
+    expect(styles).toContain('<fonts count="2">');
+    // default, bold, bold+kroner, bold+percent, bold+iso, kroner, percent, iso, date-time
+    expect(styles).toContain('<cellXfs count="9">');
+  });
+
+  it("references the right format from each cell", async () => {
+    const sheet = readPart(await writeXlsx(stylesWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="A1" s="1" t="s">');
+    expect(sheet).toContain('<c r="B1" s="2" t="s">');
+    expect(sheet).toContain('<c r="B2" s="5"><v>1234.5</v></c>');
+    expect(sheet).toContain('<c r="C2" s="6"><v>0.1</v></c>');
+    expect(sheet).toContain('<c r="D2" s="7"><v>46327</v></c>');
+    expect(sheet).toContain('<c r="E2" s="8"><v>46329.604166666664</v></c>');
+    expect(sheet).toContain('<c r="A5" s="1" t="s">');
+    expect(sheet).toContain('<c r="B5" s="2"><v>101333.5</v></c>');
+  });
+
+  it("keeps one cell format for the same style object on ten thousand cells", async () => {
+    const money = { numberFormat: '#,##0.00 "kr"' };
+    const rows = Array.from({ length: 10_000 }, (_, i) => [{ value: i, style: money }]);
+    const bytes = await writeXlsx({ sheets: [{ name: "S", rows }] }, STORE);
+    expect(readPart(bytes, "xl/styles.xml")).toContain('<cellXfs count="2">');
   });
 });

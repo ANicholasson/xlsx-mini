@@ -1,5 +1,6 @@
 import { XlsxMiniError } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
+import type { CellStyle } from "../../styles/index.js";
 import { columnLetter } from "./cell-ref.js";
 import type { Cell, CellObject, Coerce, Row, TemporalLike } from "./model.js";
 import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
@@ -7,12 +8,23 @@ import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
 const MAX_ROWS = 1_048_576;
 const MAX_COLUMNS = 16_384;
 const MAX_TEXT_LENGTH = 32_767;
+/** Built-in number formats a date-like value falls back to. */
+const GENERAL = 0;
+const DATE = 14;
+const DATE_TIME = 22;
 
 /** Everything a worksheet needs from its surroundings to render. */
 export interface WorksheetContext {
   readonly strings: StringTable;
-  /** What the worksheet needs from the styles feature: an index for each date format it uses. */
-  readonly styles: { dateOnly(): number; dateTime(): number };
+  /** What the worksheet needs from the styles feature: a cell-format index for a style, and validation. */
+  readonly styles: {
+    indexFor(
+      cell: CellStyle | undefined,
+      column: CellStyle | undefined,
+      dateDefault: number,
+    ): number;
+    validate(style: CellStyle): void;
+  };
   readonly coerce: Coerce | undefined;
   /** Zero-based position of the sheet in the workbook, for error paths. */
   readonly sheetIndex: number;
@@ -26,7 +38,11 @@ export interface RenderedSheetData {
 }
 
 /** Renders every row with at least one cell. Positions survive because rows and cells carry `r`. */
-export function renderSheetData(rows: Iterable<Row>, context: WorksheetContext): RenderedSheetData {
+export function renderSheetData(
+  rows: Iterable<Row>,
+  columnStyles: readonly (CellStyle | undefined)[],
+  context: WorksheetContext,
+): RenderedSheetData {
   const chunks: string[] = [];
   let rowIndex = -1;
   let lastRowWithCells = 0;
@@ -52,7 +68,7 @@ export function renderSheetData(rows: Iterable<Row>, context: WorksheetContext):
     for (let column = 0; column < row.length; column++) {
       const cell = row[column];
       if (cell === null || cell === undefined) continue;
-      const rendered = renderCell(cell, column, rowIndex, context);
+      const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context);
       if (rendered.length === 0) continue;
       cells += rendered;
       if (column > maxColumn) maxColumn = column;
@@ -73,11 +89,14 @@ export function renderSheetData(rows: Iterable<Row>, context: WorksheetContext):
 function renderCell(
   cell: Cell,
   column: number,
+  columnStyle: CellStyle | undefined,
   rowIndex: number,
   context: WorksheetContext,
 ): string {
   let value: unknown = cell;
+  let cellStyle: CellStyle | undefined;
   if (isWrapper(value)) {
+    cellStyle = value.style;
     value = value.value;
     if (isWrapper(value)) {
       throw new XlsxMiniError(
@@ -87,9 +106,17 @@ function renderCell(
       );
     }
   }
+  const reference = columnLetter(column) + (rowIndex + 1);
+  const style =
+    cellStyle === undefined && columnStyle === undefined
+      ? ""
+      : styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
   return renderValue(
     value,
-    columnLetter(column) + (rowIndex + 1),
+    reference,
+    style,
+    cellStyle,
+    columnStyle,
     column,
     rowIndex,
     context,
@@ -100,6 +127,9 @@ function renderCell(
 function renderValue(
   value: unknown,
   reference: string,
+  style: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
   column: number,
   rowIndex: number,
   context: WorksheetContext,
@@ -115,7 +145,7 @@ function renderValue(
           `Excel allows at most ${MAX_TEXT_LENGTH} characters in a cell`,
         );
       }
-      return `<c r="${reference}" t="s"><v>${context.strings.intern(value)}</v></c>`;
+      return `<c r="${reference}"${style} t="s"><v>${context.strings.intern(value)}</v></c>`;
     }
     case "number": {
       if (!Number.isFinite(value)) {
@@ -125,10 +155,10 @@ function renderValue(
           `${value} cannot be written to a cell`,
         );
       }
-      return `<c r="${reference}"><v>${value}</v></c>`;
+      return `<c r="${reference}"${style}><v>${value}</v></c>`;
     }
     case "boolean":
-      return `<c r="${reference}" t="b"><v>${value ? 1 : 0}</v></c>`;
+      return `<c r="${reference}"${style} t="b"><v>${value ? 1 : 0}</v></c>`;
     default:
       break;
   }
@@ -136,7 +166,17 @@ function renderValue(
   // Everything else: Date, Temporal-like, registered, or unsupported. The coerce hook sees it once.
   if (!coerced && context.coerce !== undefined) {
     const next = context.coerce(value as Date | TemporalLike, cellPath(context, rowIndex, column));
-    return renderValue(next, reference, column, rowIndex, context, true);
+    return renderValue(
+      next,
+      reference,
+      style,
+      cellStyle,
+      columnStyle,
+      column,
+      rowIndex,
+      context,
+      true,
+    );
   }
   if (value instanceof Date) {
     const millis = value.getTime();
@@ -150,7 +190,9 @@ function renderValue(
     return dateCell(
       reference,
       serialFromEpochMillis(millis),
-      context.styles.dateTime(),
+      DATE_TIME,
+      cellStyle,
+      columnStyle,
       column,
       rowIndex,
       context,
@@ -162,7 +204,7 @@ function renderValue(
       case "Temporal.PlainDate": {
         const date = value as { year: number; month: number; day: number };
         const serial = serialFromCivil(date.year, date.month, date.day, 0, 0, 0, 0);
-        return dateCell(reference, serial, context.styles.dateOnly(), column, rowIndex, context);
+        return dateCell(reference, serial, DATE, cellStyle, columnStyle, column, rowIndex, context);
       }
       case "Temporal.PlainDateTime":
       case "Temporal.ZonedDateTime": {
@@ -188,13 +230,31 @@ function renderValue(
           time.second,
           millisecond,
         );
-        return dateCell(reference, serial, context.styles.dateTime(), column, rowIndex, context);
+        return dateCell(
+          reference,
+          serial,
+          DATE_TIME,
+          cellStyle,
+          columnStyle,
+          column,
+          rowIndex,
+          context,
+        );
       }
       case "Temporal.Instant": {
         const serial = serialFromEpochMillis(
           (value as { epochMilliseconds: number }).epochMilliseconds,
         );
-        return dateCell(reference, serial, context.styles.dateTime(), column, rowIndex, context);
+        return dateCell(
+          reference,
+          serial,
+          DATE_TIME,
+          cellStyle,
+          columnStyle,
+          column,
+          rowIndex,
+          context,
+        );
       }
       default:
         break;
@@ -210,7 +270,9 @@ function renderValue(
 function dateCell(
   reference: string,
   serial: number,
-  style: number,
+  dateDefault: number,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
   column: number,
   rowIndex: number,
   context: WorksheetContext,
@@ -222,7 +284,33 @@ function dateCell(
       "Excel dates run from 1900-01-01 to 9999-12-31",
     );
   }
-  return `<c r="${reference}" s="${style}"><v>${serial}</v></c>`;
+  const style = styleAttribute(cellStyle, columnStyle, dateDefault, column, rowIndex, context);
+  return `<c r="${reference}"${style}><v>${serial}</v></c>`;
+}
+
+/** The ` s="N"` attribute for a styled cell, or an empty string for the default format. */
+function styleAttribute(
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  dateDefault: number,
+  column: number,
+  rowIndex: number,
+  context: WorksheetContext,
+): string {
+  let index: number;
+  try {
+    index = context.styles.indexFor(cellStyle, columnStyle, dateDefault);
+  } catch (error) {
+    if (error instanceof XlsxMiniError) {
+      throw new XlsxMiniError(
+        error.code,
+        cellPath(context, rowIndex, column),
+        error.message.replace(/ at $/, ""),
+      );
+    }
+    throw error;
+  }
+  return index === 0 ? "" : ` s="${index}"`;
 }
 
 /** A plain object with a `value` property is a cell object; class instances never are. */

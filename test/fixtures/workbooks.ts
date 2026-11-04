@@ -90,3 +90,38 @@ export const multiSheetWorkbook: Workbook = {
     { name: "Empty", rows: [] },
   ],
 };
+
+const kroner = { numberFormat: '#,##0.00 "kr"' };
+const header = { bold: true };
+const day = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d));
+
+/** The workbook behind styles.xlsx: bold header, currency and percent columns, ISO and default dates, a bold total row. */
+export const stylesWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Orders",
+      columns: [
+        undefined,
+        { style: kroner },
+        { style: { numberFormat: "0.0%" } },
+        { style: { numberFormat: "yyyy-mm-dd" } },
+      ],
+      rows: [
+        [
+          { value: "Order", style: header },
+          { value: "Total", style: header },
+          { value: "Discount", style: header },
+          { value: "Ordered", style: header },
+          { value: "Delivered", style: header },
+        ],
+        ["A-1001", 1234.5, 0.1, day(2026, 11, 1), new Date(Date.UTC(2026, 10, 3, 14, 30))],
+        ["A-1002", 99, 0, day(2026, 11, 2), new Date(Date.UTC(2026, 10, 4, 9, 15))],
+        ["A-1003", 100000, 0.255, day(2026, 11, 3), null],
+        [
+          { value: "Sum", style: header },
+          { value: 101333.5, style: header },
+        ],
+      ],
+    },
+  ],
+};

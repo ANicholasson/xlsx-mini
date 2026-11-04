@@ -45,3 +45,12 @@ Independent inflate checks on the same fixture: `unzip -t` and Python's `zipfile
 | Apple Numbers    | 14.4     | macOS    | clean   | Opened from the shell; sheet names and order read back, sample cells read back                                   | 2026-11-04 |
 | Google Sheets    | web      | browser  | pending | Needs a manual upload and a visual check                                                                         |            |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean   | Headless CSV conversion with the all-sheets token wrote one file per sheet, named after the sheet, each matching | 2026-11-04 |
+
+## styles.xlsx (bold header and total row, a kroner currency column, a percent column, an ISO-date column, a default-formatted date column)
+
+| Application      | Version  | Platform | Result  | How it was checked                                                                                                                                                                                  | Date       |
+| ---------------- | -------- | -------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Microsoft Excel  | 16.114.3 | macOS    | clean   | Opened from the shell; every cell's value, number format and bold flag read back through AppleScript and matched the input                                                                          | 2026-11-04 |
+| Apple Numbers    | 14.4     | macOS    | clean   | Opened from the shell; formatted values read back: `1 234,50 kr`, `10,0 %`, `2026-11-01`, `11/3/26 14:30`                                                                                           | 2026-11-04 |
+| Google Sheets    | web      | browser  | pending | Needs a manual upload and a visual check                                                                                                                                                            |            |
+| LibreOffice Calc | 26.8.2.2 | macOS    | clean   | Headless HTML conversion shows `1,234.50 kr`, `10.0%`, ISO dates and bold header and total rows; its CSV exporter prints the currency column raw, a quirk of that filter, so format checks use HTML | 2026-11-04 |
