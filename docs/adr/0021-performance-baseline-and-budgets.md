@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, run against the built package loaded natively, five iterations after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests CodSpeed measures the same suites under CPU simulation and comments the deltas; its first run on `main` after this decision is the CI baseline, and a column for it belongs in the tables below once it exists.
+The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, run against the built package loaded natively, five iterations after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests CodSpeed measures the same suites under CPU simulation, at five percent of their row counts through `XLSX_MINI_BENCH_SCALE` so the job finishes in minutes, and comments the deltas; simulation counts instructions, so a delta at that size is the delta at full size; its first run on `main` after this decision is the CI baseline, and a column for it belongs in the tables below once it exists.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
