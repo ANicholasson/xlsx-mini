@@ -59,7 +59,7 @@ export async function writeXlsx(
     const sheet = sheets[i]!;
     const context = { strings, styles, coerce: options.coerce, sheetIndex: i };
     const rendered = renderWorksheet(sheet, context);
-    sheetParts.push(part(`xl/worksheets/sheet${i + 1}.xml`, rendered.xml));
+    sheetParts.push({ path: `xl/worksheets/sheet${i + 1}.xml`, data: rendered.data });
     entries.push({ name: sheet.name, filterRange: rendered.filterRange });
   }
 

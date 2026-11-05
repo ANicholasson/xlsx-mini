@@ -1,5 +1,7 @@
-# Dependencies whose install scripts may run: workerd places its platform build, nothing else
-# needs a script. Bun and Deno arrive as official runtime builds without scripts.
+# Dependencies whose install scripts may run. workerd places its platform build; Bun and Deno
+# arrive as official runtime builds, which pnpm still asks approval for by name.
 allowBuilds:
   "@swc/core": false
+  bun: true
+  deno: true
   workerd: true

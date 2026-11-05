@@ -77,3 +77,9 @@ The record of which applications opened each golden fixture clean, and how that 
 
 **Runtime matrix**:
 The hosts the built package must write a workbook on at every test run: Node (ESM and CommonJS), Bun, Deno, Cloudflare workerd and the Vercel edge runtime. STORE output is byte-identical across them.
+
+**Benchmark suite**:
+One of the three workbooks in `bench/` the writer is timed on: the wide table, the many-sheets workbook and the string-heavy workbook. Each is generated from a fixed seed.
+
+**Budget**:
+The time and peak-memory ceiling for a benchmark suite, recorded in the baseline ADR. A budget only ratchets down.

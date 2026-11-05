@@ -99,3 +99,70 @@ function replacementFor(code: number): string | undefined {
 function isWhitespace(code: number): boolean {
   return code === SPACE || code === TAB || code === LINE_FEED || code === CARRIAGE_RETURN;
 }
+
+/** The first block of a sink; blocks double up to the cap, so small parts stay small. */
+const FIRST_BLOCK_SIZE = 16_384;
+const MAX_BLOCK_SIZE = 1_048_576;
+/** Pending text is encoded once it reaches this many UTF-16 units: few calls, short-lived ropes. */
+const FLUSH_AT = 65_536;
+
+const utf8 = new TextEncoder();
+
+/**
+ * Collects the text of one part and encodes it as it comes, so a large part never exists as one
+ * JavaScript string. `write` takes whole characters; `finish` wraps the body in the text that is
+ * only known at the end, such as a dimension computed from the rows, and returns the bytes.
+ */
+export interface XmlSink {
+  write(text: string): void;
+  finish(prefix: string, suffix: string): Uint8Array;
+}
+
+export function createXmlSink(): XmlSink {
+  const blocks: Uint8Array[] = [];
+  let blockSize = FIRST_BLOCK_SIZE;
+  let block = new Uint8Array(blockSize);
+  let used = 0;
+  let total = 0;
+  let pending = "";
+
+  const flush = (): void => {
+    let text = pending;
+    pending = "";
+    while (text.length > 0) {
+      const { read, written } = utf8.encodeInto(text, block.subarray(used));
+      used += written;
+      total += written;
+      if (read === text.length) break;
+      // The block cannot take the next character: seal it and start a bigger one.
+      blocks.push(block.subarray(0, used));
+      blockSize = Math.min(blockSize * 2, MAX_BLOCK_SIZE);
+      block = new Uint8Array(blockSize);
+      used = 0;
+      text = text.slice(read);
+    }
+  };
+
+  return {
+    write(text) {
+      pending += text;
+      if (pending.length >= FLUSH_AT) flush();
+    },
+    finish(prefix, suffix) {
+      flush();
+      const head = utf8.encode(prefix);
+      const tail = utf8.encode(suffix);
+      const out = new Uint8Array(head.length + total + tail.length);
+      out.set(head, 0);
+      let offset = head.length;
+      for (let i = 0; i < blocks.length; i++) {
+        const sealed = blocks[i]!;
+        out.set(sealed, offset);
+        offset += sealed.length;
+      }
+      out.set(block.subarray(0, used), offset);
+      out.set(tail, offset + used);
+      return out;
+    },
+  };
+}

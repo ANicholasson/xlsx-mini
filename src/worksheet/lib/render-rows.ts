@@ -1,6 +1,7 @@
 import { XlsxMiniError } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
+import type { XmlSink } from "../../xml/index.js";
 import { columnLetter } from "./cell-ref.js";
 import type { Cell, CellObject, Coerce, Row, TemporalLike } from "./model.js";
 import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
@@ -30,20 +31,17 @@ export interface WorksheetContext {
   readonly sheetIndex: number;
 }
 
-export interface RenderedSheetData {
-  /** The `<row>` elements, or an empty string when no cell was written. */
-  readonly rows: string;
-  /** The used range such as `A1:C4`, or an empty string when no cell was written. */
-  readonly range: string;
-}
-
-/** Renders every row with at least one cell. Positions survive because rows and cells carry `r`. */
+/**
+ * Renders every row with at least one cell into the sink; positions survive because rows and
+ * cells carry `r`. Returns the used range such as `A1:C4`, or an empty string when no cell was
+ * written.
+ */
 export function renderSheetData(
   rows: Iterable<Row>,
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
-): RenderedSheetData {
-  const chunks: string[] = [];
+  sink: XmlSink,
+): string {
   let rowIndex = -1;
   let lastRowWithCells = 0;
   let maxColumn = -1;
@@ -75,12 +73,12 @@ export function renderSheetData(
     }
     if (cells.length === 0) continue;
     const rowNumber = rowIndex + 1;
-    chunks.push(`<row r="${rowNumber}">${cells}</row>`);
+    sink.write(`<row r="${rowNumber}">${cells}</row>`);
     lastRowWithCells = rowNumber;
   }
 
-  if (lastRowWithCells === 0) return { rows: "", range: "" };
-  return { rows: chunks.join(""), range: `A1:${columnLetter(maxColumn)}${lastRowWithCells}` };
+  if (lastRowWithCells === 0) return "";
+  return `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
 }
 
 function renderCell(

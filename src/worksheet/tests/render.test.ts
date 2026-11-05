@@ -12,13 +12,14 @@ import { createStyleTable } from "../../styles/index.js";
 const styles = createStyleTable();
 
 function render(sheet: Sheet, overrides: Partial<WorksheetContext> = {}): string {
-  return renderWorksheet(sheet, {
+  const rendered = renderWorksheet(sheet, {
     strings: createStringTable(),
     styles,
     coerce: undefined,
     sheetIndex: 0,
     ...overrides,
-  }).xml;
+  });
+  return new TextDecoder().decode(rendered.data);
 }
 
 const failure = (sheet: Sheet, overrides: Partial<WorksheetContext> = {}): XlsxMiniError => {

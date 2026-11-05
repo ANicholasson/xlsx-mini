@@ -42,6 +42,8 @@ export function createStyleTable(): StyleTable {
   const cellFormats: string[] = ['<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'];
   const byKey = new Map<string, number>();
   const bySingleObject = new WeakMap<CellStyle, number>();
+  /** Cell-format index per built-in date format, for unstyled date cells: no key string per cell. */
+  const byDateDefault: number[] = [];
   const customFormats = new Map<string, number>();
   let boldFont = 0;
 
@@ -100,7 +102,8 @@ export function createStyleTable(): StyleTable {
   return {
     indexFor(cell, column, dateDefault) {
       if (cell === undefined && column === undefined) {
-        return dateDefault === GENERAL ? 0 : resolve(false, dateDefault);
+        if (dateDefault === GENERAL) return 0;
+        return (byDateDefault[dateDefault] ??= resolve(false, dateDefault));
       }
       if (dateDefault === GENERAL) {
         const single = column === undefined ? cell : cell === undefined ? column : undefined;

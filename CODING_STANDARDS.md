@@ -16,7 +16,7 @@ An option, hook, type parameter or extension point exists only once a test and a
 
 ## Hot path
 
-Cell normalisation, escaping, interning, style lookup and part assembly run once per cell or once per row. On that path: one pass over the rows, no regular expressions, no closures created per cell, no intermediate objects per cell, strings built in chunks and encoded once per part. A change that touches it states its benchmark delta in the PR.
+Cell normalisation, escaping, interning, style lookup and part assembly run once per cell or once per row. On that path: one pass over the rows, no regular expressions, no closures created per cell, no intermediate objects per cell, strings built in chunks and encoded once per part. A change that touches it states its benchmark delta in the PR, from the CodSpeed comment or from `pnpm bench` before and after.
 
 ## Errors
 

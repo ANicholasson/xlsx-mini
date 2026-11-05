@@ -1,9 +1,18 @@
-import { defineConfig } from "vite-plus";
+import codspeedPlugin from "@codspeed/vitest-plugin";
+import { type ViteUserConfig, defineConfig } from "vite-plus";
+
+type VitePlugin = NonNullable<ViteUserConfig["plugins"]>[number];
 
 const CORE_ONLY_MESSAGE =
   "The core runs everywhere: web-standard APIs only. Node and DOM globals belong in runtime-specific entries or tests.";
 
-export default defineConfig({
+// Active only under the CodSpeed runner in CI; locally the benchmarks run through tinybench.
+// Cast: the plugin carries the `Plugin` type of the Vite it was built against, which TypeScript
+// cannot finish comparing with Vite+'s own.
+const plugins = [codspeedPlugin() as unknown as VitePlugin];
+
+const config: ViteUserConfig = {
+  plugins,
   lint: {
     options: { typeAware: true, typeCheck: true },
     rules: {
@@ -29,7 +38,12 @@ export default defineConfig({
         rules: { "no-restricted-globals": "off" },
       },
       {
-        files: ["src/**/tests/**", "test/**", "*.config.ts", "*.cjs"],
+        // The benchmark fixtures preallocate their arrays on purpose.
+        files: ["bench/**"],
+        rules: { "unicorn/no-new-array": "off" },
+      },
+      {
+        files: ["src/**/tests/**", "test/**", "bench/**", "*.config.ts", "*.cjs"],
         rules: {
           "no-restricted-globals": "off",
           "no-restricted-imports": "off",
@@ -42,6 +56,10 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/tests/**/*.test.ts", "test/**/*.test.ts"],
+    benchmark: { include: ["bench/**/*.bench.ts"] },
+    // The benchmarks load the built package natively: through the module runner every export
+    // becomes a getter, which a million-cell write would pay on each hot call.
+    server: { deps: { external: [/\/node_modules\//, /\/dist\//] } },
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
@@ -50,4 +68,6 @@ export default defineConfig({
       thresholds: { statements: 100, branches: 100, functions: 100, lines: 100 },
     },
   },
-});
+};
+
+export default defineConfig(config);
