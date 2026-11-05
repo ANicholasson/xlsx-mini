@@ -14,9 +14,10 @@
     "noUnusedParameters": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "paths": { "xlsx-mini": ["./src/index.ts"], "xlsx-mini/browser": ["./src/browser.ts"] },
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "test", "bench", "vite.config.ts"]
+  "include": ["src", "test", "bench", "examples/snippets", "vite.config.ts"]
 }

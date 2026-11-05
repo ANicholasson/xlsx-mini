@@ -2,16 +2,8 @@ import { describe, expect, expectTypeOf, it } from "vite-plus/test";
 import { type Cell, type CellValue, type Coerce, writeXlsx } from "../src/index.js";
 import { readPart } from "./helpers/unzip.js";
 
-/** A consumer's own type, made writable by augmenting Register (see the README). */
-class Money {
-  constructor(readonly cents: number) {}
-}
-
-declare module "../src/index.js" {
-  interface Register {
-    cellValue: Money | bigint;
-  }
-}
+// The README snippet carries the augmentation; this test proves what it promises.
+import { Money } from "../examples/snippets/register.ts";
 
 describe("Register augmentation", () => {
   it("widens CellValue and types coerce to exactly the registered types", () => {

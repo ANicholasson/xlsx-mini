@@ -1,9 +1,20 @@
+import { fileURLToPath } from "node:url";
 import { type ViteUserConfig, defineConfig } from "vite-plus";
 
 const CORE_ONLY_MESSAGE =
   "The core runs everywhere: web-standard APIs only. Node and DOM globals belong in runtime-specific entries or tests.";
 
 const config: ViteUserConfig = {
+  // Snippets and examples import the package by name; tests run them against the source.
+  resolve: {
+    alias: [
+      {
+        find: "xlsx-mini/browser",
+        replacement: fileURLToPath(new URL("./src/browser.ts", import.meta.url)),
+      },
+      { find: "xlsx-mini", replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)) },
+    ],
+  },
   lint: {
     options: { typeAware: true, typeCheck: true },
     rules: {
@@ -29,7 +40,7 @@ const config: ViteUserConfig = {
         rules: { "no-restricted-globals": "off" },
       },
       {
-        files: ["src/**/tests/**", "test/**", "bench/**", "*.config.ts", "*.cjs"],
+        files: ["src/**/tests/**", "test/**", "bench/**", "examples/**", "*.config.ts", "*.cjs"],
         rules: {
           "no-restricted-globals": "off",
           "no-restricted-imports": "off",

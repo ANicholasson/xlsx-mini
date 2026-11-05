@@ -30,7 +30,7 @@ const encoder = new TextEncoder();
 export async function createPackage(
   parts: readonly PackagePart[],
   compression: Compression,
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   const count = parts.length;
   const names: Uint8Array[] = [];
   const payloads: Uint8Array[] = [];

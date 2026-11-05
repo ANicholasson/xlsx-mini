@@ -1,7 +1,14 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/index.ts", "src/browser.ts", "src/**/tests/**/*.test.ts", "test/**/*.test.ts"],
-  "project": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts"],
+  "entry": [
+    "src/index.ts",
+    "src/browser.ts",
+    "src/**/tests/**/*.test.ts",
+    "test/**/*.test.ts",
+    "examples/snippets/*.ts",
+    "examples/node/*.mjs",
+  ],
+  "project": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "examples/**/*.ts"],
   // dependency-cruiser loads @swc/core at runtime when `parser: "swc"` is set in
   // .dependency-cruiser.cjs; no import of it exists for knip to see.
   "ignoreDependencies": ["@swc/core"],
