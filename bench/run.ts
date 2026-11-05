@@ -1,11 +1,15 @@
-// Times the three suites against the built package, on whichever runtime runs this file: Node, Bun
-// or Deno. `pnpm bench` prints a table; `--json <file>` also writes the results for the report.
+// Times the three suites against the built package on whichever runtime runs this file: Node, Bun
+// or Deno. With `--base <dist>` a second build is timed in the same process, call by call in turns
+// with the first, so both see the same machine and the same moment; the report compares the two.
+// `pnpm bench` prints a table; `--json <file>` also writes the results.
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
-import { Bench } from "tinybench";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as Api from "../src/index.ts";
-import type { BenchmarkResult, RunResult, Variant } from "./report.ts";
+import type { BenchmarkResult, RunResult, Timing, Variant } from "./report.ts";
 import { suites } from "./workbooks.ts";
+
+type Write = () => Promise<Uint8Array>;
 
 interface RuntimeInfo {
   readonly runtime: string;
@@ -29,61 +33,90 @@ function argument(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
-// The built package, what users run, loaded by the host itself; `pnpm bench` builds it first.
-// The specifier is computed so that no tool resolves `dist/` before a build exists.
-const { writeXlsx } = (await import(
-  new URL("../dist/index.js", import.meta.url).href
-)) as typeof Api;
-
-const iterations = Number(argument("--iterations") ?? 7);
-const bench = new Bench({ iterations, time: 0, warmupIterations: 1, warmupTime: 0 });
-const labels: Array<{ suite: string; variant: Variant }> = [];
-for (const [name, build] of suites) {
-  const workbook = build();
-  bench.add(`${name}, deflate`, async () => {
-    await writeXlsx(workbook);
-  });
-  labels.push({ suite: name, variant: "deflate" });
-  bench.add(`${name}, store`, async () => {
-    await writeXlsx(workbook, { compression: "none" });
-  });
-  labels.push({ suite: name, variant: "store" });
+/** A build of the package, loaded by the host itself from its `dist/` folder. */
+async function load(dist: string): Promise<typeof Api> {
+  return (await import(pathToFileURL(resolve(dist, "index.js")).href)) as typeof Api;
 }
-await bench.run();
 
-const benchmarks: BenchmarkResult[] = bench.tasks.map((task, index) => {
-  const result = task.result;
-  if (result === undefined || !("latency" in result) || result.latency === undefined) {
-    throw new Error(`${task.name}: no result`);
+/** Node with `--expose-gc` and Bun expose a collector; Deno does not, and then nothing happens. */
+function collectGarbage(): void {
+  const host = globalThis as { gc?: () => void; Bun?: { gc?: (force: boolean) => void } };
+  if (host.gc !== undefined) host.gc();
+  else host.Bun?.gc?.(true);
+}
+
+async function time(write: Write): Promise<number> {
+  const started = performance.now();
+  await write();
+  return performance.now() - started;
+}
+
+function summarize(samples: readonly number[]): Timing {
+  const sorted = [...samples].sort((a, b) => a - b);
+  return { minMs: sorted[0]!, p50Ms: sorted[Math.floor(sorted.length / 2)]! };
+}
+
+const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.meta.url));
+const baseDist = argument("--base");
+const head = await load(headDist);
+const base = baseDist === undefined ? undefined : await load(baseDist);
+const iterations = Number(argument("--iterations") ?? 7);
+
+const benchmarks: BenchmarkResult[] = [];
+for (const [suite, build] of suites) {
+  const workbook = build();
+  for (const variant of ["deflate", "store"] as const satisfies readonly Variant[]) {
+    const options = variant === "store" ? { compression: "none" as const } : undefined;
+    const headWrite: Write = () => head.writeXlsx(workbook, options);
+    const baseWrite: Write | undefined =
+      base === undefined ? undefined : () => base.writeXlsx(workbook, options);
+    // One warm-up each, then the two builds in turns, the order swapped every iteration so that
+    // neither side always pays for the other's garbage or always gets the warmer cache; a
+    // collection before each timed call, where the host exposes one, takes the rest of that bias.
+    await headWrite();
+    await baseWrite?.();
+    const headSamples: number[] = [];
+    const baseSamples: number[] = [];
+    for (let i = 0; i < iterations; i++) {
+      const order =
+        baseWrite !== undefined && i % 2 === 1 ? [baseWrite, headWrite] : [headWrite, baseWrite];
+      for (const write of order) {
+        if (write === undefined) continue;
+        collectGarbage();
+        const elapsed = await time(write);
+        (write === headWrite ? headSamples : baseSamples).push(elapsed);
+      }
+    }
+    const result: BenchmarkResult = {
+      suite,
+      variant,
+      samples: iterations,
+      head: summarize(headSamples),
+      ...(baseWrite === undefined ? {} : { base: summarize(baseSamples) }),
+    };
+    benchmarks.push(result);
   }
-  const { suite, variant } = labels[index]!;
-  const latency = result.latency;
-  return {
-    suite,
-    variant,
-    samples: latency.samplesCount,
-    p50Ms: latency.p50,
-    minMs: latency.min,
-    meanMs: latency.mean,
-  };
-});
+}
 
 const run: RunResult = {
   ...detectRuntime(),
   arch: process.arch,
   commit: argument("--commit") ?? process.env["GITHUB_SHA"] ?? "local",
+  ...(baseDist === undefined ? {} : { baseCommit: argument("--base-commit") ?? "base" }),
   date: new Date().toISOString(),
   benchmarks,
 };
 
-console.log(`${run.runtime} ${run.version} on ${run.arch}, ${iterations} iterations per benchmark`);
+console.log(
+  `${run.runtime} ${run.version} on ${run.arch}, ${iterations} runs per benchmark${base === undefined ? "" : ", in turns with the base build"}`,
+);
 console.table(
   benchmarks.map((b) => ({
     suite: b.suite,
     variant: b.variant,
-    "p50 ms": b.p50Ms.toFixed(1),
-    "min ms": b.minMs.toFixed(1),
-    "mean ms": b.meanMs.toFixed(1),
+    "min ms": b.head.minMs.toFixed(1),
+    "p50 ms": b.head.p50Ms.toFixed(1),
+    ...(b.base === undefined ? {} : { "base min ms": b.base.minMs.toFixed(1) }),
   })),
 );
 

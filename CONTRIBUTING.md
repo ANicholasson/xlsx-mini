@@ -21,6 +21,6 @@ pnpm verify
 - Title in Conventional Commits form, such as `fix: keep a trailing space in cell text`; it becomes the commit on `main`.
 - A change users notice gets a changeset: `pnpm changeset`, pick patch or minor, write one line a reader of the changelog understands.
 - A change to a golden fixture opens it in Excel, Numbers, Google Sheets and LibreOffice and records the result in `docs/compatibility.md`.
-- The benchmark comment on the pull request shows what the change did to performance; changes inside ten percent are noise.
+- The benchmark comment on the pull request shows what the change did to performance, measured against `main` on the same machine; changes inside five percent are noise.
 
 Reviews are kind and concrete. If something is unclear, ask in the pull request.

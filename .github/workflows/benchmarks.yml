@@ -1,8 +1,6 @@
 name: benchmarks
 
 on:
-  push:
-    branches: [main]
   pull_request:
 
 permissions:
@@ -34,18 +32,25 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
-      # On a pull request the checkout is the merge ref; the report names the head commit instead.
-      - name: Name the commit under test
+      # The pull request's base commit, the one the merge ref was made from, built with this
+      # checkout's compiler: the package has no runtime dependencies, so its dist/ runs on its own.
+      - name: Build the base alongside
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: echo "COMMIT=${HEAD_SHA:-$GITHUB_SHA}" >> "$GITHUB_ENV"
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          git worktree add base-tree "$BASE_SHA"
+          ./node_modules/.bin/tsc -p base-tree/tsconfig.build.json
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "COMMIT=$HEAD_SHA" >> "$GITHUB_ENV"
 
       - name: Benchmark on Node
-        run: node bench/run.ts --json bench/results/node.json --commit "$COMMIT"
+        run: node --expose-gc bench/run.ts --base base-tree/dist --json bench/results/node.json --commit "$COMMIT" --base-commit "$BASE_SHA"
       - name: Benchmark on Bun
-        run: ./node_modules/.bin/bun bench/run.ts --json bench/results/bun.json --commit "$COMMIT"
+        run: ./node_modules/.bin/bun bench/run.ts --base base-tree/dist --json bench/results/bun.json --commit "$COMMIT" --base-commit "$BASE_SHA"
       - name: Benchmark on Deno
-        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json --commit "$COMMIT"
+        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --base base-tree/dist --json bench/results/deno.json --commit "$COMMIT" --base-commit "$BASE_SHA"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -55,7 +60,6 @@ jobs:
 
   comment:
     name: Report on the pull request
-    if: github.event_name == 'pull_request'
     needs: bench
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,24 +80,16 @@ jobs:
           name: bench-results
           path: bench/results
 
-      - name: Fetch the latest results on main
-        run: |
-          if git ls-remote --exit-code --heads origin benchmarks >/dev/null; then
-            git fetch --depth=1 origin benchmarks
-            git worktree add bench-branch FETCH_HEAD
-          else
-            mkdir -p bench-branch
-          fi
-
       - name: Post or update the comment
         # A pull request from a fork gets a read-only token; the report then stays in the log.
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
-          node bench/report.ts --head bench/results --base bench-branch/latest --history bench-branch/history.json \
-            --out bench/results/report.md --base-label main --head-label "this pull request"
+          node bench/report.ts --head bench/results --out bench/results/report.md \
+            --base-label "$BASE_REF" --head-label "this pull request"
           cat bench/results/report.md
           id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate \
             --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith("<!-- xlsx-mini-benchmarks -->")) | .id' | head -1)
@@ -102,41 +98,3 @@ jobs:
           else
             gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F body=@bench/results/report.md >/dev/null
           fi
-
-  record:
-    name: Record on the benchmarks branch
-    if: github.event_name == 'push'
-    needs: bench
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    # The one job that may write to the repository: it pushes the branch the workflow owns, from
-    # the report script alone.
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: bench-results
-          path: bench/results
-
-      - name: Record the run
-        run: |
-          if git ls-remote --exit-code --heads origin benchmarks >/dev/null; then
-            git fetch --depth=1 origin benchmarks
-            git worktree add bench-branch FETCH_HEAD
-          else
-            git worktree add --orphan -b benchmarks bench-branch
-          fi
-          node bench/report.ts --head bench/results --append-history bench-branch/history.json --svg bench-branch/benchmarks.svg
-          mkdir -p bench-branch/latest
-          cp bench/results/*.json bench-branch/latest/
-          cd bench-branch
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -q -m "bench: record ${GITHUB_SHA:0:7}" || echo "nothing to record"
-          git push origin HEAD:benchmarks

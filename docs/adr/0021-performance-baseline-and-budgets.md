@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, deflate and STORE each, seven runs after one warm-up against the built package loaded by the host itself) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno, and the report compares the medians with the latest run on `main`, kept on the `benchmarks` branch together with the history.
+The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, deflate and STORE each, seven runs after one warm-up against the built package loaded by the host itself) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
@@ -22,7 +22,7 @@ Budgets are the means rounded up to the next ten milliseconds and the growth rat
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
-The runner is about twice as slow as the machine above; its numbers are the reference the pull-request report compares against, not budgets. Deflate first, STORE second, in milliseconds.
+The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.
 
 | Suite        | Node 24.22.2 | Bun 1.4.4 | Deno 2.9.6 |
 | ------------ | ------------ | --------- | ---------- |
@@ -32,7 +32,7 @@ The runner is about twice as slow as the machine above; its numbers are the refe
 
 ## What the pull-request report measures
 
-Wall time on a shared runner, so run-to-run noise of several percent is normal: changes inside ten percent are labelled noise, beyond ten percent flagged, beyond twenty-five percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
+Wall time of the pull request's build and of `main`'s build in the same process on the same runner, taken in turns, seven runs each, compared by their minimum. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
 
 ## What the profiling pass found
 

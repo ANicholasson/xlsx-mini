@@ -50,7 +50,7 @@
     "test:coverage": "vp test run --coverage",
     "bench": "pnpm run build && node bench/run.ts",
     "bench:all": "pnpm run build && node bench/run.ts --json bench/results/node.json && bun bench/run.ts --json bench/results/bun.json && deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json",
-    "bench:report": "node bench/report.ts --head bench/results --out bench/results/report.md --svg bench/results/benchmarks.svg",
+    "bench:report": "node bench/report.ts --head bench/results --out bench/results/report.md",
     "bench:memory": "pnpm run build && node bench/memory.ts",
     "check:package": "pnpm run build && publint --strict && attw --pack . --profile esm-only",
     "verify": "vp check && pnpm run typecheck && pnpm run lint:boundaries && pnpm run knip && pnpm run test:coverage && pnpm run check:package",
@@ -75,7 +75,6 @@
     "miniflare": "4.20260730.0",
     "publint": "0.3.25",
     "rolldown": "1.2.16",
-    "tinybench": "6.2.3",
     "typescript": "7.0.2",
     "vite-plus": "1.4.0"
   },

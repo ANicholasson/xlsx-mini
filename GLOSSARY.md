@@ -85,7 +85,4 @@ One of the three workbooks in `bench/` the writer is timed on: the wide table, t
 The time and peak-memory ceiling for a benchmark suite, recorded in the baseline ADR. A budget only ratchets down.
 
 **Benchmark report**:
-The one comment on a pull request with the benchmark changes against `main` per runtime, a chart of both, and a history chart. Updated on every push.
-
-**Benchmarks branch**:
-The branch `benchmarks`, written only by the workflow: the latest results on `main`, their history, and the chart the README shows.
+The one comment on a pull request with a table per runtime of the pull request against `main`, both timed on the same runner in turns. Updated on every push.
