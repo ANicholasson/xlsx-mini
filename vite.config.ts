@@ -16,6 +16,8 @@ const config: ViteUserConfig = {
     ],
   },
   lint: {
+    // The Next.js example types against its own installed dependencies, which CI never installs.
+    ignorePatterns: ["examples/next/**"],
     options: { typeAware: true, typeCheck: true },
     rules: {
       "no-restricted-globals": [
@@ -49,8 +51,14 @@ const config: ViteUserConfig = {
     ],
   },
   staged: {
-    // Lint only code: the linter fails when every staged file is JSON, Markdown or YAML.
-    "*.{ts,cts,mts,js,cjs,mjs}": ["vp fmt --write", "vp lint --fix"],
+    // Lint only code the linter covers: it fails on a run where every file is ignored or has
+    // nothing to lint, so the Next.js example and documents get the formatter alone.
+    "{src,test,bench,examples/snippets,examples/node}/**/*.{ts,cts,mts,js,cjs,mjs}": [
+      "vp fmt --write",
+      "vp lint --fix",
+    ],
+    "{vite.config.ts,.dependency-cruiser.cjs}": ["vp fmt --write", "vp lint --fix"],
+    "examples/next/**/*.{ts,tsx,js,mjs}": ["vp fmt --write"],
     "*.{json,md,yml,yaml}": ["vp fmt --write"],
   },
   test: {
