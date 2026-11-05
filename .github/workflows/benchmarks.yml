@@ -31,12 +31,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
+      # On a pull request the checkout is the merge ref; the report names the head commit instead.
+      - name: Name the commit under test
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: echo "COMMIT=${HEAD_SHA:-$GITHUB_SHA}" >> "$GITHUB_ENV"
+
       - name: Benchmark on Node
-        run: node bench/run.ts --json bench/results/node.json --commit "$GITHUB_SHA"
+        run: node bench/run.ts --json bench/results/node.json --commit "$COMMIT"
       - name: Benchmark on Bun
-        run: ./node_modules/.bin/bun bench/run.ts --json bench/results/bun.json --commit "$GITHUB_SHA"
+        run: ./node_modules/.bin/bun bench/run.ts --json bench/results/bun.json --commit "$COMMIT"
       - name: Benchmark on Deno
-        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json --commit "$GITHUB_SHA"
+        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json --commit "$COMMIT"
 
       - name: Fetch the latest results on main
         run: |
