@@ -4,7 +4,7 @@
 [![ci](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every code block in this README is run by the test suite.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
 
 ## Install
 
