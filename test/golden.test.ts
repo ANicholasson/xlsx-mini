@@ -10,6 +10,7 @@ import {
   multiSheetWorkbook,
   stylesWorkbook,
   layoutWorkbook,
+  ordersWorkbook,
 } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
@@ -297,5 +298,26 @@ describe("layout workbook (golden)", () => {
       '<pane xSplit="1" ySplit="1" topLeftCell="B2" activePane="bottomRight" state="frozen"/>',
     );
     expect(sheet).toContain('<autoFilter ref="A1:C4"/>');
+  });
+});
+
+describe("orders workbook from objects (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("orders.xlsx", ordersWorkbook);
+  });
+
+  it("carries the bold header, widths, formats, frozen header row and autofilter", async () => {
+    const bytes = await writeXlsx(ordersWorkbook, STORE);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>',
+    );
+    expect(sheet).toContain('<col min="4" max="4" width="18" customWidth="1"/>');
+    expect(sheet).toContain('<autoFilter ref="A1:D4"/>');
+    expect(sheet).toContain('<c r="A1" s="1" t="s"><v>0</v></c>');
+    expect(sheet).toContain('<c r="D2" s="5"><v>46327.395833333336</v></c>');
+    const styles = readPart(bytes, "xl/styles.xml");
+    expect(styles).toContain('formatCode="yyyy-mm-dd hh:mm"');
+    expect(styles).toContain('<fonts count="2">');
   });
 });

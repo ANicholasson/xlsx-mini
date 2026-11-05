@@ -1,4 +1,4 @@
-import type { WriteOptions, Workbook } from "../../src/index.js";
+import { type WriteOptions, type Workbook, sheetFromObjects } from "../../src/index.js";
 
 /** The workbook behind minimal.xlsx. Change it only together with the fixture. */
 export const minimalWorkbook: Workbook = {
@@ -146,5 +146,47 @@ export const layoutWorkbook: Workbook = {
       ],
     },
     { name: "Notes", rows: [["No filter here"]] },
+  ],
+};
+
+/** The workbook behind orders.xlsx: the README example for sheetFromObjects. */
+export const ordersWorkbook: Workbook = {
+  sheets: [
+    sheetFromObjects(
+      [
+        {
+          id: "A-1001",
+          customer: "Kari Nordmann",
+          total: 1234.5,
+          placedAt: new Date(Date.UTC(2026, 10, 1, 9, 30)),
+        },
+        {
+          id: "A-1002",
+          customer: "Ola Nordmann",
+          total: 99,
+          placedAt: new Date(Date.UTC(2026, 10, 2, 14, 0)),
+        },
+        {
+          id: "A-1003",
+          customer: "Per O'Brien",
+          total: 100000,
+          placedAt: new Date(Date.UTC(2026, 10, 3, 8, 15)),
+        },
+      ],
+      {
+        name: "Orders",
+        columns: [
+          { key: "id", header: "Order", width: 12 },
+          { key: "customer", header: "Customer", width: 24 },
+          { key: "total", header: "Total", width: 14, style: { numberFormat: '#,##0.00 "kr"' } },
+          {
+            key: "placedAt",
+            header: "Placed",
+            width: 18,
+            style: { numberFormat: "yyyy-mm-dd hh:mm" },
+          },
+        ],
+      },
+    ),
   ],
 };

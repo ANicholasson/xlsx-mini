@@ -22,6 +22,11 @@ export type {
 } from "./lib/model.js";
 export type { WorksheetContext } from "./lib/render-rows.js";
 export { columnLetter } from "./lib/cell-ref.js";
+export {
+  type ObjectColumn,
+  type SheetFromObjectsOptions,
+  sheetFromObjects,
+} from "./lib/from-objects.js";
 export { serialFromCivil, serialFromEpochMillis } from "./lib/serial.js";
 
 /** A rendered worksheet part and what the workbook part needs to know about it. */
