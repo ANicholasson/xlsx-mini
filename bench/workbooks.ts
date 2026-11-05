@@ -1,11 +1,12 @@
+import type { Cell, CellObject, Workbook } from "../src/index.ts";
+
 /**
- * The three benchmark workbooks. Plain JavaScript so the memory script can load them in a bare
- * Node process next to `dist/`. Every suite is built from a seeded generator, so the same bytes
- * come out on every machine and every run; building is done before timing starts.
+ * The three benchmark suites. Every suite is built from a seeded generator, so the same workbook
+ * comes out on every machine and every run; building happens before timing starts.
  */
 
 /** mulberry32: a small seeded generator, enough to make repeatable data. */
-function random(seed) {
+function random(seed: number): () => number {
   let state = seed >>> 0;
   return () => {
     state = (state + 0x6d2b79f5) >>> 0;
@@ -172,50 +173,45 @@ const WORDS = [
   "🎉",
 ];
 
+const pick = <T>(next: () => number, items: readonly T[]): T =>
+  items[Math.floor(next() * items.length)]!;
+
 /** A phrase of two to six words from the list; some carry characters that need escaping. */
-function phrase(next) {
+function phrase(next: () => number): string {
   const length = 2 + Math.floor(next() * 5);
-  let text = WORDS[Math.floor(next() * WORDS.length)];
-  for (let i = 1; i < length; i++) text += " " + WORDS[Math.floor(next() * WORDS.length)];
+  let text = pick(next, WORDS);
+  for (let i = 1; i < length; i++) text += ` ${pick(next, WORDS)}`;
   return text;
 }
 
-function pool(next, size) {
-  const items = new Array(size);
-  for (let i = 0; i < size; i++) items[i] = phrase(next);
-  return items;
+function pool(next: () => number, size: number): string[] {
+  return Array.from({ length: size }, () => phrase(next));
 }
 
-/**
- * Row counts scale by `XLSX_MINI_BENCH_SCALE`, unset locally. CodSpeed's CPU simulation runs the
- * suites at a fraction of their size: instruction counts stay exact, and the job stays short.
- */
-const SCALE = Number(globalThis.process?.env?.XLSX_MINI_BENCH_SCALE ?? 1);
-const scaled = (count) => Math.max(1, Math.round(count * SCALE));
+function header(titles: readonly string[]): CellObject[] {
+  const bold = { bold: true };
+  return titles.map((value) => ({ value, style: bold }));
+}
 
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 0, 1);
 
 /** 100 000 rows by 10 mixed columns: ids, names, cities, money, counts, dates, flags, unique SKUs, notes, statuses. */
-export function wideWorkbook() {
+function wideWorkbook(): Workbook {
   const next = random(1);
   const notes = pool(next, 200);
-  const rows = new Array(scaled(100_000));
-  for (let i = 0; i < rows.length; i++) {
-    const name = `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`;
-    rows[i] = [
-      i + 1,
-      name,
-      CITIES[Math.floor(next() * CITIES.length)],
-      Math.round(next() * 1_000_000) / 100,
-      1 + Math.floor(next() * 500),
-      new Date(START + Math.floor(next() * 365 * DAY)),
-      next() < 0.5,
-      `SKU-${String(100_000 + i)}`,
-      notes[Math.floor(next() * notes.length)],
-      STATUSES[Math.floor(next() * STATUSES.length)],
-    ];
-  }
+  const rows: Cell[][] = Array.from({ length: 100_000 }, (_, i) => [
+    i + 1,
+    `${pick(next, FIRST_NAMES)} ${pick(next, LAST_NAMES)}`,
+    pick(next, CITIES),
+    Math.round(next() * 1_000_000) / 100,
+    1 + Math.floor(next() * 500),
+    new Date(START + Math.floor(next() * 365 * DAY)),
+    next() < 0.5,
+    `SKU-${String(100_000 + i)}`,
+    pick(next, notes),
+    pick(next, STATUSES),
+  ]);
   return {
     sheets: [
       {
@@ -255,22 +251,18 @@ export function wideWorkbook() {
 }
 
 /** 40 sheets of 2 500 rows by 6 columns: the same shape repeated, shared strings across sheets. */
-export function manySheetsWorkbook() {
+function manySheetsWorkbook(): Workbook {
   const next = random(2);
-  const sheets = new Array(40);
-  for (let s = 0; s < sheets.length; s++) {
-    const rows = new Array(scaled(2_500));
-    for (let i = 0; i < rows.length; i++) {
-      rows[i] = [
-        `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`,
-        CITIES[Math.floor(next() * CITIES.length)],
-        Math.round(next() * 100_000) / 100,
-        1 + Math.floor(next() * 50),
-        new Date(START + Math.floor(next() * 365 * DAY)),
-        STATUSES[Math.floor(next() * STATUSES.length)],
-      ];
-    }
-    sheets[s] = {
+  const sheets = Array.from({ length: 40 }, (_, s) => {
+    const rows: Cell[][] = Array.from({ length: 2_500 }, () => [
+      `${pick(next, FIRST_NAMES)} ${pick(next, LAST_NAMES)}`,
+      pick(next, CITIES),
+      Math.round(next() * 100_000) / 100,
+      1 + Math.floor(next() * 50),
+      new Date(START + Math.floor(next() * 365 * DAY)),
+      pick(next, STATUSES),
+    ]);
+    return {
       name: `Region ${String(s + 1).padStart(2, "0")}`,
       columns: [
         { width: 24 },
@@ -283,37 +275,29 @@ export function manySheetsWorkbook() {
       freeze: { rows: 1 },
       rows: [header(["Name", "City", "Amount", "Quantity", "Date", "Status"]), ...rows],
     };
-  }
+  });
   return { sheets };
 }
 
 /** 200 000 rows by 5 text columns drawn from 2 000 phrases: interning hits far more than misses. */
-export function stringHeavyWorkbook() {
+function stringHeavyWorkbook(): Workbook {
   const next = random(3);
   const phrases = pool(next, 2_000);
-  const rows = new Array(scaled(200_000));
-  for (let i = 0; i < rows.length; i++) {
-    rows[i] = [
-      phrases[Math.floor(next() * phrases.length)],
-      phrases[Math.floor(next() * phrases.length)],
-      phrases[Math.floor(next() * phrases.length)],
-      phrases[Math.floor(next() * phrases.length)],
-      phrases[Math.floor(next() * phrases.length)],
-    ];
-  }
-  return {
-    sheets: [{ name: "Text", rows: [header(["A", "B", "C", "D", "E"]), ...rows] }],
-  };
+  const rows: Cell[][] = Array.from({ length: 200_000 }, () => [
+    pick(next, phrases),
+    pick(next, phrases),
+    pick(next, phrases),
+    pick(next, phrases),
+    pick(next, phrases),
+  ]);
+  return { sheets: [{ name: "Text", rows: [header(["A", "B", "C", "D", "E"]), ...rows] }] };
 }
 
-function header(titles) {
-  const bold = { bold: true };
-  return titles.map((value) => ({ value, style: bold }));
-}
+export type SuiteName = "wide table" | "many sheets" | "string-heavy";
 
-/** The suites by name, for scripts that pick one from the command line. */
-export const suites = {
-  wide: wideWorkbook,
-  "many-sheets": manySheetsWorkbook,
-  strings: stringHeavyWorkbook,
-};
+/** The suites in report order. */
+export const suites: ReadonlyArray<readonly [SuiteName, () => Workbook]> = [
+  ["wide table", wideWorkbook],
+  ["many sheets", manySheetsWorkbook],
+  ["string-heavy", stringHeavyWorkbook],
+];
