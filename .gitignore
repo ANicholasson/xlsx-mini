@@ -4,3 +4,4 @@ coverage
 .vite-plus
 .DS_Store
 *.tgz
+bench/results/

@@ -14,14 +14,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  codspeed:
-    name: CodSpeed
+  bench:
+    name: Node, Bun and Deno
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     permissions:
-      contents: read
-      # OIDC: CodSpeed accepts uploads from a public repository without a stored token.
-      id-token: write
+      contents: write # the history branch, on a push to main
+      pull-requests: write # the report comment, on a pull request
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
@@ -30,10 +29,52 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+      - run: pnpm run build
+
+      - name: Benchmark on Node
+        run: node bench/run.ts --json bench/results/node.json --commit "$GITHUB_SHA"
+      - name: Benchmark on Bun
+        run: ./node_modules/.bin/bun bench/run.ts --json bench/results/bun.json --commit "$GITHUB_SHA"
+      - name: Benchmark on Deno
+        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json --commit "$GITHUB_SHA"
+
+      - name: Fetch the latest results on main
+        run: |
+          if git ls-remote --exit-code --heads origin benchmarks >/dev/null; then
+            git fetch --depth=1 origin benchmarks
+            git worktree add bench-branch FETCH_HEAD
+          else
+            git worktree add --orphan -b benchmarks bench-branch
+          fi
+
+      - name: Comment on the pull request
+        if: github.event_name == 'pull_request'
+        # A pull request from a fork gets a read-only token; the report then stays in the log.
+        continue-on-error: true
         env:
-          # Five percent of each suite: CPU simulation counts instructions, so deltas stay exact.
-          XLSX_MINI_BENCH_SCALE: "0.05"
-        with:
-          mode: simulation
-          run: pnpm bench
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          node bench/report.ts --head bench/results --base bench-branch/latest --history bench-branch/history.json \
+            --out bench/results/report.md --base-label main --head-label "this pull request"
+          cat bench/results/report.md
+          id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate \
+            --jq '.[] | select(.body | startswith("<!-- xlsx-mini-benchmarks -->")) | .id' | head -1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" -F body=@bench/results/report.md >/dev/null
+          else
+            gh api -X POST "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" -F body=@bench/results/report.md >/dev/null
+          fi
+
+      - name: Record the run on the benchmarks branch
+        if: github.event_name == 'push'
+        run: |
+          node bench/report.ts --head bench/results --append-history bench-branch/history.json --svg bench-branch/benchmarks.svg
+          mkdir -p bench-branch/latest
+          cp bench/results/*.json bench-branch/latest/
+          cd bench-branch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "bench: record ${GITHUB_SHA:0:7}" || echo "nothing to record"
+          git push origin HEAD:benchmarks

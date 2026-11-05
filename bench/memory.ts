@@ -3,7 +3,16 @@
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { suites } from "./workbooks.mjs";
+import type * as Api from "../src/index.ts";
+import { suites } from "./workbooks.ts";
+
+interface Measurement {
+  readonly name: string;
+  readonly outputBytes: number;
+  readonly rssBeforeWrite: number;
+  readonly peakRss: number;
+  readonly milliseconds: number;
+}
 
 const suite = process.argv[2];
 if (suite === undefined) {
@@ -13,33 +22,40 @@ if (suite === undefined) {
 }
 
 /** Builds the workbook, collects garbage, then writes it and reports the process's peak RSS. */
-async function measure(name) {
-  const { writeXlsx } = await import("../dist/index.js");
-  const build = suites[name];
-  if (build === undefined) throw new Error(`unknown suite ${name}`);
-  const workbook = build();
-  globalThis.gc?.();
+async function measure(name: string): Promise<void> {
+  const { writeXlsx } = (await import(
+    new URL("../dist/index.js", import.meta.url).href
+  )) as typeof Api;
+  const entry = suites.find(([suiteName]) => suiteName === name);
+  if (entry === undefined) throw new Error(`unknown suite ${name}`);
+  const workbook = entry[1]();
+  (globalThis as { gc?: () => void }).gc?.();
   const rssBeforeWrite = process.memoryUsage().rss;
   const started = performance.now();
   const bytes = await writeXlsx(workbook);
   const milliseconds = performance.now() - started;
   const peakRss = process.resourceUsage().maxRSS * 1024;
-  console.log(
-    JSON.stringify({ name, outputBytes: bytes.byteLength, rssBeforeWrite, peakRss, milliseconds }),
-  );
+  const measurement: Measurement = {
+    name,
+    outputBytes: bytes.byteLength,
+    rssBeforeWrite,
+    peakRss,
+    milliseconds,
+  };
+  console.log(JSON.stringify(measurement));
 }
 
-async function report() {
+async function report(): Promise<void> {
   const run = promisify(execFile);
   const self = fileURLToPath(import.meta.url);
-  const rows = [];
-  for (const name of Object.keys(suites)) {
+  const rows: Measurement[] = [];
+  for (const [name] of suites) {
     const { stdout } = await run(process.execPath, ["--expose-gc", self, name], {
       maxBuffer: 1 << 20,
     });
-    rows.push(JSON.parse(stdout));
+    rows.push(JSON.parse(stdout) as Measurement);
   }
-  const mb = (bytes) => (bytes / 1_048_576).toFixed(1).padStart(8);
+  const mb = (bytes: number) => (bytes / 1_048_576).toFixed(1).padStart(8);
   console.log("suite         output MiB  write ms  RSS before write  peak RSS  growth / output");
   for (const row of rows) {
     const growth = row.peakRss - row.rssBeforeWrite;

@@ -21,7 +21,7 @@ Zero-dependency TypeScript library that writes `.xlsx` files. Write-only; readin
 
 - `pnpm verify` runs format, type-aware lint, typecheck, boundaries, knip, the tests with the coverage floor, and the package checks (build, publint, are-the-types-wrong). The pre-commit hook runs the staged subset and blocks what it cannot fix.
 - The runtime matrix in `test/runtimes/` builds `dist/` and writes a workbook in Node (ESM and CommonJS), Bun, Deno, workerd and the Vercel edge VM on every test run. `pnpm install` provides every host; nothing else to install.
-- `pnpm bench` runs the three benchmark suites in `bench/` (wide table, many sheets, string-heavy); CodSpeed runs them on every pull request and comments the deltas. `pnpm bench:memory` prints peak memory per suite. The budgets live in `docs/adr/0021-performance-baseline-and-budgets.md` and only ratchet down.
+- `pnpm bench` runs the three benchmark suites in `bench/` (wide table, many sheets, string-heavy) on Node; `pnpm bench:all` also on Bun and Deno. On every pull request the workflow runs them and posts one comment with the changes against `main`; a push to `main` records the run on the `benchmarks` branch. `pnpm bench:memory` prints peak memory per suite. The budgets live in `docs/adr/0021-performance-baseline-and-budgets.md` and only ratchet down.
 - Test at the lowest layer that fails; extend an existing case before adding one; a bug fix ships its failing test first.
 - Changing a golden fixture means regenerating it from its input, opening it in the four applications, and updating the compatibility log in the same change.
 
