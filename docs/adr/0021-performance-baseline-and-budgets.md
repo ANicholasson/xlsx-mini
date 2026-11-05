@@ -18,7 +18,7 @@ Peak memory is the growth of the process's resident set during the write, measur
 | Many sheets  | 3.9 MiB | 95 MiB      | 24×                | 30×    |
 | String-heavy | 5.1 MiB | 132 MiB     | 26×                | 30×    |
 
-Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the CodSpeed comment is the gate, since local numbers move with the machine. A change that lowers a number by more than the margin lowers the budget in the same change.
+Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the pull-request report is where to look, since local numbers move with the machine, and it informs rather than gates. A change that lowers a number by more than the margin lowers the budget in the same change.
 
 ## What the pull-request report measures
 
