@@ -52,7 +52,9 @@ const config: ViteUserConfig = {
     ],
   },
   staged: {
-    "*.{ts,cts,mts,js,cjs,mjs,json,md,yml,yaml}": ["vp fmt --write", "vp lint --fix"],
+    // Lint only code: the linter fails when every staged file is JSON, Markdown or YAML.
+    "*.{ts,cts,mts,js,cjs,mjs}": ["vp fmt --write", "vp lint --fix"],
+    "*.{json,md,yml,yaml}": ["vp fmt --write"],
   },
   test: {
     include: ["src/**/tests/**/*.test.ts", "test/**/*.test.ts"],
