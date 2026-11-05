@@ -13,12 +13,17 @@ describe("createXmlSink", () => {
   it("encodes a body far larger than its first block, multi-byte characters crossing block edges", () => {
     const sink = createXmlSink();
     const piece = "<c>Ærlig «ekte» 🎉</c>";
+    // 20 000 pieces of 30 bytes cross the block edges at 16, 32, 64, 128, 256 and 512 KiB.
     let expected = "";
-    for (let i = 0; i < 100_000; i++) {
+    for (let i = 0; i < 20_000; i++) {
       sink.write(piece);
       expected += piece;
     }
-    expect(sink.finish("<row>", "</row>")).toEqual(encoder.encode(`<row>${expected}</row>`));
+    const actual = sink.finish("<row>", "</row>");
+    const wanted = encoder.encode(`<row>${expected}</row>`);
+    // A byte comparison: element-wise deep equality on a large typed array takes seconds.
+    expect(actual.byteLength).toBe(wanted.byteLength);
+    expect(Buffer.compare(actual, wanted)).toBe(0);
   });
 
   it("agrees with encoding the concatenated text for arbitrary pieces", () => {

@@ -20,6 +20,16 @@ Peak memory is the growth of the process's resident set during the write, measur
 
 Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the pull-request report is where to look, since local numbers move with the machine, and it informs rather than gates. A change that lowers a number by more than the margin lowers the budget in the same change.
 
+## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
+
+The runner is about twice as slow as the machine above; its numbers are the reference the pull-request report compares against, not budgets. Deflate first, STORE second, in milliseconds.
+
+| Suite        | Node 24.22.2 | Bun 1.4.4 | Deno 2.9.6 |
+| ------------ | ------------ | --------- | ---------- |
+| Wide table   | 1105 / 441   | 951 / 433 | 806 / 277  |
+| Many sheets  | 543 / 204    | 453 / 167 | 404 / 120  |
+| String-heavy | 780 / 236    | 709 / 234 | 666 / 213  |
+
 ## What the pull-request report measures
 
 Wall time on a shared runner, so run-to-run noise of several percent is normal: changes inside ten percent are labelled noise, beyond ten percent flagged, beyond twenty-five percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
