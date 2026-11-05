@@ -13,7 +13,8 @@ export type ErrorCode =
   | "CELL_TEXT_TOO_LONG"
   | "TOO_MANY_COLUMNS"
   | "TOO_MANY_ROWS"
-  | "PACKAGE_TOO_LARGE";
+  | "PACKAGE_TOO_LARGE"
+  | "NO_DOM";
 
 /**
  * The one error class the writer throws. `code` says what went wrong, `path` says where in the

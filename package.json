@@ -31,6 +31,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -41,21 +45,28 @@
     "knip": "knip",
     "test": "vp test run",
     "test:coverage": "vp test run --coverage",
-    "verify": "vp check && pnpm run typecheck && pnpm run lint:boundaries && pnpm run knip && pnpm run test:coverage",
+    "check:package": "pnpm run build && publint --strict && attw --pack . --profile esm-only",
+    "verify": "vp check && pnpm run typecheck && pnpm run lint:boundaries && pnpm run knip && pnpm run test:coverage && pnpm run check:package",
     "fixtures:update": "UPDATE_FIXTURES=1 vp test run test/golden.test.ts"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "0.18.5",
+    "@edge-runtime/vm": "5.0.0",
     "@swc/core": "^1.16.21",
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "5.0.5",
+    "bun": "1.4.4",
+    "deno": "2.9.6",
     "dependency-cruiser": "18.7.2",
     "fast-check": "^4.10.2",
     "knip": "6.44.1",
+    "miniflare": "4.20260730.0",
+    "publint": "0.3.25",
+    "rolldown": "1.2.16",
     "typescript": "7.0.2",
     "vite-plus": "1.4.0"
   },
   "engines": {
     "node": "^20.12.0 || >=22"
-  },
-  "packageManager": "pnpm@12.16.1"
+  }
 }

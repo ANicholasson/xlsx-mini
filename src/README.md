@@ -6,6 +6,7 @@ Every folder directly under `src/` is a feature: a lot of behaviour behind a sma
 src/
   index.ts              public API of the package
   write-xlsx.ts         application service: render parts, then package them
+  browser.ts            browser entry: downloadXlsx, the one file allowed to touch the DOM
   <feature>/
     index.ts            entry point: the only way in from outside
     lib/                implementation, free to import its siblings
@@ -21,4 +22,4 @@ Four rules, enforced by `pnpm lint:boundaries` (dependency-cruiser, config in `.
 
 Layering on top: `xml/` and `opc/` are kernels that know nothing about spreadsheets and may not import a spreadsheet feature.
 
-Prefer several small root files (`index.ts`, later `browser.ts`) over one barrel that re-exports a subtree. Adding an entry point is adding a root file; adding a private file needs no configuration.
+Prefer several small root files (`index.ts`, `browser.ts`) over one barrel that re-exports a subtree. Adding an entry point is adding a root file; adding a private file needs no configuration.

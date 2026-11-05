@@ -19,7 +19,8 @@ Zero-dependency TypeScript library that writes `.xlsx` files. Write-only; readin
 
 ## Verify
 
-- `pnpm verify` runs format, type-aware lint, typecheck, boundaries, knip and the tests with the coverage floor. The pre-commit hook runs the staged subset and blocks what it cannot fix.
+- `pnpm verify` runs format, type-aware lint, typecheck, boundaries, knip, the tests with the coverage floor, and the package checks (build, publint, are-the-types-wrong). The pre-commit hook runs the staged subset and blocks what it cannot fix.
+- The runtime matrix in `test/runtimes/` builds `dist/` and writes a workbook in Node (ESM and CommonJS), Bun, Deno, workerd and the Vercel edge VM on every test run. `pnpm install` provides every host; nothing else to install.
 - Test at the lowest layer that fails; extend an existing case before adding one; a bug fix ships its failing test first.
 - Changing a golden fixture means regenerating it from its input, opening it in the four applications, and updating the compatibility log in the same change.
 

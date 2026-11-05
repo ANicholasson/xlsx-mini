@@ -9,6 +9,15 @@ const SPREADSHEET_NAMESPACE = "http://schemas.openxmlformats.org/spreadsheetml/2
 const OFFICE_RELATIONSHIPS_NAMESPACE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
+/**
+ * The media type of an .xlsx file, for `Content-Type` headers and `Blob` construction. The main
+ * part of the package carries it with a `.main+xml` suffix.
+ *
+ * @example
+ * new Response(bytes, { headers: { "Content-Type": XLSX_MIME_TYPE } })
+ */
+export const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 /** Renders `[Content_Types].xml`: one override per part, plus the defaults readers expect. */
 export function renderContentTypes(sheetCount: number): string {
   let overrides = "";
@@ -19,7 +28,7 @@ export function renderContentTypes(sheetCount: number): string {
     `${XML_DECLARATION}<Types xmlns="${CONTENT_TYPES_NAMESPACE}">` +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
     '<Default Extension="xml" ContentType="application/xml"/>' +
-    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    `<Override PartName="/xl/workbook.xml" ContentType="${XLSX_MIME_TYPE}.main+xml"/>` +
     '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
     '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' +
     overrides +

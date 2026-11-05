@@ -7,7 +7,7 @@ export {
 } from "./worksheet/index.js";
 export { type WriteOptions, writeXlsx } from "./write-xlsx.js";
 export type { CellStyle } from "./styles/index.js";
-export type { Workbook } from "./workbook/index.js";
+export { type Workbook, XLSX_MIME_TYPE } from "./workbook/index.js";
 export type {
   Cell,
   CellObject,
@@ -25,11 +25,3 @@ export type {
   TemporalPlainDateTimeLike,
   TemporalZonedDateTimeLike,
 } from "./worksheet/index.js";
-
-/**
- * The media type of an .xlsx file, for `Content-Type` headers and `Blob` construction.
- *
- * @example
- * new Response(bytes, { headers: { "Content-Type": XLSX_MIME_TYPE } })
- */
-export const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";

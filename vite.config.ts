@@ -24,6 +24,11 @@ export default defineConfig({
     },
     overrides: [
       {
+        // The browser entry is the one module allowed to touch the DOM (ADR 0004).
+        files: ["src/browser.ts"],
+        rules: { "no-restricted-globals": "off" },
+      },
+      {
         files: ["src/**/tests/**", "test/**", "*.config.ts", "*.cjs"],
         rules: {
           "no-restricted-globals": "off",

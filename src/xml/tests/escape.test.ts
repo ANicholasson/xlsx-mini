@@ -27,6 +27,7 @@ describe("escapeXml", () => {
   it("drops lone surrogates and keeps valid pairs", () => {
     expect(escapeXml("a\uD83Cb")).toBe("ab");
     expect(escapeXml("a\uDF89b")).toBe("ab");
+    expect(escapeXml("ab\uD83C")).toBe("ab");
     expect(escapeXml("a🎉b")).toBe("a🎉b");
   });
 

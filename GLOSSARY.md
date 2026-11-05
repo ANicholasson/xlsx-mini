@@ -74,3 +74,6 @@ _Avoid_: snapshot
 
 **Compatibility log**:
 The record of which applications opened each golden fixture clean, and how that was checked.
+
+**Runtime matrix**:
+The hosts the built package must write a workbook on at every test run: Node (ESM and CommonJS), Bun, Deno, Cloudflare workerd and the Vercel edge runtime. STORE output is byte-identical across them.

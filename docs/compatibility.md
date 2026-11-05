@@ -72,3 +72,29 @@ Independent inflate checks on the same fixture: `unzip -t` and Python's `zipfile
 | Apple Numbers    | 14.4     | macOS    | clean   | Opened from the shell; formatted values read back: `1 234,50 kr`, `2026-11-01 09:30`                                                                                | 2026-11-04 |
 | Google Sheets    | web      | browser  | pending | Needs a manual upload and a visual check                                                                                                                            |            |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean   | Headless HTML conversion shows the bold header, `1,234.50 kr` and `2026-11-01 09:30`                                                                                | 2026-11-04 |
+
+## Runtimes
+
+Every host writes the same workbook (`test/runtimes/scenario.mjs`) through the built package and
+reports back. The STORE output must be byte-identical on every host and to the source run in the
+test's own Node; the default output must decompress part by part to the same XML. The matrix runs
+inside `pnpm test`; this table records what each host did with compression and how it was loaded.
+
+| Host                | Version                                                                    | Loaded through                                                        | Default output                                                                                   | Date       |
+| ------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------- |
+| Node, ESM           | 24.22.1                                                                    | `import` by package name through the exports map                      | DEFLATE                                                                                          | 2026-11-05 |
+| Node, CommonJS      | 24.22.1                                                                    | `require` of the ESM-only package and of the ESM scenario             | DEFLATE                                                                                          | 2026-11-05 |
+| Bun                 | 1.4.4                                                                      | `import` by package name through the exports map                      | DEFLATE                                                                                          | 2026-11-05 |
+| Deno                | 2.9.6                                                                      | `import` by package name through the exports map                      | DEFLATE                                                                                          | 2026-11-05 |
+| Cloudflare workerd  | 1.20260730.1 through Miniflare 4.20260730.0, compatibility date 2026-07-01 | rolldown bundle of `dist/` as a module worker, called through `fetch` | DEFLATE: raw deflate confirmed in workerd                                                        | 2026-11-05 |
+| Vercel edge runtime | `@edge-runtime/vm` 5.0.0                                                   | rolldown bundle of `dist/` as a classic script, evaluated in the VM   | STORE: the VM has no `CompressionStream`, so the writer fell back; the parts are still identical | 2026-11-05 |
+
+The edge VM package was last published in December 2024 and may lag the hosted runtime; its row
+proves the fallback path, not deflate on Vercel. Both entries load on every host, and
+`downloadXlsx` reports `NO_DOM` on each of them.
+
+## Browser download (`downloadXlsx` from `xlsx-mini/browser`)
+
+| Browser       | Version       | Platform | Result | How it was checked                                                                                                                                                                                                               | Date       |
+| ------------- | ------------- | -------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Google Chrome | 155.0.8059.86 | macOS    | clean  | A page bundling `dist/` wrote a four-row workbook and called `downloadXlsx` on load in a fresh profile; the file landed in Downloads within three seconds, `unzip -t` and Python's `zipfile` accept it, and Excel opens it clean | 2026-11-05 |
