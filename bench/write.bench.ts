@@ -16,8 +16,14 @@ const strings = stringHeavyWorkbook();
 /** Few, long iterations: one write takes long enough that more would only cost minutes. */
 const runOptions = { iterations: 5, time: 0, warmupIterations: 1, warmupTime: 0 };
 
+/**
+ * Under CodSpeed's CPU simulation each write runs tens of times slower and is called several times
+ * before the measured run, so vitest's default minute per test is not enough.
+ */
+const timeout = 20 * 60 * 1000;
+
 describe("writeXlsx", () => {
-  test("wide table: 100 000 rows by 10 mixed columns", async ({ bench }) => {
+  test("wide table: 100 000 rows by 10 mixed columns", { timeout }, async ({ bench }) => {
     await bench.compare(
       bench("deflate", async () => {
         await writeXlsx(wide);
@@ -29,15 +35,19 @@ describe("writeXlsx", () => {
     );
   });
 
-  test("many sheets: 40 sheets of 2 500 rows by 6 columns", async ({ bench }) => {
+  test("many sheets: 40 sheets of 2 500 rows by 6 columns", { timeout }, async ({ bench }) => {
     await bench("deflate", async () => {
       await writeXlsx(manySheets);
     }).run(runOptions);
   });
 
-  test("string-heavy: 200 000 rows by 5 text columns from 2 000 phrases", async ({ bench }) => {
-    await bench("deflate", async () => {
-      await writeXlsx(strings);
-    }).run(runOptions);
-  });
+  test(
+    "string-heavy: 200 000 rows by 5 text columns from 2 000 phrases",
+    { timeout },
+    async ({ bench }) => {
+      await bench("deflate", async () => {
+        await writeXlsx(strings);
+      }).run(runOptions);
+    },
+  );
 });

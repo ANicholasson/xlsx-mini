@@ -12,7 +12,7 @@ jobs:
   codspeed:
     name: CodSpeed
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     permissions:
       contents: read
       # OIDC: CodSpeed accepts uploads from a public repository without a stored token.
