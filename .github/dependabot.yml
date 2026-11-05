@@ -8,6 +8,9 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # The coverage provider must match the vitest that vite-plus bundles; it moves with vite-plus.
+      - dependency-name: "@vitest/coverage-v8"
     commit-message:
       prefix: chore
   - package-ecosystem: github-actions
