@@ -20,6 +20,10 @@ Peak memory is the growth of the process's resident set during the write, measur
 
 Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the CodSpeed comment is the gate, since local numbers move with the machine. A change that lowers a number by more than the margin lowers the budget in the same change.
 
+## What CodSpeed measures
+
+The scaled job takes under three minutes end to end, of which the benchmarks are about a minute. Simulation leaves system calls out of its measure, and the deflate benchmarks spend most of their time in zlib on the runtime's thread pool, so their reported cost covers the JavaScript path only: the part this repository controls, and the part a change here can move. The STORE benchmark of the wide table is measured whole. Walltime mode would include zlib, but on shared runners its numbers drift, so simulation stays.
+
 ## What the profiling pass found
 
 A CPU profile of four STORE writes of the wide table, before the pass: CRC-32 took 29 % of the time, garbage collection 23 %, rendering and interning the rest.
