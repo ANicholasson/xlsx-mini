@@ -189,11 +189,14 @@ function pool(next, size) {
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 0, 1);
 
-/** 100 000 rows by 10 mixed columns: ids, names, cities, money, counts, dates, flags, unique SKUs, notes, statuses. */
-export function wideWorkbook() {
+/**
+ * 100 000 rows by 10 mixed columns: ids, names, cities, money, counts, dates, flags, unique SKUs,
+ * notes, statuses. `scale` multiplies the row count; a scaled table is a prefix of the full one.
+ */
+export function wideWorkbook(scale = 1) {
   const next = random(1);
   const notes = pool(next, 200);
-  const rows = new Array(100_000);
+  const rows = new Array(Math.round(100_000 * scale));
   for (let i = 0; i < rows.length; i++) {
     const name = `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`;
     rows[i] = [
@@ -247,12 +250,15 @@ export function wideWorkbook() {
   };
 }
 
-/** 40 sheets of 2 500 rows by 6 columns: the same shape repeated, shared strings across sheets. */
-export function manySheetsWorkbook() {
+/**
+ * 40 sheets of 2 500 rows by 6 columns: the same shape repeated, shared strings across sheets.
+ * `scale` multiplies the rows per sheet; the sheet count stays.
+ */
+export function manySheetsWorkbook(scale = 1) {
   const next = random(2);
   const sheets = new Array(40);
   for (let s = 0; s < sheets.length; s++) {
-    const rows = new Array(2_500);
+    const rows = new Array(Math.round(2_500 * scale));
     for (let i = 0; i < rows.length; i++) {
       rows[i] = [
         `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`,
@@ -280,11 +286,14 @@ export function manySheetsWorkbook() {
   return { sheets };
 }
 
-/** 200 000 rows by 5 text columns drawn from 2 000 phrases: interning hits far more than misses. */
-export function stringHeavyWorkbook() {
+/**
+ * 200 000 rows by 5 text columns drawn from 2 000 phrases: interning hits far more than misses.
+ * `scale` multiplies the row count; the phrase pool stays.
+ */
+export function stringHeavyWorkbook(scale = 1) {
   const next = random(3);
   const phrases = pool(next, 2_000);
-  const rows = new Array(200_000);
+  const rows = new Array(Math.round(200_000 * scale));
   for (let i = 0; i < rows.length; i++) {
     rows[i] = [
       phrases[Math.floor(next() * phrases.length)],
