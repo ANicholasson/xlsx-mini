@@ -95,7 +95,7 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(snippet["runtime"]).toBe("edge");
     await asResponse(snippet, "GET");
   },
-  "next-action": async (snippet) => {
+  actions: async (snippet) => {
     isWorkbook(await (snippet["exportReport"] as Fn<Uint8Array>)());
   },
   "next-client": async (snippet) => {

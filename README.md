@@ -38,7 +38,7 @@ export default async function quickStart(path = "orders.xlsx"): Promise<void> {
 }
 ```
 
-A row is an array of cells. A cell is a string, a number, a boolean, a `Date`, a Temporal value, or `null` for an empty cell; wrap a value in `{ value, style }` to style it. The result is an ArrayBuffer-backed `Uint8Array`, ready for a file, a `Response` or a `Blob`. `examples/node/export.ts` is a complete script.
+A row is an array of cells. A cell is a string, a number, a boolean, a `Date`, a Temporal value, or `null` for an empty cell; wrap a value in `{ value, style }` to style it. The result is an ArrayBuffer-backed `Uint8Array`, ready for a file, a `Response` or a `Blob`. `examples/node/export.mjs` is a complete script: `pnpm build && node examples/node/export.mjs`.
 
 ## Where it runs
 
@@ -132,7 +132,7 @@ export async function GET(): Promise<Response> {
 The action builds the workbook on the server; the client receives the bytes and downloads them.
 
 ```ts
-// examples/snippets/next-action.ts
+// examples/snippets/actions.ts
 // app/actions.ts
 "use server";
 
@@ -149,7 +149,7 @@ export async function exportReport(): Promise<Uint8Array> {
 "use client";
 
 import { downloadXlsx } from "xlsx-mini/browser";
-import { exportReport } from "./next-action.js";
+import { exportReport } from "./actions";
 
 export async function onExportClick(): Promise<void> {
   downloadXlsx(await exportReport(), "report.xlsx");

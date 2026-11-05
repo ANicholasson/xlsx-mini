@@ -19,5 +19,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src", "test", "bench", "examples/snippets", "examples/node", "vite.config.ts"]
+  "include": ["src", "test", "bench", "examples/snippets", "vite.config.ts"]
 }

@@ -1,4 +1,4 @@
-// A plain Node script: `pnpm build && node examples/node/export.ts` writes orders.xlsx here.
+// A plain Node script: `pnpm build && node examples/node/export.mjs` writes orders.xlsx here.
 import { writeFile } from "node:fs/promises";
 import { sheetFromObjects, writeXlsx } from "xlsx-mini";
 
