@@ -32,23 +32,21 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
 
-      # The base of the pull request, built with this checkout's compiler: the package has no
-      # runtime dependencies, so its dist/ runs on its own.
-      - name: Build main alongside
-        run: |
-          git fetch --depth=1 origin main
-          git worktree add base-tree FETCH_HEAD
-          ./node_modules/.bin/tsc -p base-tree/tsconfig.build.json
-          echo "BASE_SHA=$(git -C base-tree rev-parse HEAD)" >> "$GITHUB_ENV"
-
-      # The checkout is the merge ref; the report names the head commit instead.
-      - name: Name the commit under test
+      # The pull request's base commit, the one the merge ref was made from, built with this
+      # checkout's compiler: the package has no runtime dependencies, so its dist/ runs on its own.
+      - name: Build the base alongside
         env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: echo "COMMIT=${HEAD_SHA:-$GITHUB_SHA}" >> "$GITHUB_ENV"
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA"
+          git worktree add base-tree "$BASE_SHA"
+          ./node_modules/.bin/tsc -p base-tree/tsconfig.build.json
+          echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
+          echo "COMMIT=$HEAD_SHA" >> "$GITHUB_ENV"
 
       - name: Benchmark on Node
-        run: node bench/run.ts --base base-tree/dist --json bench/results/node.json --commit "$COMMIT" --base-commit "$BASE_SHA"
+        run: node --expose-gc bench/run.ts --base base-tree/dist --json bench/results/node.json --commit "$COMMIT" --base-commit "$BASE_SHA"
       - name: Benchmark on Bun
         run: ./node_modules/.bin/bun bench/run.ts --base base-tree/dist --json bench/results/bun.json --commit "$COMMIT" --base-commit "$BASE_SHA"
       - name: Benchmark on Deno
@@ -88,9 +86,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           node bench/report.ts --head bench/results --out bench/results/report.md \
-            --base-label main --head-label "this pull request"
+            --base-label "$BASE_REF" --head-label "this pull request"
           cat bench/results/report.md
           id=$(gh api "repos/$GITHUB_REPOSITORY/issues/$NUMBER/comments" --paginate \
             --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | startswith("<!-- xlsx-mini-benchmarks -->")) | .id' | head -1)

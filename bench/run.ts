@@ -38,6 +38,13 @@ async function load(dist: string): Promise<typeof Api> {
   return (await import(pathToFileURL(resolve(dist, "index.js")).href)) as typeof Api;
 }
 
+/** Node with `--expose-gc` and Bun expose a collector; Deno does not, and then nothing happens. */
+function collectGarbage(): void {
+  const host = globalThis as { gc?: () => void; Bun?: { gc?: (force: boolean) => void } };
+  if (host.gc !== undefined) host.gc();
+  else host.Bun?.gc?.(true);
+}
+
 async function time(write: Write): Promise<number> {
   const started = performance.now();
   await write();
@@ -63,14 +70,22 @@ for (const [suite, build] of suites) {
     const headWrite: Write = () => head.writeXlsx(workbook, options);
     const baseWrite: Write | undefined =
       base === undefined ? undefined : () => base.writeXlsx(workbook, options);
-    // One warm-up each, then the two builds in turns: whatever the machine does meanwhile hits both.
+    // One warm-up each, then the two builds in turns, the order swapped every iteration so that
+    // neither side always pays for the other's garbage or always gets the warmer cache; a
+    // collection before each timed call, where the host exposes one, takes the rest of that bias.
     await headWrite();
     await baseWrite?.();
     const headSamples: number[] = [];
     const baseSamples: number[] = [];
     for (let i = 0; i < iterations; i++) {
-      headSamples.push(await time(headWrite));
-      if (baseWrite !== undefined) baseSamples.push(await time(baseWrite));
+      const order =
+        baseWrite !== undefined && i % 2 === 1 ? [baseWrite, headWrite] : [headWrite, baseWrite];
+      for (const write of order) {
+        if (write === undefined) continue;
+        collectGarbage();
+        const elapsed = await time(write);
+        (write === headWrite ? headSamples : baseSamples).push(elapsed);
+      }
     }
     const result: BenchmarkResult = {
       suite,
