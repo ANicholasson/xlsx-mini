@@ -34,7 +34,8 @@ const encoder = new TextEncoder();
 /**
  * Writes a workbook to the bytes of an .xlsx file.
  *
- * The result is a plain `Uint8Array`: hand it to `fs.writeFile`, a `Response`, or `new Blob([bytes])`.
+ * The result is an ArrayBuffer-backed `Uint8Array`: hand it to `fs.writeFile`, a `Response`, or
+ * `new Blob([bytes])` as it is.
  * Identical input gives identical bytes for `compression: "none"`. Throws `XlsxMiniError` on input Excel
  * would refuse.
  *
@@ -46,7 +47,7 @@ const encoder = new TextEncoder();
 export async function writeXlsx(
   workbook: Workbook,
   options: WriteOptions = {},
-): Promise<Uint8Array> {
+): Promise<Uint8Array<ArrayBuffer>> {
   validateWorkbook(workbook);
   const strings = createStringTable();
   const styles = createStyleTable();

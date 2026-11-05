@@ -4,6 +4,16 @@ const CORE_ONLY_MESSAGE =
   "The core runs everywhere: web-standard APIs only. Node and DOM globals belong in runtime-specific entries or tests.";
 
 const config: ViteUserConfig = {
+  // Snippets and examples import the package by name; tests run them against the source.
+  resolve: {
+    alias: [
+      {
+        find: "xlsx-mini/browser",
+        replacement: new URL("./src/browser.ts", import.meta.url).pathname,
+      },
+      { find: "xlsx-mini", replacement: new URL("./src/index.ts", import.meta.url).pathname },
+    ],
+  },
   lint: {
     options: { typeAware: true, typeCheck: true },
     rules: {
@@ -29,7 +39,7 @@ const config: ViteUserConfig = {
         rules: { "no-restricted-globals": "off" },
       },
       {
-        files: ["src/**/tests/**", "test/**", "bench/**", "*.config.ts", "*.cjs"],
+        files: ["src/**/tests/**", "test/**", "bench/**", "examples/**", "*.config.ts", "*.cjs"],
         rules: {
           "no-restricted-globals": "off",
           "no-restricted-imports": "off",
