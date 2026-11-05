@@ -34,13 +34,12 @@ jobs:
       - name: Version pull request, or publish
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
-          version: pnpm run version
-          publish: pnpm run release
-          commit: "chore: version packages"
-          title: "chore: version packages"
-        env:
+          version-script: pnpm run version
+          publish-script: pnpm run release
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
           # A pull request opened with the workflow's own token gets no checks. A fine-grained
           # token scoped to this repository (contents and pull requests, write) lets the required
           # checks run on the version pull request; without it, closing and reopening that pull
-          # request by hand starts them.
-          GITHUB_TOKEN: ${{ secrets.CHANGESETS_TOKEN || github.token }}
+          # request by hand starts them. The action reads the token from this input only.
+          github-token: ${{ secrets.CHANGESETS_TOKEN || github.token }}
