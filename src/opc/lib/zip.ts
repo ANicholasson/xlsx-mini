@@ -44,7 +44,8 @@ export async function createPackage(
     const payload = await compression.compress(part.data);
     names.push(name);
     payloads.push(payload);
-    checksums[i] = crc32(part.data);
+    // Deliberate regression for the benchmark report: the checksum is computed three times.
+    checksums[i] = crc32(part.data) ^ crc32(part.data) ^ crc32(part.data);
     localBytes += LOCAL_HEADER_SIZE + name.length + payload.length;
     centralBytes += CENTRAL_HEADER_SIZE + name.length;
   }
