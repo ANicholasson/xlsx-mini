@@ -7,13 +7,14 @@ import { Miniflare } from "miniflare";
 import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { XLSX_MIME_TYPE, writeXlsx } from "../../src/index.js";
-import { binary as binaryIn, shell } from "../helpers/bin.js";
+import { type Command, binary as binaryIn, direct } from "../helpers/bin.js";
 import { unzip } from "../helpers/unzip.js";
 import { type HostReport, workbook } from "./scenario.mjs";
 
 const execFile = promisify(execFileCallback);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const binary = (name: string) => binaryIn(root, name);
+const node = direct(process.execPath);
 
 /** A host of the matrix: how the scenario runs there, and the zip method its default output uses. */
 interface Host {
@@ -27,12 +28,12 @@ const hosts: readonly Host[] = [
   {
     name: "Node ESM",
     method: 8,
-    run: () => spawn(process.execPath, ["test/runtimes/entry.mjs"]),
+    run: () => spawn(node, ["test/runtimes/entry.mjs"]),
   },
   {
     name: "Node CommonJS",
     method: 8,
-    run: () => spawn(process.execPath, ["test/runtimes/entry.cjs"]),
+    run: () => spawn(node, ["test/runtimes/entry.cjs"]),
   },
   {
     name: "Bun",
@@ -49,8 +50,12 @@ const hosts: readonly Host[] = [
 ];
 
 /** Runs an entry in a separate process and parses the one JSON line it prints. */
-async function spawn(command: string, args: readonly string[]): Promise<HostReport> {
-  const { stdout } = await execFile(command, [...args], { cwd: root, encoding: "utf8", shell });
+async function spawn(command: Command, args: readonly string[]): Promise<HostReport> {
+  const { stdout } = await execFile(command.file, [...args], {
+    cwd: root,
+    encoding: "utf8",
+    shell: command.shell,
+  });
   return JSON.parse(stdout) as HostReport;
 }
 
@@ -93,10 +98,11 @@ describe("runtime matrix", () => {
   let expected: Uint8Array;
 
   beforeAll(async () => {
-    execFileSync(binary("tsc"), ["-p", "tsconfig.build.json"], {
+    const tsc = binary("tsc");
+    execFileSync(tsc.file, ["-p", "tsconfig.build.json"], {
       cwd: root,
       stdio: "inherit",
-      shell,
+      shell: tsc.shell,
     });
     expected = await writeXlsx(workbook, { compression: "none" });
   }, 60_000);
