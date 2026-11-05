@@ -1,4 +1,3 @@
-// examples/snippets/next-edge.ts
 // app/api/report/route.ts on the edge runtime: the same handler, one line more
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 

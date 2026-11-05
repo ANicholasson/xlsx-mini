@@ -1,4 +1,3 @@
-// examples/snippets/objects.ts
 import { sheetFromObjects, writeXlsx } from "xlsx-mini";
 
 interface Order {

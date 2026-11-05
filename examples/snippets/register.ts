@@ -1,4 +1,3 @@
-// examples/snippets/register.ts
 import { type Coerce, writeXlsx } from "xlsx-mini";
 
 export class Money {

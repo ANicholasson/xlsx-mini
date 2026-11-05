@@ -1,4 +1,3 @@
-// examples/snippets/express.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
 /** Any response with setHeader and end: Express, Node's http, Fastify's raw reply. */

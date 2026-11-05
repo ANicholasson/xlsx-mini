@@ -1,4 +1,3 @@
-// examples/snippets/quick-start.ts
 import { writeFile } from "node:fs/promises";
 import { writeXlsx } from "xlsx-mini";
 

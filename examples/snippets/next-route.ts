@@ -1,4 +1,3 @@
-// examples/snippets/next-route.ts
 // app/api/report/route.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 

@@ -1,4 +1,3 @@
-// examples/snippets/actions.ts
 // app/actions.ts
 "use server";
 
