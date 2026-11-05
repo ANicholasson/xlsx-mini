@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -54,8 +54,10 @@ describe("pre-commit staged tasks", () => {
   }, 60_000);
 
   it("still blocks a commit that stages code the linter rejects", () => {
-    writeFileSync(join(dir, "bad.ts"), "export const loose: any = 1;\n");
-    git(dir, "add", "bad.ts");
+    // Under src/, where the staged tasks lint; root files other than the configs get the formatter.
+    mkdirSync(join(dir, "src"), { recursive: true });
+    writeFileSync(join(dir, "src", "bad.ts"), "export const loose: any = 1;\n");
+    git(dir, "add", "src/bad.ts");
     const result = staged(dir);
     expect(result.status, result.stdout + result.stderr).not.toBe(0);
   }, 60_000);
