@@ -7,12 +7,13 @@ import { Miniflare } from "miniflare";
 import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { XLSX_MIME_TYPE, writeXlsx } from "../../src/index.js";
+import { binary as binaryIn, shell } from "../helpers/bin.js";
 import { unzip } from "../helpers/unzip.js";
 import { type HostReport, workbook } from "./scenario.mjs";
 
 const execFile = promisify(execFileCallback);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const binary = (name: string) => join(root, "node_modules", ".bin", name);
+const binary = (name: string) => binaryIn(root, name);
 
 /** A host of the matrix: how the scenario runs there, and the zip method its default output uses. */
 interface Host {
@@ -49,7 +50,7 @@ const hosts: readonly Host[] = [
 
 /** Runs an entry in a separate process and parses the one JSON line it prints. */
 async function spawn(command: string, args: readonly string[]): Promise<HostReport> {
-  const { stdout } = await execFile(command, [...args], { cwd: root, encoding: "utf8" });
+  const { stdout } = await execFile(command, [...args], { cwd: root, encoding: "utf8", shell });
   return JSON.parse(stdout) as HostReport;
 }
 
@@ -92,7 +93,11 @@ describe("runtime matrix", () => {
   let expected: Uint8Array;
 
   beforeAll(async () => {
-    execFileSync(binary("tsc"), ["-p", "tsconfig.build.json"], { cwd: root, stdio: "inherit" });
+    execFileSync(binary("tsc"), ["-p", "tsconfig.build.json"], {
+      cwd: root,
+      stdio: "inherit",
+      shell,
+    });
     expected = await writeXlsx(workbook, { compression: "none" });
   }, 60_000);
 

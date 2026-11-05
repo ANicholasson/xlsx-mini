@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { binary, shell } from "./helpers/bin.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -13,10 +14,7 @@ function git(dir: string, ...args: string[]): void {
 
 /** Runs the hook's task dispatcher on what is staged in `dir`, as the pre-commit hook does. */
 function staged(dir: string) {
-  return spawnSync(join(root, "node_modules", ".bin", "vp"), ["staged"], {
-    cwd: dir,
-    encoding: "utf8",
-  });
+  return spawnSync(binary(root, "vp"), ["staged"], { cwd: dir, encoding: "utf8", shell });
 }
 
 /** A throwaway repository with this project's configuration and dependencies, nothing else. */

@@ -1,0 +1,39 @@
+name: Bug report
+description: A workbook that opens wrong, a repair dialog, or an error that should not happen.
+labels: [needs-triage]
+body:
+  - type: dropdown
+    id: application
+    attributes:
+      label: Which application showed the problem?
+      options:
+        - Microsoft Excel on macOS
+        - Microsoft Excel on Windows
+        - Apple Numbers
+        - Google Sheets
+        - LibreOffice Calc
+        - None, the error came from the library
+        - Another application (say which below)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: xlsx-mini version and runtime
+      placeholder: 0.1.0 on Node 24.3
+    validations:
+      required: true
+  - type: textarea
+    id: code
+    attributes:
+      label: The code that produced the workbook
+      description: The smallest workbook that shows it; a repair dialog usually comes from one cell.
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
