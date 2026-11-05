@@ -1,6 +1,7 @@
 // Times the three suites against the built package, on whichever runtime runs this file: Node, Bun
 // or Deno. `pnpm bench` prints a table; `--json <file>` also writes the results for the report.
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { Bench } from "tinybench";
 import type * as Api from "../src/index.ts";
 import type { BenchmarkResult, RunResult, Variant } from "./report.ts";
@@ -88,6 +89,7 @@ console.table(
 
 const out = argument("--json");
 if (out !== undefined) {
+  mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, `${JSON.stringify(run, null, 2)}\n`);
   console.log(`written ${out}`);
 }
