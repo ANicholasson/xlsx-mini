@@ -1,4 +1,3 @@
-// examples/snippets/errors.ts
 import { XlsxMiniError, writeXlsx } from "xlsx-mini";
 
 export default async function safely(): Promise<string> {

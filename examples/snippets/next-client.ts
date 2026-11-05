@@ -1,4 +1,3 @@
-// examples/snippets/next-client.ts
 // app/export-button.tsx: wire this to a button's onClick
 "use client";
 

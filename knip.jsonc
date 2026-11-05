@@ -6,7 +6,6 @@
     "src/**/tests/**/*.test.ts",
     "test/**/*.test.ts",
     "examples/snippets/*.ts",
-    "examples/node/*.mjs",
   ],
   "project": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "examples/**/*.ts"],
   // dependency-cruiser loads @swc/core at runtime when `parser: "swc"` is set in

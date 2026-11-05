@@ -1,4 +1,3 @@
-// examples/snippets/response.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
 export default async function report(): Promise<Response> {

@@ -7,7 +7,8 @@ import { XLSX_MIME_TYPE } from "../src/index.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 /**
- * Every TypeScript block in the README names its file under examples/snippets on its first line.
+ * Every TypeScript block in the README follows a `<!-- snippet: name -->` marker, invisible to
+ * readers, that names its file under examples/snippets.
  * The block must equal the file, and the file must run: a README cannot rot that way.
  */
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -23,10 +24,8 @@ interface Block {
 
 function blocks(): Block[] {
   const found: Block[] = [];
-  for (const match of readme.matchAll(
-    /```ts\n(\/\/ (examples\/snippets\/[\w-]+\.ts)\n[\s\S]*?)```/g,
-  )) {
-    found.push({ file: match[2]!, body: match[1]! });
+  for (const match of readme.matchAll(/<!-- snippet: ([\w-]+) -->\n\n```ts\n([\s\S]*?)```/g)) {
+    found.push({ file: `examples/snippets/${match[1]!}.ts`, body: match[2]! });
   }
   return found;
 }

@@ -1,4 +1,3 @@
-// examples/snippets/formats.ts
 import { type CellStyle, writeXlsx } from "xlsx-mini";
 
 const header: CellStyle = { bold: true };

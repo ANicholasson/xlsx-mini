@@ -1,4 +1,3 @@
-// examples/snippets/browser.ts
 import { writeXlsx } from "xlsx-mini";
 import { downloadXlsx } from "xlsx-mini/browser";
 

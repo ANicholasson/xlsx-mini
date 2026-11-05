@@ -1,4 +1,3 @@
-// examples/snippets/dates.ts
 import { writeXlsx } from "xlsx-mini";
 
 export default function dates(): Promise<Uint8Array> {

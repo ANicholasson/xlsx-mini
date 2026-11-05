@@ -4,7 +4,7 @@
 [![ci](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml)
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every code block in this README is run by the test suite.
 
 ## Install
 
@@ -16,8 +16,9 @@ ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare
 
 ## Quick start
 
+<!-- snippet: quick-start -->
+
 ```ts
-// examples/snippets/quick-start.ts
 import { writeFile } from "node:fs/promises";
 import { writeXlsx } from "xlsx-mini";
 
@@ -38,14 +39,15 @@ export default async function quickStart(path = "orders.xlsx"): Promise<void> {
 }
 ```
 
-A row is an array of cells. A cell is a string, a number, a boolean, a `Date`, a Temporal value, or `null` for an empty cell; wrap a value in `{ value, style }` to style it. The result is an ArrayBuffer-backed `Uint8Array`, ready for a file, a `Response` or a `Blob`. `examples/node/export.mjs` is a complete script: `pnpm build && node examples/node/export.mjs`.
+A row is an array of cells. A cell is a string, a number, a boolean, a `Date`, a Temporal value, or `null` for an empty cell; wrap a value in `{ value, style }` to style it. The result is an ArrayBuffer-backed `Uint8Array`, ready for a file, a `Response` or a `Blob`.
 
 ## Where it runs
 
 ### Any web framework, through a Response
 
+<!-- snippet: response -->
+
 ```ts
-// examples/snippets/response.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
 export default async function report(): Promise<Response> {
@@ -61,8 +63,9 @@ export default async function report(): Promise<Response> {
 
 ### Express and friends
 
+<!-- snippet: express -->
+
 ```ts
-// examples/snippets/express.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
 /** Any response with setHeader and end: Express, Node's http, Fastify's raw reply. */
@@ -83,8 +86,9 @@ export default async function handler(reply: Reply): Promise<void> {
 
 The `xlsx-mini/browser` entry adds `downloadXlsx`, which saves the bytes through a download. It throws `NO_DOM` anywhere without a document, so a server never downloads by accident.
 
+<!-- snippet: browser -->
+
 ```ts
-// examples/snippets/browser.ts
 import { writeXlsx } from "xlsx-mini";
 import { downloadXlsx } from "xlsx-mini/browser";
 
@@ -96,8 +100,9 @@ export default async function exportInBrowser(): Promise<void> {
 
 ### Next.js route handler
 
+<!-- snippet: next-route -->
+
 ```ts
-// examples/snippets/next-route.ts
 // app/api/report/route.ts
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
@@ -114,8 +119,9 @@ export async function GET(): Promise<Response> {
 
 The same handler on the edge runtime:
 
+<!-- snippet: next-edge -->
+
 ```ts
-// examples/snippets/next-edge.ts
 // app/api/report/route.ts on the edge runtime: the same handler, one line more
 import { XLSX_MIME_TYPE, writeXlsx } from "xlsx-mini";
 
@@ -131,8 +137,9 @@ export async function GET(): Promise<Response> {
 
 The action builds the workbook on the server; the client receives the bytes and downloads them.
 
+<!-- snippet: actions -->
+
 ```ts
-// examples/snippets/actions.ts
 // app/actions.ts
 "use server";
 
@@ -143,8 +150,9 @@ export async function exportReport(): Promise<Uint8Array> {
 }
 ```
 
+<!-- snippet: next-client -->
+
 ```ts
-// examples/snippets/next-client.ts
 // app/export-button.tsx: wire this to a button's onClick
 "use client";
 
@@ -160,8 +168,9 @@ export async function onExportClick(): Promise<void> {
 
 `sheetFromObjects` turns objects into a sheet: a bold header row, a frozen header and an autofilter by default, each switchable. A column names a key, and the types reject a key whose values a cell cannot hold; a `value` function computes a cell from the whole object.
 
+<!-- snippet: objects -->
+
 ```ts
-// examples/snippets/objects.ts
 import { sheetFromObjects, writeXlsx } from "xlsx-mini";
 
 interface Order {
@@ -189,8 +198,9 @@ export default function fromObjects(orders: Order[]): Promise<Uint8Array> {
 
 A style sets `bold` and a `numberFormat`: an Excel format string, or a built-in format id from 0 to 49. Column styles apply to every cell in the column; a cell's own style wins.
 
+<!-- snippet: formats -->
+
 ```ts
-// examples/snippets/formats.ts
 import { type CellStyle, writeXlsx } from "xlsx-mini";
 
 const header: CellStyle = { bold: true };
@@ -241,8 +251,9 @@ export default function formats(): Promise<Uint8Array> {
 
 A `Date` is written as its UTC instant; what the reader shows follows the cell's format, or the built-in date-time format when the cell has none. Temporal values need no polyfill: `Temporal.PlainDate`, `PlainDateTime`, `ZonedDateTime` and `Instant` are recognised by their `Symbol.toStringTag`, and a `PlainDate` gets the built-in date format. Dates run from 1900-01-01 to 9999-12-31, in Excel's 1900 date system.
 
+<!-- snippet: dates -->
+
 ```ts
-// examples/snippets/dates.ts
 import { writeXlsx } from "xlsx-mini";
 
 export default function dates(): Promise<Uint8Array> {
@@ -267,8 +278,9 @@ export default function dates(): Promise<Uint8Array> {
 
 Augment the `Register` interface with your own types, and the `coerce` option converts each such value once, with its path, into something a cell can hold. `coerce` also sees every `Date` and Temporal value, so it can override how those are written.
 
+<!-- snippet: register -->
+
 ```ts
-// examples/snippets/register.ts
 import { type Coerce, writeXlsx } from "xlsx-mini";
 
 export class Money {
@@ -311,8 +323,9 @@ export default function extended(): Promise<Uint8Array> {
 
 The writer throws one error class, `XlsxMiniError`, with a `code` to switch on and a `path` into your input such as `sheets[1].rows[40][2]`. It throws before writing anything a reader would refuse.
 
+<!-- snippet: errors -->
+
 ```ts
-// examples/snippets/errors.ts
 import { XlsxMiniError, writeXlsx } from "xlsx-mini";
 
 export default async function safely(): Promise<string> {
