@@ -33,6 +33,11 @@ if (enabled && soffice === undefined) {
   throw new Error("XLSX_MINI_VALIDATE=1 but LibreOffice was not found; set SOFFICE to its path");
 }
 
+/** LibreOffice names a CSV after the sheet; characters Windows forbids in a file name become `_`. */
+function portable(name: string): string {
+  return name.replace(/[<>:"/\\|?*]/g, "_");
+}
+
 const expectedFiles = readdirSync(expectedDir)
   .filter((name) => name.endsWith(".csv"))
   .sort();
@@ -63,15 +68,22 @@ describe.skipIf(!enabled)("LibreOffice reads every golden fixture", () => {
     expect(conversion).not.toMatch(/^conversion failed|Error/);
   });
 
+  /** The produced file for an expected name, through the portable mapping. */
+  const producedFor = (expected: string): string | undefined =>
+    readdirSync(outDir).find((name) => portable(name) === expected);
+
   it("produces one CSV per sheet of every fixture", () => {
     const produced = readdirSync(outDir)
       .filter((name) => name.endsWith(".csv"))
+      .map(portable)
       .sort();
     expect(produced).toEqual(expectedFiles);
   });
 
   it.each(expectedFiles)("%s matches cell for cell", (name) => {
-    expect(readFileSync(join(outDir, name), "utf8")).toBe(
+    const produced = producedFor(name);
+    expect(produced, `no CSV produced for ${name}`).toBeDefined();
+    expect(readFileSync(join(outDir, produced!), "utf8")).toBe(
       readFileSync(join(expectedDir, name), "utf8"),
     );
   });
