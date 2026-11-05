@@ -1,0 +1,4 @@
+# Text files are LF in every checkout; the workbooks and their CSV renderings are compared byte for byte.
+* text=auto eol=lf
+*.xlsx binary
+*.png binary

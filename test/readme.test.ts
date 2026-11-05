@@ -11,7 +11,9 @@ import { readPart, unzip } from "./helpers/unzip.js";
  * The block must equal the file, and the file must run: a README cannot rot that way.
  */
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const readme = readFileSync(join(root, "README.md"), "utf8");
+/** Git on Windows may check text out with CRLF; blocks and files compare on LF. */
+const text = (file: string) => readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+const readme = text(join(root, "README.md"));
 const scratch = mkdtempSync(join(tmpdir(), "xlsx-mini-readme-"));
 
 interface Block {
@@ -148,7 +150,7 @@ describe("README snippets", () => {
   });
 
   it.each(found)("$file equals its README block and runs", async ({ file, body }) => {
-    expect(body).toBe(readFileSync(join(root, file), "utf8"));
+    expect(body).toBe(text(join(root, file)));
     const name = file.slice("examples/snippets/".length, -".ts".length);
     const snippet = (await import(join(root, file))) as Snippet;
     await runs[name]!(snippet);

@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { type ViteUserConfig, defineConfig } from "vite-plus";
 
 const CORE_ONLY_MESSAGE =
@@ -9,9 +10,9 @@ const config: ViteUserConfig = {
     alias: [
       {
         find: "xlsx-mini/browser",
-        replacement: new URL("./src/browser.ts", import.meta.url).pathname,
+        replacement: fileURLToPath(new URL("./src/browser.ts", import.meta.url)),
       },
-      { find: "xlsx-mini", replacement: new URL("./src/index.ts", import.meta.url).pathname },
+      { find: "xlsx-mini", replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)) },
     ],
   },
   lint: {
