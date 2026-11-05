@@ -2,6 +2,13 @@ name: benchmarks
 
 on:
   pull_request:
+    # Only what can change performance: the source, the suites, the build and this workflow. The
+    # package has no runtime dependencies, so a dependency bump cannot.
+    paths:
+      - "src/**"
+      - "bench/**"
+      - "tsconfig.build.json"
+      - ".github/workflows/benchmarks.yml"
 
 permissions:
   contents: read
