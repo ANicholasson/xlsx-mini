@@ -186,6 +186,13 @@ function pool(next, size) {
   return items;
 }
 
+/**
+ * Row counts scale by `XLSX_MINI_BENCH_SCALE`, unset locally. CodSpeed's CPU simulation runs the
+ * suites at a fraction of their size: instruction counts stay exact, and the job stays short.
+ */
+const SCALE = Number(globalThis.process?.env?.XLSX_MINI_BENCH_SCALE ?? 1);
+const scaled = (count) => Math.max(1, Math.round(count * SCALE));
+
 const DAY = 86_400_000;
 const START = Date.UTC(2026, 0, 1);
 
@@ -193,7 +200,7 @@ const START = Date.UTC(2026, 0, 1);
 export function wideWorkbook() {
   const next = random(1);
   const notes = pool(next, 200);
-  const rows = new Array(100_000);
+  const rows = new Array(scaled(100_000));
   for (let i = 0; i < rows.length; i++) {
     const name = `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`;
     rows[i] = [
@@ -252,7 +259,7 @@ export function manySheetsWorkbook() {
   const next = random(2);
   const sheets = new Array(40);
   for (let s = 0; s < sheets.length; s++) {
-    const rows = new Array(2_500);
+    const rows = new Array(scaled(2_500));
     for (let i = 0; i < rows.length; i++) {
       rows[i] = [
         `${FIRST_NAMES[Math.floor(next() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(next() * LAST_NAMES.length)]}`,
@@ -284,7 +291,7 @@ export function manySheetsWorkbook() {
 export function stringHeavyWorkbook() {
   const next = random(3);
   const phrases = pool(next, 2_000);
-  const rows = new Array(200_000);
+  const rows = new Array(scaled(200_000));
   for (let i = 0; i < rows.length; i++) {
     rows[i] = [
       phrases[Math.floor(next() * phrases.length)],

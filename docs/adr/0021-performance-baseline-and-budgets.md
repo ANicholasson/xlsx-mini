@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, run against the built package loaded natively, five iterations after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests CodSpeed measures the same suites under CPU simulation and comments the deltas; its first run on `main` after this decision is the CI baseline, and a column for it belongs in the tables below once it exists.
+The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, run against the built package loaded natively, five iterations after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests CodSpeed measures the same suites under CPU simulation, at five percent of their row counts through `XLSX_MINI_BENCH_SCALE` so the job finishes in minutes, and comments the deltas; simulation counts instructions, so a delta at that size is the delta at full size; its first run on `main` after this decision is the CI baseline, and a column for it belongs in the tables below once it exists.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
@@ -19,6 +19,10 @@ Peak memory is the growth of the process's resident set during the write, measur
 | String-heavy | 5.1 MiB | 132 MiB     | 26×                | 30×    |
 
 Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the CodSpeed comment is the gate, since local numbers move with the machine. A change that lowers a number by more than the margin lowers the budget in the same change.
+
+## What CodSpeed measures
+
+The scaled job takes under three minutes end to end, of which the benchmarks are about a minute. Simulation leaves system calls out of its measure, and the deflate benchmarks spend most of their time in zlib on the runtime's thread pool, so their reported cost covers the JavaScript path only: the part this repository controls, and the part a change here can move. The STORE benchmark of the wide table is measured whole. Walltime mode would include zlib, but on shared runners its numbers drift, so simulation stays.
 
 ## What the profiling pass found
 

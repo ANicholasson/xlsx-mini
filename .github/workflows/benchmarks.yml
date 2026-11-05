@@ -8,11 +8,16 @@ on:
 permissions:
   contents: read
 
+# A new push to the same branch supersedes a run in progress.
+concurrency:
+  group: benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   codspeed:
     name: CodSpeed
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     permissions:
       contents: read
       # OIDC: CodSpeed accepts uploads from a public repository without a stored token.
@@ -26,6 +31,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: CodSpeedHQ/action@af75f77f17a054769abefaa42fe8dc2975469b5f # v5.6.3
+        env:
+          # Five percent of each suite: CPU simulation counts instructions, so deltas stay exact.
+          XLSX_MINI_BENCH_SCALE: "0.05"
         with:
           mode: simulation
           run: pnpm bench
