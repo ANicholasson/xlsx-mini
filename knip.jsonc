@@ -8,7 +8,7 @@
     "examples/snippets/*.ts",
     "examples/node/*.mjs",
   ],
-  "project": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "examples/**/*.ts"],
+  "project": ["src/**/*.ts", "test/**/*.ts", "bench/**/*.ts", "examples/snippets/*.ts"],
   // dependency-cruiser loads @swc/core at runtime when `parser: "swc"` is set in
   // .dependency-cruiser.cjs; no import of it exists for knip to see.
   "ignoreDependencies": ["@swc/core"],

@@ -6,3 +6,5 @@ coverage
 *.tgz
 bench/results/
 /orders.xlsx
+examples/next/node_modules
+examples/next/.next
