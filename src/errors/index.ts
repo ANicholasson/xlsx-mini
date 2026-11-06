@@ -8,8 +8,11 @@ export type ErrorCode =
   | "DATE_OUT_OF_RANGE"
   | "UNSUPPORTED_VALUE"
   | "INVALID_NUMBER_FORMAT"
+  | "INVALID_STYLE"
   | "INVALID_COLUMN_WIDTH"
   | "INVALID_FREEZE"
+  | "INVALID_MERGE"
+  | "INVALID_ROW_HEIGHT"
   | "CELL_TEXT_TOO_LONG"
   | "TOO_MANY_COLUMNS"
   | "TOO_MANY_ROWS"
@@ -38,4 +41,21 @@ export class XlsxMiniError extends Error {
     this.code = code;
     this.path = path;
   }
+}
+
+/**
+ * The same error at a longer path: a feature that validates without knowing where its input sits
+ * throws with the local path, and the caller prefixes its own. `prefix` ends up as `prefix.local`,
+ * or as `prefix` alone when the local path is empty.
+ */
+export function atPath(error: XlsxMiniError, prefix: string): XlsxMiniError {
+  const suffix = ` at ${error.path}`;
+  const message = error.message.endsWith(suffix)
+    ? error.message.slice(0, -suffix.length)
+    : error.message;
+  return new XlsxMiniError(
+    error.code,
+    error.path.length === 0 ? prefix : `${prefix}.${error.path}`,
+    message,
+  );
 }

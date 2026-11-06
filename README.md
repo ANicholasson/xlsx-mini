@@ -196,7 +196,7 @@ export default function fromObjects(orders: Order[]): Promise<Uint8Array> {
 
 ## Number formats
 
-A style sets `bold` and a `numberFormat`: an Excel format string, or a built-in format id from 0 to 49. Column styles apply to every cell in the column; a cell's own style wins.
+A style sets `bold` and a `numberFormat`: an Excel format string, or a built-in format id from 0 to 49; the next section covers fonts, fills, borders and alignment. Column styles apply to every cell in the column; a cell's own style wins.
 
 <!-- snippet: formats -->
 
@@ -246,6 +246,76 @@ export default function formats(): Promise<Uint8Array> {
 | ISO date              | `yyyy-mm-dd`       |
 | Date and time         | `yyyy-mm-dd hh:mm` |
 | Text as typed         | `@`                |
+
+## Fonts, fills, borders and alignment
+
+A style also sets the font (`italic`, `fontSize` in points, `fontColor`), a solid `fill`, a `border` for all four sides or per side (`thin`, `medium`, `thick`), `align`, `verticalAlign`, `wrap` and `indent`. Colours are `#rrggbb`. A sheet merges ranges with `merges` and sets `rowHeights` in points by row number. A cell object with a style and a `null` value writes an empty styled cell, which is how a border or a fill runs across a blank.
+
+<!-- snippet: appearance -->
+
+```ts
+import { type CellStyle, writeXlsx } from "xlsx-mini";
+
+const title: CellStyle = {
+  bold: true,
+  fontSize: 16,
+  fontColor: "#ffffff",
+  fill: "#1f4e79",
+  align: "center",
+  verticalAlign: "middle",
+};
+const heading: CellStyle = { bold: true, fill: "#d9e1f2", border: "thin" };
+const total: CellStyle = { bold: true, border: { top: "medium", bottom: "thick" } };
+
+export default function appearance(): Promise<Uint8Array> {
+  return writeXlsx({
+    sheets: [
+      {
+        name: "Invoice",
+        columns: [
+          { width: 14 },
+          { width: 36 },
+          { width: 8, style: { align: "right" } },
+          { width: 14, style: { numberFormat: '#,##0.00 "kr"' } },
+        ],
+        // The title spans four columns; its row and the wrapped row get a height in points.
+        merges: ["A1:D1"],
+        rowHeights: { 1: 28, 3: 48 },
+        rows: [
+          [{ value: "Invoice 2026-1042", style: title }],
+          [
+            { value: "Item", style: heading },
+            { value: "Description", style: heading },
+            { value: "Qty", style: heading },
+            { value: "Amount", style: heading },
+          ],
+          [
+            "Desk",
+            {
+              value: "Height-adjustable desk, delivered and assembled on site",
+              style: { wrap: true, verticalAlign: "top" },
+            },
+            2,
+            9998,
+          ],
+          ["Chair", { value: "Mesh office chair", style: { indent: 1 } }, 4, 5198],
+          [
+            { value: "Total", style: total },
+            // A styled cell without a value: the rule runs across the blank.
+            { value: null, style: total },
+            { value: 6, style: total },
+            { value: 15196, style: total },
+          ],
+          [],
+          [{ value: "Payment within 30 days.", style: { italic: true, fontColor: "#808080" } }],
+        ],
+      },
+    ],
+  });
+}
+```
+
+Every distinct style is written once, however many cells share it, so styling costs nothing per cell beyond a lookup.
 
 ## Dates and Temporal
 
@@ -351,7 +421,10 @@ export default async function safely(): Promise<string> {
 | `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                         |
 | `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                 |
 | `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                      |
+| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.   |
 | `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                      |
+| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.        |
+| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                      |
 | `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                   |
 | `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                               |
 | `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                      |
@@ -362,21 +435,23 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## API
 
-| Export                             | Shape                                                                                                                         |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `writeXlsx(workbook, options?)`    | `Promise<Uint8Array<ArrayBuffer>>`                                                                                            |
-| `WriteOptions`                     | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform     |
-| `Workbook`                         | `{ sheets: readonly Sheet[] }`                                                                                                |
-| `Sheet`                            | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean }`                     |
-| `Row`, `Cell`                      | `readonly Cell[]`; `CellValue \| { value: CellValue; style?: CellStyle }`                                                     |
-| `CellValue`                        | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                      |
-| `CellStyle`                        | `{ bold?: boolean; numberFormat?: string \| number }`                                                                         |
-| `Column`, `Freeze`                 | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                |
-| `Coerce`, `Register`, `Registered` | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds            |
-| `sheetFromObjects(data, options)`  | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }` |
-| `XlsxMiniError`, `ErrorCode`       | `{ code: ErrorCode; path: string; message }`                                                                                  |
-| `XLSX_MIME_TYPE`                   | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                           |
-| `downloadXlsx(bytes, filename)`    | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                 |
+| Export                             | Shape                                                                                                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writeXlsx(workbook, options?)`    | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                |
+| `WriteOptions`                     | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                         |
+| `Workbook`                         | `{ sheets: readonly Sheet[] }`                                                                                                                                    |
+| `Sheet`                            | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number> }` |
+| `Row`, `Cell`                      | `readonly Cell[]`; `CellValue \| { value: CellValue; style?: CellStyle }`                                                                                         |
+| `CellValue`                        | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                          |
+| `CellStyle`                        | `{ bold?; italic?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                             |
+| `BorderStyle`, `Borders`           | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                      |
+| `HorizontalAlign`, `VerticalAlign` | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                  |
+| `Column`, `Freeze`                 | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                    |
+| `Coerce`, `Register`, `Registered` | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                |
+| `sheetFromObjects(data, options)`  | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                     |
+| `XlsxMiniError`, `ErrorCode`       | `{ code: ErrorCode; path: string; message }`                                                                                                                      |
+| `XLSX_MIME_TYPE`                   | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                               |
+| `downloadXlsx(bytes, filename)`    | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                     |
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 
@@ -411,6 +486,7 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Styles and number formats        |        clean         |    clean     |     clean     |      clean       |
 | Widths, frozen panes, autofilter |        clean         |    clean     |     clean     |      clean       |
 | Built from objects               |        clean         |    clean     |     clean     |      clean       |
+| Fonts, fills, borders, merges    |        clean         |    clean     |     clean     |      clean       |
 
 LibreOffice also reads every fixture back cell for cell in CI, on every change.
 

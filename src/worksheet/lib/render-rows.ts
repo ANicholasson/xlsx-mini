@@ -1,4 +1,4 @@
-import { XlsxMiniError } from "../../errors/index.js";
+import { XlsxMiniError, atPath } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import type { XmlSink } from "../../xml/index.js";
@@ -41,6 +41,7 @@ export function renderSheetData(
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
   sink: XmlSink,
+  rowHeights?: Readonly<Record<number, number>>,
 ): string {
   let rowIndex = -1;
   let lastRowWithCells = 0;
@@ -71,14 +72,41 @@ export function renderSheetData(
       cells += rendered;
       if (column > maxColumn) maxColumn = column;
     }
-    if (cells.length === 0) continue;
     const rowNumber = rowIndex + 1;
-    sink.write(`<row r="${rowNumber}">${cells}</row>`);
+    const height = rowHeights?.[rowNumber];
+    if (cells.length === 0) {
+      if (height !== undefined) sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+      continue;
+    }
+    sink.write(
+      `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
+    );
     lastRowWithCells = rowNumber;
   }
 
+  if (rowHeights !== undefined) renderTrailingHeights(rowHeights, rowIndex + 1, sink);
   if (lastRowWithCells === 0) return "";
   return `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+}
+
+function heightAttributes(height: number): string {
+  return ` ht="${height}" customHeight="1"`;
+}
+
+/** Heights of rows past the last row given are written as empty rows, in order, so they still apply. */
+function renderTrailingHeights(
+  rowHeights: Readonly<Record<number, number>>,
+  rowsGiven: number,
+  sink: XmlSink,
+): void {
+  const trailing: number[] = [];
+  for (const key of Object.keys(rowHeights)) {
+    const row = Number(key);
+    if (row > rowsGiven) trailing.push(row);
+  }
+  if (trailing.length === 0) return;
+  trailing.sort((a, b) => a - b);
+  for (const row of trailing) sink.write(`<row r="${row}"${heightAttributes(rowHeights[row]!)}/>`);
 }
 
 function renderCell(
@@ -102,6 +130,13 @@ function renderCell(
     }
   }
   const reference = columnLetter(column) + (rowIndex + 1);
+  if (value === null || value === undefined) {
+    // A cell object with a style and no value is a styled empty cell: a border or fill can run
+    // across a blank. A bare null stays nothing, even in a styled column.
+    if (cellStyle === undefined) return "";
+    const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
+    return style.length === 0 ? "" : `<c r="${reference}"${style}/>`;
+  }
   const style =
     cellStyle === undefined && columnStyle === undefined
       ? ""
@@ -297,11 +332,7 @@ function styleAttribute(
     index = context.styles.indexFor(cellStyle, columnStyle, dateDefault);
   } catch (error) {
     if (error instanceof XlsxMiniError) {
-      throw new XlsxMiniError(
-        error.code,
-        cellPath(context, rowIndex, column),
-        error.message.replace(/ at $/, ""),
-      );
+      throw atPath(error, `${cellPath(context, rowIndex, column)}.style`);
     }
     throw error;
   }

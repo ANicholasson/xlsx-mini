@@ -111,6 +111,7 @@ export interface Freeze {
  *   name: "Orders",
  *   columns: [undefined, { style: { numberFormat: '#,##0.00 "kr"' } }],
  *   rows: [["Order", "Total"], ["A-1001", 1234.5]],
+ *   merges: ["A1:B1"],
  * };
  */
 export interface Sheet {
@@ -123,6 +124,10 @@ export interface Sheet {
   readonly freeze?: Freeze;
   /** Filter dropdowns on row 1 across the used range. */
   readonly autoFilter?: boolean;
+  /** Ranges to merge into one cell each, in A1 form such as `"A1:D1"`; the top-left cell keeps its value. */
+  readonly merges?: readonly string[];
+  /** Row heights in points by row number, counted from 1: `{ 1: 28 }` makes the first row 28 points. */
+  readonly rowHeights?: Readonly<Record<number, number>>;
 }
 
 /**

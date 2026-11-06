@@ -32,12 +32,19 @@ _Avoid_: blank, null cell
 A vertical position across every row, named by letters, carrying a width and a default style for its cells.
 
 **Style**:
-How a cell looks: bold, number format, and later borders, fills and alignment. A cell's own style wins over its column's.
+How a cell looks: font (bold, italic, size, colour), fill, border, alignment, wrap, indent and number format. A cell's own style wins over its column's, property by property.
 _Avoid_: formatting, format (reserved for number format)
 
 **Number format**:
 Excel's display rule for a numeric value, such as a currency, a percentage or a date layout; a built-in id or a format string.
 _Avoid_: numFmt, formatting
+
+**Merge**:
+A range of cells shown as one; the top-left cell's value and style show.
+_Avoid_: span, merged region
+
+**Row height**:
+The height of a row in points, set by row number; rows without one take Excel's default.
 
 **Freeze panes**:
 The rows and columns that stay visible while the sheet scrolls.

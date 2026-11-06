@@ -118,6 +118,14 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(styles).toContain('formatCode="0.0%"');
     expect(styles).toContain('formatCode="yyyy-mm-dd"');
   },
+  appearance: async (snippet) => {
+    const bytes = await (snippet["default"] as Fn<Uint8Array>)();
+    isWorkbook(bytes);
+    expect(readPart(bytes, "xl/styles.xml")).toContain(
+      '<alignment horizontal="center" vertical="center"/>',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain('<mergeCell ref="A1:D1"/>');
+  },
   dates: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);

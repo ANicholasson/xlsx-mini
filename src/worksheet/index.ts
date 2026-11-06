@@ -1,5 +1,5 @@
 import { XML_DECLARATION, createXmlSink } from "../xml/index.js";
-import { collectColumns, renderFreeze } from "./lib/layout.js";
+import { collectColumns, collectRowHeights, renderFreeze, renderMerges } from "./lib/layout.js";
 import type { Sheet } from "./lib/model.js";
 import { renderSheetData, type WorksheetContext } from "./lib/render-rows.js";
 
@@ -42,8 +42,10 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
     context.styles.validate(style),
   );
   const views = renderFreeze(sheet, context.sheetIndex);
+  const merges = renderMerges(sheet, context.sheetIndex);
+  const rowHeights = collectRowHeights(sheet, context.sheetIndex);
   const sink = createXmlSink();
-  const range = renderSheetData(sheet.rows, columns.styles, context, sink);
+  const range = renderSheetData(sheet.rows, columns.styles, context, sink, rowHeights);
   const empty = range.length === 0;
   const dimension = empty ? "" : `<dimension ref="${range}"/>`;
   const filterRange = sheet.autoFilter === true && !empty ? range : undefined;
@@ -54,6 +56,6 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
     views +
     columns.cols +
     (empty ? "<sheetData/>" : "<sheetData>");
-  const suffix = (empty ? "" : "</sheetData>") + autoFilter + "</worksheet>";
+  const suffix = (empty ? "" : "</sheetData>") + autoFilter + merges + "</worksheet>";
   return { data: sink.finish(prefix, suffix), filterRange };
 }
