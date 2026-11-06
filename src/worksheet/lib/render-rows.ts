@@ -1,4 +1,4 @@
-import { XlsxMiniError } from "../../errors/index.js";
+import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import type { XmlSink } from "../../xml/index.js";
@@ -31,20 +31,29 @@ export interface WorksheetContext {
   readonly sheetIndex: number;
 }
 
+/** What was written to the sink: the used range of cells, and whether any row element was emitted. */
+export interface SheetData {
+  /** The used range such as `A1:C4`, or an empty string when no cell was written. */
+  readonly range: string;
+  /** True when at least one `<row>` was written, including rows that only carry a height. */
+  readonly hasRows: boolean;
+}
+
 /**
- * Renders every row with at least one cell into the sink; positions survive because rows and
- * cells carry `r`. Returns the used range such as `A1:C4`, or an empty string when no cell was
- * written.
+ * Renders every row with at least one cell, or a height, into the sink; positions survive
+ * because rows and cells carry `r`.
  */
 export function renderSheetData(
   rows: Iterable<Row>,
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
   sink: XmlSink,
-): string {
+  rowHeights?: Readonly<Record<number, number>>,
+): SheetData {
   let rowIndex = -1;
   let lastRowWithCells = 0;
   let maxColumn = -1;
+  let hasRows = false;
 
   for (const row of rows) {
     rowIndex++;
@@ -71,14 +80,50 @@ export function renderSheetData(
       cells += rendered;
       if (column > maxColumn) maxColumn = column;
     }
-    if (cells.length === 0) continue;
     const rowNumber = rowIndex + 1;
-    sink.write(`<row r="${rowNumber}">${cells}</row>`);
+    const height = rowHeights?.[rowNumber];
+    if (cells.length === 0) {
+      if (height === undefined) continue;
+      sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+      hasRows = true;
+      continue;
+    }
+    sink.write(
+      `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
+    );
+    hasRows = true;
     lastRowWithCells = rowNumber;
   }
 
-  if (lastRowWithCells === 0) return "";
-  return `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+  if (rowHeights !== undefined && renderTrailingHeights(rowHeights, rowIndex + 1, sink)) {
+    hasRows = true;
+  }
+  const range = lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+  return { range, hasRows };
+}
+
+function heightAttributes(height: number): string {
+  return ` ht="${height}" customHeight="1"`;
+}
+
+/**
+ * Heights of rows past the last row given are written as empty rows, in order, so they still
+ * apply. Returns true when any row was written.
+ */
+function renderTrailingHeights(
+  rowHeights: Readonly<Record<number, number>>,
+  rowsGiven: number,
+  sink: XmlSink,
+): boolean {
+  const trailing: number[] = [];
+  for (const key of Object.keys(rowHeights)) {
+    const row = Number(key);
+    if (row > rowsGiven) trailing.push(row);
+  }
+  if (trailing.length === 0) return false;
+  trailing.sort((a, b) => a - b);
+  for (const row of trailing) sink.write(`<row r="${row}"${heightAttributes(rowHeights[row]!)}/>`);
+  return true;
 }
 
 function renderCell(
@@ -102,6 +147,13 @@ function renderCell(
     }
   }
   const reference = columnLetter(column) + (rowIndex + 1);
+  if (value === null || value === undefined) {
+    // A cell object with a style and no value is a styled empty cell: a border or fill can run
+    // across a blank. A bare null stays nothing, even in a styled column.
+    if (cellStyle === undefined) return "";
+    const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
+    return style.length === 0 ? "" : `<c r="${reference}"${style}/>`;
+  }
   const style =
     cellStyle === undefined && columnStyle === undefined
       ? ""
@@ -297,11 +349,7 @@ function styleAttribute(
     index = context.styles.indexFor(cellStyle, columnStyle, dateDefault);
   } catch (error) {
     if (error instanceof XlsxMiniError) {
-      throw new XlsxMiniError(
-        error.code,
-        cellPath(context, rowIndex, column),
-        error.message.replace(/ at $/, ""),
-      );
+      throw atPath(error, `${cellPath(context, rowIndex, column)}.style`);
     }
     throw error;
   }
@@ -316,11 +364,7 @@ function isWrapper(value: unknown): value is CellObject {
 }
 
 function describe(value: unknown): string {
-  if (typeof value !== "object" || value === null) return typeof value;
-  const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
-  if (typeof tag === "string") return tag;
-  const constructor = (value as { constructor?: { name?: string } }).constructor;
-  return constructor?.name ?? "object";
+  return typeof value !== "object" || value === null ? typeof value : describeValue(value);
 }
 
 function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {

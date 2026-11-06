@@ -6,7 +6,13 @@ export {
   sheetFromObjects,
 } from "./worksheet/index.js";
 export { type WriteOptions, writeXlsx } from "./write-xlsx.js";
-export type { CellStyle } from "./styles/index.js";
+export type {
+  BorderStyle,
+  Borders,
+  CellStyle,
+  HorizontalAlign,
+  VerticalAlign,
+} from "./styles/index.js";
 export { type Workbook, XLSX_MIME_TYPE } from "./workbook/index.js";
 export type {
   Cell,

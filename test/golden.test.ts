@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WriteOptions, type Workbook, writeXlsx } from "../src/index.js";
 import {
+  appearanceWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
   minimalWorkbook,
@@ -319,5 +320,44 @@ describe("orders workbook from objects (golden)", () => {
     const styles = readPart(bytes, "xl/styles.xml");
     expect(styles).toContain('formatCode="yyyy-mm-dd hh:mm"');
     expect(styles).toContain('<fonts count="2">');
+  });
+});
+
+describe("appearance workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("appearance.xlsx", appearanceWorkbook);
+  });
+
+  it("declares fonts, fills, borders and alignments once each and references them from the cells", async () => {
+    const bytes = await writeXlsx(appearanceWorkbook, STORE);
+    const styles = readPart(bytes, "xl/styles.xml");
+    // default, title (bold 16 white), bold, italic grey
+    expect(styles).toContain('<fonts count="4">');
+    expect(styles).toContain(
+      '<font><b/><sz val="16"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>',
+    );
+    expect(styles).toContain(
+      '<font><i/><sz val="11"/><color rgb="FF808080"/><name val="Calibri"/><family val="2"/></font>',
+    );
+    // none, gray125, title blue, heading light blue
+    expect(styles).toContain('<fills count="4">');
+    // empty, thin all round, medium top with thick bottom
+    expect(styles).toContain('<borders count="3">');
+    expect(styles).toContain('<alignment horizontal="center" vertical="center"/>');
+    expect(styles).toContain('<alignment vertical="top" wrapText="1"/>');
+    expect(styles).toContain('<alignment horizontal="left" indent="1"/>');
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<row r="1" ht="28" customHeight="1"><c r="A1" s="1" t="s"><v>0</v></c></row>',
+    );
+    expect(sheet).toContain('<row r="3" ht="48" customHeight="1">');
+    expect(sheet).toContain(
+      '<mergeCells count="1"><mergeCell ref="A1:D1"/></mergeCells></worksheet>',
+    );
+  });
+
+  it("writes a cell with a style and no value, so a border can run across an empty cell", async () => {
+    const sheet = readPart(await writeXlsx(appearanceWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    expect(sheet).toMatch(/<c r="B5" s="\d+"\/>/);
   });
 });

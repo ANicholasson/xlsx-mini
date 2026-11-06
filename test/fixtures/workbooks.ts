@@ -190,3 +190,58 @@ export const ordersWorkbook: Workbook = {
     ),
   ],
 };
+
+const title = {
+  bold: true,
+  fontSize: 16,
+  fontColor: "#ffffff",
+  fill: "#1f4e79",
+  align: "center",
+  verticalAlign: "middle",
+} as const;
+const heading = { bold: true, fill: "#d9e1f2", border: "thin", verticalAlign: "middle" } as const;
+const ruled = { top: "medium", bottom: "thick" } as const;
+
+/** The workbook behind appearance.xlsx: a merged title, a filled and bordered header, wrapped and indented text, row heights, a ruled total. */
+export const appearanceWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Invoice",
+      columns: [
+        { width: 14 },
+        { width: 36 },
+        { width: 8, style: { align: "right" } },
+        { width: 14, style: kroner },
+      ],
+      merges: ["A1:D1"],
+      rowHeights: { 1: 28, 3: 48 },
+      rows: [
+        [{ value: "Invoice 2026-1042", style: title }],
+        [
+          { value: "Item", style: heading },
+          { value: "Description", style: heading },
+          { value: "Qty", style: { ...heading, align: "right" } },
+          { value: "Amount", style: { ...heading, align: "right" } },
+        ],
+        [
+          "Desk",
+          {
+            value: "Height-adjustable desk, oak veneer, delivered and assembled on site",
+            style: { wrap: true, verticalAlign: "top" },
+          },
+          2,
+          9998,
+        ],
+        ["Chair", { value: "Mesh office chair", style: { indent: 1 } }, 4, 5198],
+        [
+          { value: "Total", style: { bold: true, border: ruled } },
+          { value: null, style: { border: ruled } },
+          { value: 6, style: { bold: true, border: ruled } },
+          { value: 15196, style: { bold: true, border: ruled } },
+        ],
+        [],
+        [{ value: "Payment within 30 days.", style: { italic: true, fontColor: "#808080" } }],
+      ],
+    },
+  ],
+};

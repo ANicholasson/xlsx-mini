@@ -8,8 +8,11 @@ export type ErrorCode =
   | "DATE_OUT_OF_RANGE"
   | "UNSUPPORTED_VALUE"
   | "INVALID_NUMBER_FORMAT"
+  | "INVALID_STYLE"
   | "INVALID_COLUMN_WIDTH"
   | "INVALID_FREEZE"
+  | "INVALID_MERGE"
+  | "INVALID_ROW_HEIGHT"
   | "CELL_TEXT_TOO_LONG"
   | "TOO_MANY_COLUMNS"
   | "TOO_MANY_ROWS"
@@ -34,8 +37,39 @@ export class XlsxMiniError extends Error {
   readonly path: string;
 
   constructor(code: ErrorCode, path: string, message: string) {
-    super(`${message} at ${path}`);
+    super(path.length === 0 ? message : `${message} at ${path}`);
     this.code = code;
     this.path = path;
   }
+}
+
+/**
+ * The same error at a longer path: a feature that validates without knowing where its input sits
+ * throws with the local path, and the caller prefixes its own. `prefix` ends up as `prefix.local`,
+ * or as `prefix` alone when the local path is empty.
+ */
+export function atPath(error: XlsxMiniError, prefix: string): XlsxMiniError {
+  const suffix = ` at ${error.path}`;
+  const message = error.message.endsWith(suffix)
+    ? error.message.slice(0, -suffix.length)
+    : error.message;
+  return new XlsxMiniError(
+    error.code,
+    error.path.length === 0 ? prefix : `${prefix}.${error.path}`,
+    message,
+  );
+}
+
+/**
+ * A value as an error message names it: strings quoted, other primitives as they print, objects
+ * by their tag or constructor. Never throws, unlike `JSON.stringify` on a bigint.
+ */
+export function describeValue(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value !== "object" || value === null) return String(value);
+  const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+  if (typeof tag === "string") return tag;
+  const constructor = (value as { constructor?: { name?: string } }).constructor;
+  return constructor?.name ?? "object";
 }

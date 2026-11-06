@@ -218,7 +218,7 @@ describe("renderWorksheet", () => {
         failure({ name: "S", rows: [[1], [{ value: 2, style: { numberFormat: "" } }]] }),
       ).toMatchObject({
         code: "INVALID_NUMBER_FORMAT",
-        path: "sheets[0].rows[1][0]",
+        path: "sheets[0].rows[1][0].style.numberFormat",
       });
       expect(
         failure(
@@ -457,6 +457,168 @@ describe("renderWorksheet", () => {
         code: "TOO_MANY_ROWS",
         path: "sheets[0].rows[1048576]",
       });
+    });
+  });
+
+  it("writes no cell when coerce returns null or undefined", () => {
+    const sheet: Sheet = { name: "S", rows: [[new Date(0), "kept"]] };
+    expect(render(sheet, { coerce: () => null })).toContain('<row r="1"><c r="B1" t="s">');
+    expect(render(sheet, { coerce: () => undefined })).not.toContain('r="A1"');
+  });
+
+  describe("appearance", () => {
+    it("writes a styled empty cell for a cell object with a style and no value, and nothing for a bare null in a styled column", () => {
+      const xml = render({
+        name: "S",
+        columns: [{ style: { fill: "#eeeeee" } }],
+        rows: [
+          [
+            null,
+            { value: null, style: { border: "thin" } },
+            { value: undefined, style: {} },
+            { value: null },
+          ],
+        ],
+      });
+      expect(xml).toMatch(/<row r="1"><c r="B1" s="\d+"\/><\/row>/);
+      expect(xml).toContain('<dimension ref="A1:B1"/>');
+    });
+
+    it("reports an invalid colour, border, alignment or indent at the property that carries it", () => {
+      expect(
+        failure({ name: "S", rows: [[{ value: 1, style: { fontColor: "red" } }]] }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].rows[0][0].style.fontColor" });
+      expect(
+        failure({
+          name: "S",
+          columns: [{ style: { border: { top: unsafe("dashed") as never } } }],
+          rows: [],
+        }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].columns[0].style.border.top" });
+      expect(
+        failure({
+          name: "S",
+          columns: [{ style: { align: unsafe("justify") as never } }],
+          rows: [],
+        }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].columns[0].style.align" });
+      expect(failure({ name: "S", rows: [[{ value: 1, style: { indent: 1.5 } }]] })).toMatchObject({
+        code: "INVALID_STYLE",
+        path: "sheets[0].rows[0][0].style.indent",
+      });
+    });
+  });
+
+  describe("merges", () => {
+    it("writes the merged ranges after the sheet data and the autofilter", () => {
+      const xml = render({
+        name: "S",
+        autoFilter: true,
+        merges: ["A1:C1", "A3:A4"],
+        rows: [["Title"], ["a", "b", "c"]],
+      });
+      expect(xml).toContain(
+        '</sheetData><autoFilter ref="A1:C2"/><mergeCells count="2"><mergeCell ref="A1:C1"/><mergeCell ref="A3:A4"/></mergeCells></worksheet>',
+      );
+    });
+
+    it("writes no element for an empty list", () => {
+      expect(render({ name: "S", merges: [], rows: [["a"]] })).not.toContain("mergeCells");
+    });
+
+    it("rejects ranges that are not A1 form, reversed, single cells, outside the sheet or overlapping", () => {
+      const bad = (merges: string[]) => failure({ name: "S", merges, rows: [] });
+      expect(bad(["A1"])).toMatchObject({ code: "INVALID_MERGE", path: "sheets[0].merges[0]" });
+      expect(bad(["a1:b1"])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad(["A1:B1", "C1:A2"])).toMatchObject({
+        code: "INVALID_MERGE",
+        path: "sheets[0].merges[1]",
+      });
+      expect(bad(["B2:B2"])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad(["XFE1:XFF1"])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad(["A1048576:A1048577"])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad(["A1:C3", "C3:D4"])).toMatchObject({
+        code: "INVALID_MERGE",
+        path: "sheets[0].merges[1]",
+      });
+      expect(bad([unsafe(7) as never])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad([unsafe(10n) as never])).toMatchObject({
+        code: "INVALID_MERGE",
+        path: "sheets[0].merges[0]",
+        message: 'A merge is a range in A1 form such as "A1:D1", not 10n at sheets[0].merges[0]',
+      });
+      expect(render({ name: "S", merges: ["A1:C3", "D3:D4", "XFD1:XFD2"], rows: [] })).toContain(
+        '<mergeCell ref="XFD1:XFD2"/>',
+      );
+    });
+  });
+
+  describe("row heights", () => {
+    it("writes a height on the row that has one, and an empty row for a height without cells", () => {
+      const xml = render({
+        name: "S",
+        rowHeights: { 1: 28, 2: 15.5, 5: 40 },
+        rows: [["title"], [], ["a"]],
+      });
+      expect(xml).toContain(
+        '<row r="1" ht="28" customHeight="1"><c r="A1" t="s"><v>0</v></c></row>',
+      );
+      expect(xml).toContain('<row r="2" ht="15.5" customHeight="1"/>');
+      expect(xml).toContain('<row r="3"><c r="A3" t="s"><v>1</v></c></row>');
+      expect(xml).toContain('</row><row r="5" ht="40" customHeight="1"/></sheetData>');
+      expect(xml).toContain('<dimension ref="A1:A3"/>');
+    });
+
+    it("rejects a style that is not an object, at the cell or the column", () => {
+      expect(failure({ name: "S", rows: [[unsafe({ value: 1, style: null })]] })).toMatchObject({
+        code: "INVALID_STYLE",
+        path: "sheets[0].rows[0][0].style",
+      });
+      expect(
+        failure({ name: "S", rows: [[unsafe({ value: null, style: "bold" })]] }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].rows[0][0].style" });
+      expect(
+        failure({ name: "S", columns: [{ style: null as never }], rows: [["a"]] }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].columns[0].style" });
+    });
+
+    it("keeps height-only rows inside sheetData when the sheet has no cells", () => {
+      const xml = render({ name: "S", rowHeights: { 1: 28 }, rows: [] });
+      expect(xml).toContain('<sheetData><row r="1" ht="28" customHeight="1"/></sheetData>');
+      expect(xml).not.toContain("<sheetData/>");
+      expect(xml).not.toContain("<dimension");
+      const sparse = render({ name: "S", rowHeights: { 2: 28 }, rows: [[null], []] });
+      expect(sparse).toContain('<sheetData><row r="2" ht="28" customHeight="1"/></sheetData>');
+    });
+
+    it("writes nothing extra when every height belongs to a row that was given", () => {
+      const xml = render({ name: "S", rowHeights: { 1: 20 }, rows: [["a"], ["b"]] });
+      expect(xml).toContain('<row r="1" ht="20" customHeight="1">');
+      expect(xml.match(/<row /g)).toHaveLength(2);
+    });
+
+    it("writes trailing heights in row order whatever the key order", () => {
+      const xml = render({ name: "S", rowHeights: { 9: 10, 4: 20 }, rows: [["a"]] });
+      expect(xml).toContain(
+        '<row r="4" ht="20" customHeight="1"/><row r="9" ht="10" customHeight="1"/>',
+      );
+    });
+
+    it("rejects row numbers below 1 or beyond the sheet and heights outside 0 to 409", () => {
+      const bad = (rowHeights: Record<number, number>) =>
+        failure({ name: "S", rowHeights, rows: [] });
+      expect(bad({ 0: 10 })).toMatchObject({
+        code: "INVALID_ROW_HEIGHT",
+        path: "sheets[0].rowHeights[0]",
+      });
+      expect(bad({ 1048577: 10 })).toMatchObject({ code: "INVALID_ROW_HEIGHT" });
+      expect(bad({ 2: 0 })).toMatchObject({
+        code: "INVALID_ROW_HEIGHT",
+        path: "sheets[0].rowHeights[2]",
+      });
+      expect(bad({ 2: 410 })).toMatchObject({ code: "INVALID_ROW_HEIGHT" });
+      expect(bad({ 2: Number.NaN })).toMatchObject({ code: "INVALID_ROW_HEIGHT" });
+      expect(bad({ [unsafe("x") as never]: 10 })).toMatchObject({ code: "INVALID_ROW_HEIGHT" });
     });
   });
 });
