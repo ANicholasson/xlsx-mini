@@ -121,10 +121,28 @@ describe("style table", () => {
     expect(xml).toContain('<cellXfs count="4">');
   });
 
+  it("aligns an indented cell left unless it says right, and keeps the font size boundaries", () => {
+    const table = createStyleTable();
+    table.indexFor({ indent: 1 }, undefined, NONE);
+    table.indexFor({ indent: 1, align: "left" }, undefined, NONE);
+    table.indexFor({ indent: 3, align: "right" }, undefined, NONE);
+    table.indexFor({ indent: 0, align: "center" }, undefined, NONE);
+    table.indexFor({ fontSize: 1 }, { fontSize: 409 }, NONE);
+    table.indexFor({ fontSize: 10.5 }, undefined, NONE);
+    const xml = table.render();
+    expect(xml).toContain('<cellXfs count="6">');
+    expect(xml).toContain('<alignment horizontal="left" indent="1"/>');
+    expect(xml).toContain('<alignment horizontal="right" indent="3"/>');
+    expect(xml).toContain('<alignment horizontal="center"/>');
+    expect(xml).toContain('<sz val="1"/>');
+    expect(xml).toContain('<sz val="10.5"/>');
+    expect(xml).not.toContain('<sz val="409"/>');
+  });
+
   it("writes an alignment child only for aligned, wrapped or indented formats, with middle as center", () => {
     const table = createStyleTable();
     table.indexFor(
-      { align: "center", verticalAlign: "middle", wrap: true, indent: 2 },
+      { align: "right", verticalAlign: "middle", wrap: true, indent: 2 },
       undefined,
       NONE,
     );
@@ -133,10 +151,11 @@ describe("style table", () => {
     table.indexFor({ bold: true }, undefined, NONE);
     const xml = table.render();
     expect(xml).toContain(
-      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" indent="2"/></xf>',
+      '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" indent="2"/></xf>',
     );
     expect(xml).toContain('<alignment horizontal="right" wrapText="1"/>');
     expect(xml).toContain('<alignment vertical="top"/>');
+    expect(xml).not.toContain('horizontal="left"');
     expect(xml).toContain(
       '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>',
     );
@@ -187,7 +206,27 @@ describe("style table", () => {
     expect(bad({ fontColor: "red" })).toMatchObject({ code: "INVALID_STYLE", path: "fontColor" });
     expect(bad({ fill: "#fff" })).toMatchObject({ code: "INVALID_STYLE", path: "fill" });
     expect(bad({ fontSize: 0 })).toMatchObject({ code: "INVALID_STYLE", path: "fontSize" });
+    expect(bad({ fontSize: 0.5 })).toMatchObject({ code: "INVALID_STYLE", path: "fontSize" });
     expect(bad({ fontSize: 410 })).toMatchObject({ code: "INVALID_STYLE", path: "fontSize" });
+    expect(bad({ fontSize: "12" })).toMatchObject({ code: "INVALID_STYLE", path: "fontSize" });
+    expect(bad({ bold: "yes" })).toMatchObject({ code: "INVALID_STYLE", path: "bold" });
+    expect(bad({ italic: 1 })).toMatchObject({ code: "INVALID_STYLE", path: "italic" });
+    expect(bad({ wrap: "false" })).toMatchObject({ code: "INVALID_STYLE", path: "wrap" });
+    expect(bad({ align: 10n })).toMatchObject({
+      code: "INVALID_STYLE",
+      path: "align",
+      message: "Alignments are left, center or right, not 10n at align",
+    });
+    expect(bad({ align: "center", indent: 1 })).toMatchObject({
+      code: "INVALID_STYLE",
+      path: "indent",
+    });
+    expect(bad(null as never)).toMatchObject({ code: "INVALID_STYLE", path: "" });
+    expect(bad("bold" as never)).toMatchObject({
+      code: "INVALID_STYLE",
+      path: "",
+      message: 'A style is an object, not "bold"',
+    });
     expect(bad({ border: "dashed" })).toMatchObject({ code: "INVALID_STYLE", path: "border" });
     expect(bad({ border: { left: "double" } })).toMatchObject({
       code: "INVALID_STYLE",
@@ -202,7 +241,19 @@ describe("style table", () => {
     expect(bad({ indent: -1 })).toMatchObject({ code: "INVALID_STYLE", path: "indent" });
     expect(bad({ indent: 251 })).toMatchObject({ code: "INVALID_STYLE", path: "indent" });
     expect(table.render()).toContain('<cellXfs count="1">');
-    const validate = (style: object) => () => table.validate(style as never);
+    const validate = (style: object | null) => () => table.validate(style as never);
+    expect(validate(null)).toThrow(expect.objectContaining({ code: "INVALID_STYLE", path: "" }));
+    expect(validate({ bold: "yes" })).toThrow(expect.objectContaining({ path: "bold" }));
+    expect(validate({ italic: 0 })).toThrow(expect.objectContaining({ path: "italic" }));
+    expect(validate({ wrap: 1 })).toThrow(expect.objectContaining({ path: "wrap" }));
+    expect(validate({ verticalAlign: "center" })).toThrow(
+      expect.objectContaining({ path: "verticalAlign" }),
+    );
+    expect(validate({ align: "center", indent: 2 })).toThrow(
+      expect.objectContaining({ path: "indent" }),
+    );
+    expect(validate({ fontSize: 1 })).not.toThrow();
+    expect(validate({ fontSize: 10.5 })).not.toThrow();
     expect(validate({ border: 3 })).toThrow(expect.objectContaining({ path: "border" }));
     expect(validate({ border: null })).not.toThrow();
     expect(table.indexFor({ border: null } as never, undefined, NONE)).toBe(0);

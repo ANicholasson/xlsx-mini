@@ -345,7 +345,7 @@ describe("appearance workbook (golden)", () => {
     expect(styles).toContain('<borders count="3">');
     expect(styles).toContain('<alignment horizontal="center" vertical="center"/>');
     expect(styles).toContain('<alignment vertical="top" wrapText="1"/>');
-    expect(styles).toContain('<alignment indent="1"/>');
+    expect(styles).toContain('<alignment horizontal="left" indent="1"/>');
     const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
     expect(sheet).toContain(
       '<row r="1" ht="28" customHeight="1"><c r="A1" s="1" t="s"><v>0</v></c></row>',

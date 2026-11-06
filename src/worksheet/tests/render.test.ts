@@ -542,6 +542,11 @@ describe("renderWorksheet", () => {
         path: "sheets[0].merges[1]",
       });
       expect(bad([unsafe(7) as never])).toMatchObject({ code: "INVALID_MERGE" });
+      expect(bad([unsafe(10n) as never])).toMatchObject({
+        code: "INVALID_MERGE",
+        path: "sheets[0].merges[0]",
+        message: 'A merge is a range in A1 form such as "A1:D1", not 10n at sheets[0].merges[0]',
+      });
       expect(render({ name: "S", merges: ["A1:C3", "D3:D4", "XFD1:XFD2"], rows: [] })).toContain(
         '<mergeCell ref="XFD1:XFD2"/>',
       );
@@ -562,6 +567,19 @@ describe("renderWorksheet", () => {
       expect(xml).toContain('<row r="3"><c r="A3" t="s"><v>1</v></c></row>');
       expect(xml).toContain('</row><row r="5" ht="40" customHeight="1"/></sheetData>');
       expect(xml).toContain('<dimension ref="A1:A3"/>');
+    });
+
+    it("rejects a style that is not an object, at the cell or the column", () => {
+      expect(failure({ name: "S", rows: [[unsafe({ value: 1, style: null })]] })).toMatchObject({
+        code: "INVALID_STYLE",
+        path: "sheets[0].rows[0][0].style",
+      });
+      expect(
+        failure({ name: "S", rows: [[unsafe({ value: null, style: "bold" })]] }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].rows[0][0].style" });
+      expect(
+        failure({ name: "S", columns: [{ style: null as never }], rows: [["a"]] }),
+      ).toMatchObject({ code: "INVALID_STYLE", path: "sheets[0].columns[0].style" });
     });
 
     it("keeps height-only rows inside sheetData when the sheet has no cells", () => {

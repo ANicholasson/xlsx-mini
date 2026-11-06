@@ -37,7 +37,7 @@ export class XlsxMiniError extends Error {
   readonly path: string;
 
   constructor(code: ErrorCode, path: string, message: string) {
-    super(`${message} at ${path}`);
+    super(path.length === 0 ? message : `${message} at ${path}`);
     this.code = code;
     this.path = path;
   }
@@ -58,4 +58,18 @@ export function atPath(error: XlsxMiniError, prefix: string): XlsxMiniError {
     error.path.length === 0 ? prefix : `${prefix}.${error.path}`,
     message,
   );
+}
+
+/**
+ * A value as an error message names it: strings quoted, other primitives as they print, objects
+ * by their tag or constructor. Never throws, unlike `JSON.stringify` on a bigint.
+ */
+export function describeValue(value: unknown): string {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "bigint") return `${value}n`;
+  if (typeof value !== "object" || value === null) return String(value);
+  const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
+  if (typeof tag === "string") return tag;
+  const constructor = (value as { constructor?: { name?: string } }).constructor;
+  return constructor?.name ?? "object";
 }

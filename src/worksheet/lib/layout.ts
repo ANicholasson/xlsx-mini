@@ -1,4 +1,4 @@
-import { XlsxMiniError, atPath } from "../../errors/index.js";
+import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { columnLetter } from "./cell-ref.js";
 import type { Sheet } from "./model.js";
@@ -113,7 +113,7 @@ export function renderMerges(sheet: Sheet, sheetIndex: number): string {
       throw new XlsxMiniError(
         "INVALID_MERGE",
         path,
-        `A merge is a range in A1 form such as "A1:D1", not ${JSON.stringify(ref)}`,
+        `A merge is a range in A1 form such as "A1:D1", not ${describeValue(ref)}`,
       );
     }
     const left = columnIndex(match[1]!);

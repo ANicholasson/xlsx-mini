@@ -1,4 +1,4 @@
-import { XlsxMiniError, atPath } from "../../errors/index.js";
+import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import type { XmlSink } from "../../xml/index.js";
@@ -364,11 +364,7 @@ function isWrapper(value: unknown): value is CellObject {
 }
 
 function describe(value: unknown): string {
-  if (typeof value !== "object" || value === null) return typeof value;
-  const tag = (value as { readonly [Symbol.toStringTag]?: unknown })[Symbol.toStringTag];
-  if (typeof tag === "string") return tag;
-  const constructor = (value as { constructor?: { name?: string } }).constructor;
-  return constructor?.name ?? "object";
+  return typeof value !== "object" || value === null ? typeof value : describeValue(value);
 }
 
 function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {

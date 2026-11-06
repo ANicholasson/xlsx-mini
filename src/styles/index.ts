@@ -1,4 +1,4 @@
-import { XlsxMiniError } from "../errors/index.js";
+import { XlsxMiniError, describeValue } from "../errors/index.js";
 import { XML_DECLARATION, escapeXml } from "../xml/index.js";
 
 /** Line style of a cell border. */
@@ -38,7 +38,10 @@ export interface CellStyle {
   readonly verticalAlign?: VerticalAlign;
   /** Wrap long text onto several lines inside the cell. */
   readonly wrap?: boolean;
-  /** Indent from the left edge, in Excel's indent steps, from 0 to 250. */
+  /**
+   * Indent in Excel's indent steps, from 0 to 250. Excel indents left- or right-aligned text, so an
+   * indent without `align` aligns left, and an indent with `center` is an error.
+   */
   readonly indent?: number;
   /** An Excel format string such as `"0.0%"` or `"yyyy-mm-dd"`, or a built-in format id from 0 to 49. */
   readonly numberFormat?: string | number;
@@ -63,6 +66,7 @@ const MAX_BUILT_IN_FORMAT = 49;
 const FIRST_CUSTOM_FORMAT = 164;
 const MAX_FORMAT_LENGTH = 255;
 const DEFAULT_FONT_SIZE = 11;
+const MIN_FONT_SIZE = 1;
 const MAX_FONT_SIZE = 409;
 const MAX_INDENT = 250;
 const COLOR = /^#[0-9a-fA-F]{6}$/;
@@ -93,10 +97,25 @@ function invalid(property: string, message: string): XlsxMiniError {
   return new XlsxMiniError("INVALID_STYLE", property, message);
 }
 
+/** The style itself must be an object; the path is empty because the whole value is wrong. */
+function styleObject(style: unknown): void {
+  if (typeof style !== "object" || style === null) {
+    throw invalid("", `A style is an object, not ${describeValue(style)}`);
+  }
+}
+
+function flag(property: string, value: unknown): boolean {
+  if (value === undefined) return false;
+  if (typeof value !== "boolean") {
+    throw invalid(property, `${property} is true or false, not ${describeValue(value)}`);
+  }
+  return value;
+}
+
 /** `#rrggbb` as the ARGB hex Excel stores, or an error naming the property. */
 function argb(property: string, color: string): string {
   if (typeof color !== "string" || !COLOR.test(color)) {
-    throw invalid(property, `Colours are written as #rrggbb, not ${JSON.stringify(color)}`);
+    throw invalid(property, `Colours are written as #rrggbb, not ${describeValue(color)}`);
   }
   return `FF${color.slice(1).toUpperCase()}`;
 }
@@ -104,10 +123,7 @@ function argb(property: string, color: string): string {
 function borderSide(property: string, style: unknown): BorderStyle | undefined {
   if (style === undefined) return undefined;
   if (typeof style !== "string" || !BORDER_STYLES.has(style)) {
-    throw invalid(
-      property,
-      `Border styles are thin, medium or thick, not ${JSON.stringify(style)}`,
-    );
+    throw invalid(property, `Border styles are thin, medium or thick, not ${describeValue(style)}`);
   }
   return style as BorderStyle;
 }
@@ -164,10 +180,10 @@ export function createStyleTable(): StyleTable {
 
   const fontSize = (size: number | undefined): number => {
     if (size === undefined) return DEFAULT_FONT_SIZE;
-    if (typeof size !== "number" || !(size > 0) || size > MAX_FONT_SIZE) {
+    if (typeof size !== "number" || !(size >= MIN_FONT_SIZE) || size > MAX_FONT_SIZE) {
       throw invalid(
         "fontSize",
-        `Font sizes run from above 0 to ${MAX_FONT_SIZE} points, not ${size}`,
+        `Font sizes run from ${MIN_FONT_SIZE} to ${MAX_FONT_SIZE} points, not ${describeValue(size)}`,
       );
     }
     return size;
@@ -248,7 +264,7 @@ export function createStyleTable(): StyleTable {
   const alignment = (align: string | undefined): string => {
     if (align === undefined) return "";
     if (!HORIZONTAL.has(align)) {
-      throw invalid("align", `Alignments are left, center or right, not ${JSON.stringify(align)}`);
+      throw invalid("align", `Alignments are left, center or right, not ${describeValue(align)}`);
     }
     return align;
   };
@@ -258,7 +274,7 @@ export function createStyleTable(): StyleTable {
     if (!VERTICAL.has(align)) {
       throw invalid(
         "verticalAlign",
-        `Vertical alignments are top, middle or bottom, not ${JSON.stringify(align)}`,
+        `Vertical alignments are top, middle or bottom, not ${describeValue(align)}`,
       );
     }
     return align === "middle" ? "center" : align;
@@ -267,9 +283,19 @@ export function createStyleTable(): StyleTable {
   const indentation = (indent: number | undefined): number => {
     if (indent === undefined) return 0;
     if (!Number.isInteger(indent) || indent < 0 || indent > MAX_INDENT) {
-      throw invalid("indent", `Indents are whole numbers from 0 to ${MAX_INDENT}, not ${indent}`);
+      throw invalid(
+        "indent",
+        `Indents are whole numbers from 0 to ${MAX_INDENT}, not ${describeValue(indent)}`,
+      );
     }
     return indent;
+  };
+
+  /** Excel indents only left- or right-aligned text: an indent alone aligns left, with center it is an error. */
+  const indentedAlignment = (align: string, indent: number): string => {
+    if (indent === 0) return align;
+    if (align === "center") throw invalid("indent", "An indent cannot go with center alignment");
+    return align.length === 0 ? "left" : align;
   };
 
   const register = (r: Resolved): number => {
@@ -329,20 +355,21 @@ export function createStyleTable(): StyleTable {
     dateDefault: number,
   ): number => {
     const format = cell?.numberFormat ?? column?.numberFormat;
+    const indent = indentation(cell?.indent ?? column?.indent);
     return register({
       numberFormat: format === undefined ? dateDefault : formatId(format),
       fontId: fontId(
-        cell?.bold ?? column?.bold ?? false,
-        cell?.italic ?? column?.italic ?? false,
+        flag("bold", cell?.bold ?? column?.bold),
+        flag("italic", cell?.italic ?? column?.italic),
         cell?.fontSize ?? column?.fontSize,
         cell?.fontColor ?? column?.fontColor,
       ),
       fillId: fillId(cell?.fill ?? column?.fill),
       borderId: borderId(cell?.border ?? column?.border),
-      align: alignment(cell?.align ?? column?.align),
+      align: indentedAlignment(alignment(cell?.align ?? column?.align), indent),
       verticalAlign: verticalAlignment(cell?.verticalAlign ?? column?.verticalAlign),
-      wrap: cell?.wrap ?? column?.wrap ?? false,
-      indent: indentation(cell?.indent ?? column?.indent),
+      wrap: flag("wrap", cell?.wrap ?? column?.wrap),
+      indent,
     });
   };
 
@@ -352,6 +379,8 @@ export function createStyleTable(): StyleTable {
         if (dateDefault === GENERAL) return 0;
         return (byDateDefault[dateDefault] ??= register(dateOnly(dateDefault)));
       }
+      // Column styles were validated when the columns were collected; a cell style is met here first.
+      if (cell !== undefined) styleObject(cell);
       if (cell === undefined || column === undefined) {
         const single = (cell ?? column)!;
         if (dateDefault === GENERAL) {
@@ -372,7 +401,10 @@ export function createStyleTable(): StyleTable {
       return (dated[dateDefault] ??= merge(cell, column, dateDefault));
     },
     validate(style) {
+      styleObject(style);
       if (style.numberFormat !== undefined) formatId(style.numberFormat);
+      flag("bold", style.bold);
+      flag("italic", style.italic);
       fontSize(style.fontSize);
       if (style.fontColor !== undefined) argb("fontColor", style.fontColor);
       if (style.fill !== undefined) argb("fill", style.fill);
@@ -383,9 +415,9 @@ export function createStyleTable(): StyleTable {
         } else
           throw invalid("border", "A border is a line style or an object with a style per side");
       }
-      alignment(style.align);
+      flag("wrap", style.wrap);
       verticalAlignment(style.verticalAlign);
-      indentation(style.indent);
+      indentedAlignment(alignment(style.align), indentation(style.indent));
     },
     render() {
       let numberFormats = "";

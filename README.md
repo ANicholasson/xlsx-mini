@@ -249,7 +249,7 @@ export default function formats(): Promise<Uint8Array> {
 
 ## Fonts, fills, borders and alignment
 
-A style also sets the font (`italic`, `fontSize` in points, `fontColor`), a solid `fill`, a `border` for all four sides or per side (`thin`, `medium`, `thick`), `align`, `verticalAlign`, `wrap` and `indent`. Colours are `#rrggbb`. A sheet merges ranges with `merges` and sets `rowHeights` in points by row number. A cell object with a style and a `null` value writes an empty styled cell, which is how a border or a fill runs across a blank.
+A style also sets the font (`italic`, `fontSize` in points, `fontColor`), a solid `fill`, a `border` for all four sides or per side (`thin`, `medium`, `thick`), `align`, `verticalAlign`, `wrap` and `indent`. An indent aligns left unless `align` is `right`. Colours are `#rrggbb`. A sheet merges ranges with `merges` and sets `rowHeights` in points by row number. A cell object with a style and a `null` value writes an empty styled cell, which is how a border or a fill runs across a blank.
 
 <!-- snippet: appearance -->
 
