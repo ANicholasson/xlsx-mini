@@ -45,17 +45,17 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
   const merges = renderMerges(sheet, context.sheetIndex);
   const rowHeights = collectRowHeights(sheet, context.sheetIndex);
   const sink = createXmlSink();
-  const range = renderSheetData(sheet.rows, columns.styles, context, sink, rowHeights);
-  const empty = range.length === 0;
-  const dimension = empty ? "" : `<dimension ref="${range}"/>`;
-  const filterRange = sheet.autoFilter === true && !empty ? range : undefined;
+  const { range, hasRows } = renderSheetData(sheet.rows, columns.styles, context, sink, rowHeights);
+  const noCells = range.length === 0;
+  const dimension = noCells ? "" : `<dimension ref="${range}"/>`;
+  const filterRange = sheet.autoFilter === true && !noCells ? range : undefined;
   const autoFilter = filterRange === undefined ? "" : `<autoFilter ref="${filterRange}"/>`;
   const prefix =
     `${XML_DECLARATION}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
     dimension +
     views +
     columns.cols +
-    (empty ? "<sheetData/>" : "<sheetData>");
-  const suffix = (empty ? "" : "</sheetData>") + autoFilter + merges + "</worksheet>";
+    (hasRows ? "<sheetData>" : "<sheetData/>");
+  const suffix = (hasRows ? "</sheetData>" : "") + autoFilter + merges + "</worksheet>";
   return { data: sink.finish(prefix, suffix), filterRange };
 }

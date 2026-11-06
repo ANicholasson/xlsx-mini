@@ -564,6 +564,15 @@ describe("renderWorksheet", () => {
       expect(xml).toContain('<dimension ref="A1:A3"/>');
     });
 
+    it("keeps height-only rows inside sheetData when the sheet has no cells", () => {
+      const xml = render({ name: "S", rowHeights: { 1: 28 }, rows: [] });
+      expect(xml).toContain('<sheetData><row r="1" ht="28" customHeight="1"/></sheetData>');
+      expect(xml).not.toContain("<sheetData/>");
+      expect(xml).not.toContain("<dimension");
+      const sparse = render({ name: "S", rowHeights: { 2: 28 }, rows: [[null], []] });
+      expect(sparse).toContain('<sheetData><row r="2" ht="28" customHeight="1"/></sheetData>');
+    });
+
     it("writes nothing extra when every height belongs to a row that was given", () => {
       const xml = render({ name: "S", rowHeights: { 1: 20 }, rows: [["a"], ["b"]] });
       expect(xml).toContain('<row r="1" ht="20" customHeight="1">');

@@ -31,10 +31,17 @@ export interface WorksheetContext {
   readonly sheetIndex: number;
 }
 
+/** What was written to the sink: the used range of cells, and whether any row element was emitted. */
+export interface SheetData {
+  /** The used range such as `A1:C4`, or an empty string when no cell was written. */
+  readonly range: string;
+  /** True when at least one `<row>` was written, including rows that only carry a height. */
+  readonly hasRows: boolean;
+}
+
 /**
- * Renders every row with at least one cell into the sink; positions survive because rows and
- * cells carry `r`. Returns the used range such as `A1:C4`, or an empty string when no cell was
- * written.
+ * Renders every row with at least one cell, or a height, into the sink; positions survive
+ * because rows and cells carry `r`.
  */
 export function renderSheetData(
   rows: Iterable<Row>,
@@ -42,10 +49,11 @@ export function renderSheetData(
   context: WorksheetContext,
   sink: XmlSink,
   rowHeights?: Readonly<Record<number, number>>,
-): string {
+): SheetData {
   let rowIndex = -1;
   let lastRowWithCells = 0;
   let maxColumn = -1;
+  let hasRows = false;
 
   for (const row of rows) {
     rowIndex++;
@@ -75,38 +83,47 @@ export function renderSheetData(
     const rowNumber = rowIndex + 1;
     const height = rowHeights?.[rowNumber];
     if (cells.length === 0) {
-      if (height !== undefined) sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+      if (height === undefined) continue;
+      sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+      hasRows = true;
       continue;
     }
     sink.write(
       `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
     );
+    hasRows = true;
     lastRowWithCells = rowNumber;
   }
 
-  if (rowHeights !== undefined) renderTrailingHeights(rowHeights, rowIndex + 1, sink);
-  if (lastRowWithCells === 0) return "";
-  return `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+  if (rowHeights !== undefined && renderTrailingHeights(rowHeights, rowIndex + 1, sink)) {
+    hasRows = true;
+  }
+  const range = lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+  return { range, hasRows };
 }
 
 function heightAttributes(height: number): string {
   return ` ht="${height}" customHeight="1"`;
 }
 
-/** Heights of rows past the last row given are written as empty rows, in order, so they still apply. */
+/**
+ * Heights of rows past the last row given are written as empty rows, in order, so they still
+ * apply. Returns true when any row was written.
+ */
 function renderTrailingHeights(
   rowHeights: Readonly<Record<number, number>>,
   rowsGiven: number,
   sink: XmlSink,
-): void {
+): boolean {
   const trailing: number[] = [];
   for (const key of Object.keys(rowHeights)) {
     const row = Number(key);
     if (row > rowsGiven) trailing.push(row);
   }
-  if (trailing.length === 0) return;
+  if (trailing.length === 0) return false;
   trailing.sort((a, b) => a - b);
   for (const row of trailing) sink.write(`<row r="${row}"${heightAttributes(rowHeights[row]!)}/>`);
+  return true;
 }
 
 function renderCell(
