@@ -42,7 +42,7 @@ describe("pre-commit staged tasks", () => {
   }, 30_000);
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  // Regression test from the Codex review of pull request #15: the linter used to run on commits
+  // Regression test: the linter used to run on commits
   // that staged only JSON, Markdown or YAML, found nothing to lint, and blocked the commit.
   it("lets a commit through that stages only JSON, Markdown or YAML", () => {
     writeFileSync(join(dir, "notes.md"), "# Notes\n");

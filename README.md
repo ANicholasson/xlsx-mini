@@ -380,6 +380,8 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 
+Below 1.0.0 a minor version may change this API; 1.0.0 follows once it has survived real use unchanged, with no code change of its own.
+
 ## Security
 
 No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
@@ -403,12 +405,12 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Fixture                          | Excel 16.114 (macOS) | Numbers 14.4 | Google Sheets | LibreOffice 26.8 |
 | -------------------------------- | :------------------: | :----------: | :-----------: | :--------------: |
 | Strings and numbers              |        clean         |    clean     |     clean     |      clean       |
-| Every kind of cell value         |        clean         |    clean     |    pending    |      clean       |
-| Deflated entries                 |        clean         |    clean     |    pending    |      clean       |
-| Several sheets, escaped names    |        clean         |    clean     |    pending    |      clean       |
-| Styles and number formats        |        clean         |    clean     |    pending    |      clean       |
-| Widths, frozen panes, autofilter |        clean         |    clean     |    pending    |      clean       |
-| Built from objects               |        clean         |    clean     |    pending    |      clean       |
+| Every kind of cell value         |        clean         |    clean     |     clean     |      clean       |
+| Deflated entries                 |        clean         |    clean     |     clean     |      clean       |
+| Several sheets, escaped names    |        clean         |    clean     |     clean     |      clean       |
+| Styles and number formats        |        clean         |    clean     |     clean     |      clean       |
+| Widths, frozen panes, autofilter |        clean         |    clean     |     clean     |      clean       |
+| Built from objects               |        clean         |    clean     |     clean     |      clean       |
 
 LibreOffice also reads every fixture back cell for cell in CI, on every change.
 
