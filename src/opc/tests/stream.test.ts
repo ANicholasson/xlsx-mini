@@ -388,6 +388,30 @@ describe("streamPackage", () => {
     expect(returned).toBe(true);
   });
 
+  it("settles a cancel that arrives while a read waits on a part that produces nothing", async () => {
+    let returned = false;
+    const silent: StreamedPart = {
+      path: "silent",
+      body: new ReadableStream({
+        pull: () => new Promise<void>(() => undefined),
+      }),
+    };
+    async function* source(): AsyncGenerator<StreamedPart> {
+      try {
+        yield silent;
+      } finally {
+        returned = true;
+      }
+    }
+    const reader = streamPackage(source(), stored).getReader();
+    await reader.read(); // the local header
+    const pending = reader.read(); // waits on the body
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(reader.cancel("gone")).resolves.toBeUndefined();
+    await expect(pending).resolves.toMatchObject({ done: true });
+    expect(returned).toBe(true);
+  });
+
   it("errors the stream when a part fails", async () => {
     const failing: StreamedPart = {
       path: "bad",

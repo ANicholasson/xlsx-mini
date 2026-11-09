@@ -445,27 +445,27 @@ export default async function safely(): Promise<string> {
 }
 ```
 
-| Code                    | When                                                                                           |
-| ----------------------- | ---------------------------------------------------------------------------------------------- |
-| `NO_SHEETS`             | The workbook has no sheet.                                                                     |
-| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`. |
-| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                        |
-| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                          |
-| `INVALID_DATE`          | An invalid `Date`.                                                                             |
-| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                         |
-| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                         |
-| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                 |
-| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                      |
-| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.   |
-| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                      |
-| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.        |
-| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                      |
-| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                   |
-| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                               |
-| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                      |
-| `PACKAGE_TOO_LARGE`     | The file would pass 4 GiB, or has more than 65 529 sheets.                                     |
-| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                      |
-| `NO_DOM`                | `downloadXlsx` called where there is no document.                                              |
+| Code                    | When                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------- |
+| `NO_SHEETS`             | The workbook has no sheet.                                                                        |
+| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.    |
+| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                           |
+| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                             |
+| `INVALID_DATE`          | An invalid `Date`.                                                                                |
+| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                            |
+| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                            |
+| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                    |
+| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                         |
+| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.      |
+| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                         |
+| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.           |
+| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                         |
+| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                      |
+| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                  |
+| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                         |
+| `PACKAGE_TOO_LARGE`     | The file, or when streaming one part before compression, would pass 4 GiB; or over 65 529 sheets. |
+| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                         |
+| `NO_DOM`                | `downloadXlsx` called where there is no document.                                                 |
 
 Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped, and positions stay where you put them.
 

@@ -188,17 +188,24 @@ export function streamPackage(
   /** Cancels the open part, lets a part still arriving be cancelled on arrival, and returns the iterator. */
   const release = async (reason: unknown): Promise<void> => {
     cancelled = { reason };
-    // A part still being taken from the iterator is cancelled by openNext once it arrives.
-    await opening?.catch(() => undefined);
-    if (open !== undefined) {
-      // Older runtimes do not error a transform's writable side when its readable is cancelled, so
-      // a write held back by the compressor would never settle and the body's pipe never shut down.
-      open.errorTap(reason);
-      open.abort.abort(reason);
-      await open.piped;
-      await open.reader.cancel(reason).catch(() => undefined);
+    // The open part is captured first: a pending read may resolve as done while this waits, and
+    // closeOpen then clears `open`. The iterator is returned whatever happens on the way.
+    const current = open;
+    try {
+      // A part still being taken from the iterator is cancelled by openNext once it arrives.
+      await opening?.catch(() => undefined);
+      if (current !== undefined) {
+        // Older runtimes do not error a transform's writable side when its readable is cancelled,
+        // so a write held back by the compressor would never settle and the body's pipe never
+        // shut down.
+        current.errorTap(reason);
+        current.abort.abort(reason);
+        await current.piped;
+        await current.reader.cancel(reason).catch(() => undefined);
+      }
+    } finally {
+      await parts.return?.(undefined);
     }
-    await parts.return?.(undefined);
   };
 
   /** One pull's work: a pull that enqueues nothing is never called again, so this loops until it has. */
