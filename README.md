@@ -572,7 +572,7 @@ export default async function safely(): Promise<string> {
 | `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
 | `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                                                                     |
 | `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters or starts with `=`; a cached value that is not text, a number or a boolean.                    |
-| `INVALID_HYPERLINK`     | An `href` that is not an absolute URL, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.                            |
+| `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.  |
 | `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
 | `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                  |
 | `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                                                                  |
