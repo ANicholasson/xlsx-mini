@@ -1,0 +1,164 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vite-plus/test";
+import {
+  type Row,
+  type StreamOptions,
+  type StreamedWorkbook,
+  type Workbook,
+  streamXlsx,
+  writeXlsx,
+} from "../src/index.js";
+import {
+  appearanceWorkbook,
+  cellTypesOptions,
+  cellTypesWorkbook,
+  layoutWorkbook,
+  minimalWorkbook,
+  multiSheetWorkbook,
+  stylesWorkbook,
+} from "./fixtures/workbooks.js";
+import { readPart, unzip } from "./helpers/unzip.js";
+
+const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+const decode = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
+
+async function collect(stream: ReadableStream<Uint8Array>): Promise<Uint8Array> {
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** The parts by name, with the one element the byte path writes and the stream cannot removed. */
+function comparable(bytes: Uint8Array): [string, string][] {
+  return unzip(bytes)
+    .map(
+      (e) => [e.name, decode(e.data).replace(/<dimension ref="[^"]*"\/>/, "")] as [string, string],
+    )
+    .sort((a, b) => a[0].localeCompare(b[0]));
+}
+
+const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
+  ["minimal", minimalWorkbook, {}],
+  ["cell types", cellTypesWorkbook, cellTypesOptions],
+  ["multi-sheet", multiSheetWorkbook, {}],
+  ["styles", stylesWorkbook, {}],
+  ["layout", layoutWorkbook, {}],
+  ["appearance", appearanceWorkbook, {}],
+];
+
+describe("streamXlsx", () => {
+  it.each(fixtures)(
+    "streams the %s workbook with shared strings to the same parts writeXlsx writes",
+    async (_name, workbook, options) => {
+      const streamed = await collect(
+        streamXlsx(workbook, { ...options, strings: "shared", compression: "none" }),
+      );
+      const written = await writeXlsx(workbook, { ...options, compression: "none" });
+      expect(comparable(streamed)).toEqual(comparable(written));
+      const entries = unzip(streamed);
+      expect(entries.every((e) => e.method === 8)).toBe(true);
+      expect(entries.map((e) => e.name).slice(0, 3)).toEqual([
+        "[Content_Types].xml",
+        "_rels/.rels",
+        "xl/_rels/workbook.xml.rels",
+      ]);
+    },
+  );
+
+  it("writes inline strings by default, with an empty shared-strings part the package still declares", async () => {
+    const bytes = await collect(streamXlsx(minimalWorkbook, { compression: "none" }));
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('t="inlineStr"><is><t>');
+    expect(sheet).not.toContain('t="s"');
+    expect(readPart(bytes, "xl/sharedStrings.xml")).toContain('count="0" uniqueCount="0"');
+    expect(readPart(bytes, "[Content_Types].xml")).toContain("/xl/sharedStrings.xml");
+    expect(readPart(bytes, "xl/_rels/workbook.xml.rels")).toContain("sharedStrings.xml");
+  });
+
+  it("is byte-identical to the committed streamed fixture", async () => {
+    const bytes = await collect(streamXlsx(appearanceWorkbook, { compression: "none" }));
+    const file = join(fixturesDir, "streamed.xlsx");
+    if (process.env["UPDATE_FIXTURES"] === "1" || !existsSync(file)) writeFileSync(file, bytes);
+    expect(bytes).toEqual(new Uint8Array(readFileSync(file)));
+  });
+
+  it("compresses by default to the same parts as the stored-block form", async () => {
+    const deflated = unzip(await collect(streamXlsx(appearanceWorkbook)));
+    const stored = unzip(await collect(streamXlsx(appearanceWorkbook, { compression: "none" })));
+    expect(deflated.map((e) => [e.name, decode(e.data)])).toEqual(
+      stored.map((e) => [e.name, decode(e.data)]),
+    );
+    expect(deflated.reduce((n, e) => n + e.compressedSize, 0)).toBeLessThan(
+      stored.reduce((n, e) => n + e.compressedSize, 0),
+    );
+  });
+
+  it("takes rows from async iterables and names the filter range after the last row", async () => {
+    async function* rows(): AsyncGenerator<Row> {
+      yield ["Name", "Amount"];
+      for (let i = 0; i < 5; i++) yield [`row ${i}`, i];
+    }
+    const workbook: StreamedWorkbook = {
+      sheets: [{ name: "Orders", rows: rows(), autoFilter: true }],
+    };
+    const bytes = await collect(streamXlsx(workbook, { compression: "none" }));
+    expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain('<autoFilter ref="A1:B6"/>');
+    expect(readPart(bytes, "xl/workbook.xml")).toContain("$A$1:$B$6</definedName>");
+  });
+
+  it("throws before the stream exists when the workbook itself is invalid", () => {
+    expect(() => streamXlsx({ sheets: [] })).toThrow(
+      expect.objectContaining({ code: "NO_SHEETS" }),
+    );
+    expect(() =>
+      streamXlsx({
+        sheets: [
+          { name: "a", rows: [] },
+          { name: "A", rows: [] },
+        ],
+      }),
+    ).toThrow(expect.objectContaining({ code: "DUPLICATE_SHEET_NAME" }));
+  });
+
+  it("errors the stream with the cell's error when a row cannot be written", async () => {
+    const stream = streamXlsx({
+      sheets: [{ name: "S", rows: [["ok"], [{ value: 1, style: { fill: "red" } }]] }],
+    });
+    await expect(collect(stream)).rejects.toMatchObject({
+      code: "INVALID_STYLE",
+      path: "sheets[0].rows[1][0].style.fill",
+    });
+  });
+
+  it("reads no row before the first pull and closes the row source when the consumer cancels", async () => {
+    const log: string[] = [];
+    async function* cursor(): AsyncGenerator<Row> {
+      try {
+        log.push("opened");
+        for (let i = 0; ; i++) yield [`row ${i}`];
+      } finally {
+        log.push("closed");
+      }
+    }
+    const stream = streamXlsx({ sheets: [{ name: "S", rows: cursor() }] });
+    await Promise.resolve();
+    expect(log).toEqual([]);
+    const reader = stream.getReader();
+    // The three parts before the sheet go out without touching a row.
+    for (let i = 0; i < 100 && log.length === 0; i++) await reader.read();
+    expect(log).toEqual(["opened"]);
+    await reader.cancel("client went away");
+    expect(log).toEqual(["opened", "closed"]);
+  });
+
+  it("refuses async rows on the byte path with a coded error", async () => {
+    async function* rows(): AsyncGenerator<Row> {
+      yield ["a"];
+    }
+    const workbook = { sheets: [{ name: "S", rows: rows() }] } as unknown as Workbook;
+    await expect(writeXlsx(workbook)).rejects.toMatchObject({
+      code: "ASYNC_ROWS",
+      path: "sheets[0].rows",
+    });
+  });
+});

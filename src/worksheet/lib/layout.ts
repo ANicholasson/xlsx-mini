@@ -1,7 +1,7 @@
 import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { columnLetter } from "./cell-ref.js";
-import type { Sheet } from "./model.js";
+import type { StreamedSheet } from "./model.js";
 
 const MAX_COLUMN_WIDTH = 255;
 const MAX_ROW_HEIGHT = 409;
@@ -17,7 +17,7 @@ export interface CollectedColumns {
 
 /** Validates every column up front, so a bad width or style is reported at the column. */
 export function collectColumns(
-  sheet: Sheet,
+  sheet: StreamedSheet,
   sheetIndex: number,
   validateStyle: (style: CellStyle) => void,
 ): CollectedColumns {
@@ -55,7 +55,7 @@ export function collectColumns(
 }
 
 /** The `<sheetViews>` element with a frozen pane, or an empty string when nothing is frozen. */
-export function renderFreeze(sheet: Sheet, sheetIndex: number): string {
+export function renderFreeze(sheet: StreamedSheet, sheetIndex: number): string {
   const freeze = sheet.freeze;
   if (freeze === undefined) return "";
   const rows = freeze.rows ?? 0;
@@ -101,7 +101,7 @@ interface Box {
  * The `<mergeCells>` element, or an empty string. Every range is validated as A1 form inside the
  * sheet, larger than one cell, and overlapping no other: Excel repairs a file whose merges overlap.
  */
-export function renderMerges(sheet: Sheet, sheetIndex: number): string {
+export function renderMerges(sheet: StreamedSheet, sheetIndex: number): string {
   const merges = sheet.merges;
   if (merges === undefined || merges.length === 0) return "";
   const boxes: Box[] = [];
@@ -157,7 +157,7 @@ export function renderMerges(sheet: Sheet, sheetIndex: number): string {
 
 /** Row heights validated up front: whole row numbers from 1, heights from above 0 to 409 points. */
 export function collectRowHeights(
-  sheet: Sheet,
+  sheet: StreamedSheet,
   sheetIndex: number,
 ): Readonly<Record<number, number>> | undefined {
   const heights = sheet.rowHeights;

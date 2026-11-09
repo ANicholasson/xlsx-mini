@@ -43,4 +43,12 @@ describe("validateWorkbook", () => {
       validateWorkbook({ sheets: [sheet("Data"), sheet("Other"), sheet("data")] }),
     ).toThrow(expect.objectContaining({ code: "DUPLICATE_SHEET_NAME", path: "sheets[2].name" }));
   });
+
+  it("rejects more sheets than a zip archive can count", () => {
+    const sheets = Array.from({ length: 0xffff - 5 }, (_, i) => ({ name: `S${i}`, rows: [] }));
+    expect(() => validateWorkbook({ sheets })).toThrow(
+      expect.objectContaining({ code: "PACKAGE_TOO_LARGE", path: "sheets" }),
+    );
+    expect(() => validateWorkbook({ sheets: sheets.slice(1) })).not.toThrow();
+  });
 });

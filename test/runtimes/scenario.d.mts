@@ -1,4 +1,4 @@
-import type { Workbook, WriteOptions } from "../../src/index.js";
+import type { StreamOptions, StreamedWorkbook, Workbook, WriteOptions } from "../../src/index.js";
 
 /** What every host reports back after running the scenario. */
 export interface HostReport {
@@ -6,6 +6,10 @@ export interface HostReport {
   readonly stored: string;
   /** The default package, base64: DEFLATE entries where the host can deflate, STORE otherwise. */
   readonly deflated: string;
+  /** The workbook streamed with shared strings and stored blocks from async rows, base64: byte-identical on every host. */
+  readonly streamed: string;
+  /** The workbook streamed with the defaults, base64: raw deflate where the host has it, stored blocks otherwise. */
+  readonly streamedDeflated: string;
   /** The media type exported by the browser entry. */
   readonly mime: string;
   /** The error code `downloadXlsx` threw on a host without a document. */
@@ -15,6 +19,7 @@ export interface HostReport {
 /** The shape of the core entry the scenario needs, as any host loads it. */
 export interface CoreLike {
   writeXlsx(workbook: Workbook, options?: WriteOptions): Promise<Uint8Array>;
+  streamXlsx(workbook: StreamedWorkbook, options?: StreamOptions): ReadableStream<Uint8Array>;
   XlsxMiniError: new (...args: never[]) => Error;
 }
 

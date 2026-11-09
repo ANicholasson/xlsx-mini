@@ -9,7 +9,7 @@ import type * as Api from "../src/index.ts";
 import type { BenchmarkResult, RunResult, Timing, Variant } from "./report.ts";
 import { suites } from "./workbooks.ts";
 
-type Write = () => Promise<Uint8Array>;
+type Write = () => Promise<unknown>;
 
 interface RuntimeInfo {
   readonly runtime: string;
@@ -65,11 +65,17 @@ const iterations = Number(argument("--iterations") ?? 7);
 const benchmarks: BenchmarkResult[] = [];
 for (const [suite, build] of suites) {
   const workbook = build();
-  for (const variant of ["deflate", "store"] as const satisfies readonly Variant[]) {
+  for (const variant of ["deflate", "store", "stream"] as const satisfies readonly Variant[]) {
     const options = variant === "store" ? { compression: "none" as const } : undefined;
-    const headWrite: Write = () => head.writeXlsx(workbook, options);
-    const baseWrite: Write | undefined =
-      base === undefined ? undefined : () => base.writeXlsx(workbook, options);
+    const writeWith = (api: typeof Api): Write | undefined => {
+      if (variant !== "stream") return () => api.writeXlsx(workbook, options);
+      // A build without streaming, such as a base from before it, skips the variant.
+      if (typeof api.streamXlsx !== "function") return undefined;
+      return () => api.streamXlsx(workbook).pipeTo(new WritableStream());
+    };
+    const headWrite = writeWith(head);
+    if (headWrite === undefined) continue;
+    const baseWrite = base === undefined ? undefined : writeWith(base);
     // One warm-up each, then the two builds in turns, the order swapped every iteration so that
     // neither side always pays for the other's garbage or always gets the warmer cache; a
     // collection before each timed call, where the host exposes one, takes the rest of that bias.

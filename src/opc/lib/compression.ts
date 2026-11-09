@@ -1,3 +1,5 @@
+import { createStoredBlocksStream } from "./stored-blocks.js";
+
 /** How entries are stored in the package: the zip method id and the transform that produces them. */
 export interface Compression {
   /** Zip method: 0 for STORE, 8 for DEFLATE. */
@@ -32,6 +34,41 @@ export function selectCompression(mode: CompressionMode): Compression {
     return deflateRaw;
   } catch {
     return store;
+  }
+}
+
+/**
+ * How a streamed entry is produced: always method 8, through the runtime's raw deflate where it
+ * exists and through stored blocks where it does not, because a STORE entry whose size follows its
+ * data cannot be read by a sequential reader.
+ */
+export interface StreamCompression {
+  readonly method: 8;
+  transform(): ReadableWritablePair<Uint8Array, Uint8Array>;
+}
+
+const streamDeflateRaw: StreamCompression = {
+  method: 8,
+  transform: () => {
+    const stream = new CompressionStream("deflate-raw");
+    // The compressor takes any BufferSource; every chunk here is a Uint8Array.
+    return { readable: stream.readable, writable: stream.writable as WritableStream<Uint8Array> };
+  },
+};
+
+const streamStoredBlocks: StreamCompression = {
+  method: 8,
+  transform: createStoredBlocksStream,
+};
+
+/** The streamed counterpart of `selectCompression`: `"none"` and a runtime without raw deflate both give stored blocks. */
+export function selectStreamCompression(mode: CompressionMode): StreamCompression {
+  if (mode === "none") return streamStoredBlocks;
+  try {
+    void new CompressionStream("deflate-raw");
+    return streamDeflateRaw;
+  } catch {
+    return streamStoredBlocks;
   }
 }
 

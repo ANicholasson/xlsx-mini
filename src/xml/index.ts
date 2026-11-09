@@ -113,9 +113,73 @@ const utf8 = new TextEncoder();
  * JavaScript string. `write` takes whole characters; `finish` wraps the body in the text that is
  * only known at the end, such as a dimension computed from the rows, and returns the bytes.
  */
-export interface XmlSink {
-  write(text: string): void;
+export interface XmlSink extends TextSink {
   finish(prefix: string, suffix: string): Uint8Array;
+}
+
+/** Where rendered text goes; the renderers need nothing more than `write`. */
+export interface TextSink {
+  write(text: string): void;
+}
+
+/** The most bytes one streamed chunk carries: one stored deflate block where that fallback applies. */
+export const MAX_CHUNK_SIZE = 65_535;
+/** A chunk sink encodes once pending text could fill a chunk: three bytes per UTF-16 unit at most. */
+const CHUNK_FLUSH_AT = 21_845;
+
+/**
+ * Collects the text of one streamed part and hands it out as encoded chunks of at most
+ * `MAX_CHUNK_SIZE` bytes: `take` returns the next ready chunk or `undefined`, `end` encodes what
+ * is left so the last `take` calls drain it.
+ */
+export interface ChunkSink extends TextSink {
+  take(): Uint8Array | undefined;
+  end(): void;
+}
+
+export function createChunkSink(): ChunkSink {
+  const ready: Uint8Array[] = [];
+  let next = 0;
+  let pending = "";
+  let chunk = new Uint8Array(MAX_CHUNK_SIZE);
+  let used = 0;
+
+  const encode = (): void => {
+    let text = pending;
+    pending = "";
+    while (text.length > 0) {
+      const { read, written } = utf8.encodeInto(text, chunk.subarray(used));
+      used += written;
+      if (read === text.length) break;
+      // The chunk cannot take the next character: it is ready, start another.
+      ready.push(chunk.subarray(0, used));
+      chunk = new Uint8Array(MAX_CHUNK_SIZE);
+      used = 0;
+      text = text.slice(read);
+    }
+  };
+
+  return {
+    write(text) {
+      pending += text;
+      if (pending.length >= CHUNK_FLUSH_AT) encode();
+    },
+    take() {
+      if (next < ready.length) {
+        const out = ready[next]!;
+        ready[next] = undefined as never;
+        next++;
+        return out;
+      }
+      return undefined;
+    },
+    end() {
+      encode();
+      if (used > 0) ready.push(chunk.subarray(0, used));
+      chunk = new Uint8Array(0);
+      used = 0;
+    },
+  };
 }
 
 export function createXmlSink(): XmlSink {
