@@ -62,6 +62,8 @@ describe("parseReference", () => {
 
   it("makes references absolute and quotes sheet names", () => {
     expect(absolute("A1:C40")).toBe("$A$1:$C$40");
+    expect(absolute("B2")).toBe("$B$2");
+    expect(absolute("AB10:AC1048576")).toBe("$AB$10:$AC$1048576");
     expect(quoteSheetName("Per O'Brien")).toBe("'Per O''Brien'");
   });
 });

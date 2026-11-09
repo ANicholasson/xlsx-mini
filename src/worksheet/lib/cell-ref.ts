@@ -88,9 +88,28 @@ export function boxProblem(box: Box): string | undefined {
   return undefined;
 }
 
-/** `A1:C4` as `$A$1:$C$4`, the absolute form defined names use. */
+const DIGIT_0 = 48;
+const DIGIT_9 = 57;
+
+/**
+ * `A1:C4` as `$A$1:$C$4`, the absolute form defined names use: a `$` goes before every run of
+ * letters and every run of digits. A scan rather than a pattern, since the text may come from the
+ * caller and a backtracking pattern can be made slow.
+ */
 export function absolute(ref: string): string {
-  return ref.replace(/([A-Z]+)(\d+)/g, "$$$1$$$2");
+  let out = "";
+  let wasDigit = false;
+  let wasLetter = false;
+  for (let i = 0; i < ref.length; i++) {
+    const code = ref.charCodeAt(i);
+    const digit = code >= DIGIT_0 && code <= DIGIT_9;
+    const letter = !digit && code !== 58;
+    if ((letter && !wasLetter) || (digit && !wasDigit)) out += "$";
+    out += ref[i];
+    wasDigit = digit;
+    wasLetter = letter;
+  }
+  return out;
 }
 
 /** A sheet name as a formula reference: quoted, with apostrophes doubled. */
