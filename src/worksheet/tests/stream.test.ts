@@ -144,15 +144,27 @@ describe("streamWorksheet", () => {
     expect(log2).toEqual(["returned"]);
   });
 
-  it("errors the body with the cell's error when a row cannot be written", async () => {
-    const streamed = streamWorksheet(
-      { name: "S", rows: [["fine"], [Number.NaN]] },
-      context({ sheetIndex: 2 }),
-    );
+  it("errors the body with the cell's error when a row cannot be written, and closes the row source", async () => {
+    const log: string[] = [];
+    async function* rows(): AsyncGenerator<Row> {
+      try {
+        yield ["fine"];
+        yield [Number.NaN];
+        yield ["never"];
+      } finally {
+        log.push("returned");
+      }
+    }
+    const streamed = streamWorksheet({ name: "S", rows: rows() }, context({ sheetIndex: 2 }));
     await expect(collect(streamed.body)).rejects.toMatchObject({
       code: "INVALID_NUMBER",
       path: "sheets[2].rows[1][0]",
     });
+    expect(log).toEqual(["returned"]);
+    // An array iterator has no `return` to call on the way out.
+    await expect(
+      collect(streamWorksheet({ name: "S", rows: [[Number.NaN]] }, context()).body),
+    ).rejects.toMatchObject({ code: "INVALID_NUMBER" });
   });
 
   it("streams a large sheet in chunks no larger than a stored block", async () => {

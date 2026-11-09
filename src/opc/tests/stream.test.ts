@@ -289,6 +289,68 @@ describe("streamPackage", () => {
     expect(await iterator.next()).toEqual({ done: true, value: undefined });
   });
 
+  it("cancels a part that was still being taken from the iterator when the consumer cancelled", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let bodyCancelled: unknown;
+    let returned = false;
+    const late: StreamedPart = {
+      path: "late",
+      body: new ReadableStream({
+        pull(controller) {
+          controller.enqueue(encode("row "));
+        },
+        cancel(reason) {
+          bodyCancelled = reason;
+        },
+      }),
+    };
+    async function* source(): AsyncGenerator<StreamedPart> {
+      try {
+        yield part("a", encode("x"));
+        await gate;
+        yield late;
+      } finally {
+        returned = true;
+      }
+    }
+    const stream = streamPackage(source(), stored);
+    const reader = stream.getReader();
+    // Read a to its descriptor, then start the pull that waits on the gate for the next part.
+    for (let i = 0; i < 4; i++) await reader.read();
+    const pending = reader.read();
+    // The pull behind that read starts on a later microtask; let it reach the iterator first.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const cancelling = reader.cancel("gone");
+    release();
+    await cancelling;
+    await pending;
+    expect(bodyCancelled).toBe("gone");
+    expect(returned).toBe(true);
+  });
+
+  it("still settles a cancel when the part iterator fails while it is being awaited", async () => {
+    let fail!: (error: Error) => void;
+    const gate = new Promise<never>((_resolve, reject) => {
+      fail = reject;
+    });
+    async function* source(): AsyncGenerator<StreamedPart> {
+      yield part("a", encode("x"));
+      await gate;
+    }
+    const stream = streamPackage(source(), stored);
+    const reader = stream.getReader();
+    for (let i = 0; i < 4; i++) await reader.read();
+    const pending = reader.read();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const cancelling = reader.cancel("gone");
+    fail(new Error("cursor broke"));
+    await expect(cancelling).resolves.toBeUndefined();
+    await expect(pending).resolves.toMatchObject({ done: true });
+  });
+
   it("errors the stream when a part fails", async () => {
     const failing: StreamedPart = {
       path: "bad",
@@ -301,7 +363,7 @@ describe("streamPackage", () => {
     await expect(collect(streamPackage(parts(failing), stored))).rejects.toThrow("row 3 is bad");
   });
 
-  it("errors with PACKAGE_TOO_LARGE when an entry, the archive or the entry count exceeds the zip limits", async () => {
+  it("errors with PACKAGE_TOO_LARGE when an entry or the archive exceeds the zip limits", async () => {
     // A transform that reports huge chunks without allocating them.
     const huge = (length: number): StreamCompression => ({
       method: 8,
@@ -336,11 +398,5 @@ describe("streamPackage", () => {
     await expect(
       collect(streamPackage(parts(uncompressedTooLarge), huge(1))),
     ).rejects.toMatchObject({ code: "PACKAGE_TOO_LARGE" });
-    async function* tooMany(): AsyncGenerator<StreamedPart> {
-      for (let i = 0; i <= 0xffff; i++) yield part(`p${i}`);
-    }
-    await expect(collect(streamPackage(tooMany(), stored))).rejects.toMatchObject({
-      code: "PACKAGE_TOO_LARGE",
-    });
-  }, 60_000);
+  });
 });

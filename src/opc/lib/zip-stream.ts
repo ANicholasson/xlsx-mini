@@ -23,7 +23,6 @@ const DESCRIPTOR_FLAG = 0x0008;
 const DOS_TIME = 0x0000;
 const DOS_DATE = 0x0021;
 const MAX_32_BIT = 0xffffffff;
-const MAX_16_BIT = 0xffff;
 
 const encoder = new TextEncoder();
 
@@ -50,7 +49,8 @@ interface Open {
  * its data, its CRC and sizes follow in a data descriptor, and the central directory closes the
  * archive. Parts are taken from the iterator one at a time, the next only once the previous is
  * complete, so a part rendered late may depend on everything before it. Cancelling the stream
- * cancels the open part and returns the iterator.
+ * cancels the open part and returns the iterator. The caller keeps the entry count within the
+ * 16-bit field; the sizes and offsets are checked here, since they are only known as data goes out.
  */
 export function streamPackage(
   parts: AsyncIterator<StreamedPart>,
@@ -59,6 +59,10 @@ export function streamPackage(
   const entries: Entry[] = [];
   let offset = 0;
   let open: Open | undefined;
+  /** Set by cancel; a part that finishes opening afterwards is cancelled rather than started. */
+  let cancelled: { readonly reason: unknown } | undefined;
+  /** The part-opening in flight, so cancel can wait for it. */
+  let opening: Promise<Uint8Array | undefined> | undefined;
 
   const tooLarge = (): XlsxMiniError =>
     new XlsxMiniError(
@@ -70,8 +74,11 @@ export function streamPackage(
   const openNext = async (): Promise<Uint8Array | undefined> => {
     const next = await parts.next();
     if (next.done) return undefined;
-    if (entries.length === MAX_16_BIT) throw tooLarge();
     const part = next.value;
+    if (cancelled !== undefined) {
+      await part.body.cancel(cancelled.reason);
+      return undefined;
+    }
     const name = encoder.encode(part.path);
     const entry: Entry = {
       name,
@@ -83,8 +90,9 @@ export function streamPackage(
     entries.push(entry);
     const tap = new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
-        entry.crc = crc32Update(entry.crc, chunk);
         entry.uncompressedSize += chunk.length;
+        if (entry.uncompressedSize > MAX_32_BIT) throw tooLarge();
+        entry.crc = crc32Update(entry.crc, chunk);
         controller.enqueue(chunk);
       },
     });
@@ -115,7 +123,6 @@ export function streamPackage(
 
   const closeOpen = (entry: Entry): Uint8Array => {
     entry.crc = crc32Finish(entry.crc);
-    if (entry.uncompressedSize > MAX_32_BIT) throw tooLarge();
     const descriptor = new Uint8Array(DATA_DESCRIPTOR_SIZE);
     const view = new DataView(descriptor.buffer);
     view.setUint32(0, DATA_DESCRIPTOR_SIGNATURE, true);
@@ -177,7 +184,10 @@ export function streamPackage(
         // A pull that enqueues nothing is never called again, so this loops until it has.
         for (;;) {
           if (open === undefined) {
-            const header = await openNext();
+            opening = openNext();
+            const header = await opening;
+            opening = undefined;
+            if (cancelled !== undefined) return;
             if (header === undefined) {
               controller.enqueue(centralDirectory());
               controller.close();
@@ -200,6 +210,9 @@ export function streamPackage(
         }
       },
       async cancel(reason) {
+        cancelled = { reason };
+        // A part still being taken from the iterator is cancelled by openNext once it arrives.
+        await opening?.catch(() => undefined);
         if (open !== undefined) {
           open.abort.abort(reason);
           await open.reader.cancel(reason);

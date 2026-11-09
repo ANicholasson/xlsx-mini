@@ -168,8 +168,17 @@ export function streamWorksheet(
               return;
             }
             const next = await iterator.next();
-            if (next.done === true) finish();
-            else writer.row(next.value);
+            if (next.done === true) {
+              finish();
+              continue;
+            }
+            try {
+              writer.row(next.value);
+            } catch (error) {
+              // An errored stream never has its cancel called: close the row source here.
+              await iterator.return?.();
+              throw error;
+            }
           }
         },
         async cancel() {

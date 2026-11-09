@@ -463,7 +463,7 @@ export default async function safely(): Promise<string> {
 | `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                   |
 | `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                               |
 | `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                      |
-| `PACKAGE_TOO_LARGE`     | The file would pass 4 GiB.                                                                     |
+| `PACKAGE_TOO_LARGE`     | The file would pass 4 GiB, or has more than 65 529 sheets.                                     |
 | `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                      |
 | `NO_DOM`                | `downloadXlsx` called where there is no document.                                              |
 
