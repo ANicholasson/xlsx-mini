@@ -35,6 +35,7 @@ function isLinkableUrl(href: string): boolean {
   }
 }
 
+/** The feature's error, at the cell or property that is wrong. */
 function invalid(path: string, message: string): XlsxMiniError {
   return new XlsxMiniError("INVALID_HYPERLINK", path, message);
 }

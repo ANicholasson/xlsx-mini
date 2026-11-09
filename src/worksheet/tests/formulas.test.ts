@@ -107,6 +107,18 @@ describe("formula cells", () => {
     );
   });
 
+  it("refuses a formula cell that also carries a link, rather than dropping the link", () => {
+    for (const extra of [{ href: "https://example.com" }, { cell: "A1" }, { sheet: "S" }]) {
+      expect(() => xml({ name: "S", rows: [[{ formula: "1", ...extra } as never]] })).toThrow(
+        expect.objectContaining({
+          code: "INVALID_FORMULA",
+          path: "sheets[0].rows[0][0]",
+          message: expect.stringContaining("cannot also be a link"),
+        }),
+      );
+    }
+  });
+
   it("reports a bad style on a formula cell at the cell's style", () => {
     expect(() =>
       xml({ name: "S", rows: [[{ formula: "1", style: { fontColor: "red" } }]] }),

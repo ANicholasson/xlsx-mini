@@ -175,6 +175,7 @@ function renderRow(
   return maxColumn;
 }
 
+/** Writes the heights of rows past the last one given and reports the used range. */
 function endSheetData(
   rowIndex: number,
   lastRowWithCells: number,
@@ -190,6 +191,7 @@ function endSheetData(
   return { range, hasRows };
 }
 
+/** The row attributes for a custom height in points. */
 function heightAttributes(height: number): string {
   return ` ht="${height}" customHeight="1"`;
 }
@@ -214,6 +216,7 @@ function renderTrailingHeights(
   return true;
 }
 
+/** One `<c>` element for a cell, or an empty string when nothing is written; link cells are also recorded. */
 function renderCell(
   cell: Cell,
   column: number,
@@ -228,6 +231,13 @@ function renderCell(
   if (isWrapper(value)) {
     cellStyle = value.style;
     if ("formula" in value) {
+      if ("href" in value || "cell" in value || "sheet" in value) {
+        throw new XlsxMiniError(
+          "INVALID_FORMULA",
+          cellPath(context, rowIndex, column),
+          "A formula cell cannot also be a link",
+        );
+      }
       records.hasFormulas = true;
       return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
     }
@@ -271,6 +281,7 @@ function renderCell(
   );
 }
 
+/** A cell holding a plain value, after the coerce hook has had its say. */
 function renderValue(
   value: unknown,
   reference: string,
@@ -485,6 +496,7 @@ function renderFormula(
   }
 }
 
+/** A numeric cell holding a date serial, styled with a date format unless the style sets one. */
 function dateCell(
   reference: string,
   serial: number,
@@ -541,14 +553,17 @@ function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell
   );
 }
 
+/** A value's type for an error message: the typeof for primitives, the tag or constructor for objects. */
 function describe(value: unknown): string {
   return typeof value !== "object" || value === null ? typeof value : describeValue(value);
 }
 
+/** The error path of a cell. */
 function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {
   return `sheets[${context.sheetIndex}].rows[${rowIndex}][${column}]`;
 }
 
+/** The error path of a row. */
 function rowPath(context: WorksheetContext, rowIndex: number): string {
   return `sheets[${context.sheetIndex}].rows[${rowIndex}]`;
 }

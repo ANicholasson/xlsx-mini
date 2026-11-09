@@ -40,6 +40,7 @@ export interface RenderedPrint {
 
 const NONE: RenderedPrint = { sheetPr: "", tail: "", printTitles: undefined };
 
+/** The feature's error, at the property that is wrong. */
 function invalid(path: string, message: string): XlsxMiniError {
   return new XlsxMiniError("INVALID_PRINT_SETUP", path, message);
 }
@@ -149,6 +150,7 @@ function pages(value: unknown, path: string): number {
   return value as number;
 }
 
+/** Header or footer text escaped for XML, or undefined when none is set. */
 function headerText(value: unknown, path: string): string | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "string" || value.length > MAX_HEADER_LENGTH) {

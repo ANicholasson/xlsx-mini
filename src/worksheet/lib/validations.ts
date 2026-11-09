@@ -12,6 +12,7 @@ const ERROR_STYLES: ReadonlySet<string> = new Set(["stop", "warning", "informati
 const SOURCE_RANGE =
   /^(?:'((?:[^']|'')+)'!|([^'!]+)!)?([A-Z]{1,3}\d{1,7}(?::[A-Z]{1,3}\d{1,7})?|[A-Z]{1,3}:[A-Z]{1,3})$/;
 
+/** The feature's error, at the rule or property that is wrong. */
 function invalid(path: string, message: string): XlsxMiniError {
   return new XlsxMiniError("INVALID_VALIDATION", path, message);
 }
@@ -34,6 +35,7 @@ export function renderValidations(
   return `${xml}</dataValidations>`;
 }
 
+/** One `<dataValidation>` element, every property checked against what Excel's dialog accepts. */
 function renderRule(rule: DataValidation, path: string, sheetNames: readonly string[]): string {
   if (typeof rule !== "object" || rule === null) {
     throw invalid(path, `A validation is an object, not ${describeValue(rule)}`);
@@ -114,8 +116,9 @@ function renderRule(rule: DataValidation, path: string, sheetNames: readonly str
     attributes += ` showInputMessage="1"${message(rule.input, `${path}.input`, "promptTitle", "prompt")}`;
   }
   if (rule.error !== undefined) {
-    const style = rule.error.style;
-    if (style !== undefined && !ERROR_STYLES.has(style)) {
+    // A null error is caught by `message` below; the style is read without touching it first.
+    const style: unknown = (rule.error as { readonly style?: unknown } | null)?.style;
+    if (style !== undefined && (typeof style !== "string" || !ERROR_STYLES.has(style))) {
       throw invalid(
         `${path}.error.style`,
         `Error styles are stop, warning or information, not ${describeValue(style)}`,
@@ -185,6 +188,7 @@ function listSource(list: unknown, path: string, sheetNames: readonly string[]):
   return escapeXml(source);
 }
 
+/** A numeric bound, or undefined when the end is open. */
 function bound(value: unknown, path: string): number | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -193,6 +197,7 @@ function bound(value: unknown, path: string): number | undefined {
   return value;
 }
 
+/** A date bound as an Excel serial, or undefined when the end is open. */
 function date(value: unknown, path: string): number | undefined {
   if (value === undefined) return undefined;
   if (!(value instanceof Date) || Number.isNaN(value.getTime())) {

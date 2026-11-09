@@ -134,6 +134,13 @@ describe("renderValidations", () => {
         ".error.message",
         "1 to 255",
       ],
+      [{ range: "B2", list: ["a"], error: null }, ".error", "object with a message"],
+      [
+        { range: "B2", list: ["a"], error: { message: "m", style: 1 } },
+        ".error.style",
+        "stop, warning or information",
+      ],
+      [{ range: "B2", list: ["a"], input: null }, ".input", "object with a message"],
     ];
     for (const [rule, suffix, message] of cases) {
       expect(failing(rule), JSON.stringify(rule)).toThrow(
