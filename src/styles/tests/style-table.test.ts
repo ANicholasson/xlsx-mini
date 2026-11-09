@@ -299,3 +299,31 @@ describe("style table", () => {
     expect(table.render()).toContain('<cellXfs count="3">');
   });
 });
+
+describe("underline", () => {
+  it("writes an underlined font once and keys it apart from bold and italic", () => {
+    const table = createStyleTable();
+    const link = { underline: true, fontColor: "#0563c1" };
+    expect(table.indexFor(link, undefined, 0)).toBe(1);
+    expect(table.indexFor({ underline: true, fontColor: "#0563c1" }, undefined, 0)).toBe(1);
+    expect(table.indexFor({ bold: true }, { underline: true }, 0)).toBe(2);
+    const xml = table.render();
+    expect(xml).toContain(
+      '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/><family val="2"/></font>',
+    );
+    expect(xml).toContain(
+      '<font><b/><u/><sz val="11"/><name val="Calibri"/><family val="2"/></font>',
+    );
+    expect(xml).toContain('<fonts count="3">');
+  });
+
+  it("refuses an underline that is not a boolean, when used and when validated", () => {
+    const table = createStyleTable();
+    expect(() => table.indexFor({ underline: 1 } as never, undefined, 0)).toThrow(
+      expect.objectContaining({ code: "INVALID_STYLE", path: "underline" }),
+    );
+    expect(() => table.validate({ underline: "yes" } as never)).toThrow(
+      expect.objectContaining({ code: "INVALID_STYLE", path: "underline" }),
+    );
+  });
+});

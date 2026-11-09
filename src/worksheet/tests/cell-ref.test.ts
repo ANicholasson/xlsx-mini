@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
-import { columnLetter } from "../index.js";
+import { absolute, boxProblem, columnLetter, parseReference, quoteSheetName } from "../index.js";
 
 describe("columnLetter", () => {
   it("converts zero-based column indexes to Excel letters", () => {
@@ -27,5 +27,43 @@ describe("columnLetter", () => {
         expect(toIndex(letters)).toBe(index);
       }),
     );
+  });
+});
+
+describe("parseReference", () => {
+  it("parses a cell, a range and whole columns, expanding columns to every row", () => {
+    expect(parseReference("B2")).toEqual({ ref: "B2", top: 2, left: 1, bottom: 2, right: 1 });
+    expect(parseReference("A1:D4")).toEqual({ ref: "A1:D4", top: 1, left: 0, bottom: 4, right: 3 });
+    expect(parseReference("B:C")).toEqual({
+      ref: "B1:C1048576",
+      top: 1,
+      left: 1,
+      bottom: 1_048_576,
+      right: 2,
+    });
+    expect(parseReference("XFD1048576")?.right).toBe(16_383);
+  });
+
+  it("returns undefined for anything else", () => {
+    for (const ref of ["", "b2", "$A$1", "A", "1", "A1:B", "A0", "Sheet!A1", 42, null, "A1 B1"]) {
+      expect(parseReference(ref), String(ref)).toBeUndefined();
+    }
+  });
+
+  it("names a box outside the sheet or written backwards", () => {
+    expect(boxProblem(parseReference("A1:D4")!)).toBeUndefined();
+    expect(boxProblem(parseReference("XFE1")!)).toBe("Range XFE1 lies outside the sheet");
+    expect(boxProblem(parseReference("A1048577")!)).toBe("Range A1048577 lies outside the sheet");
+    expect(boxProblem(parseReference("D4:A1")!)).toBe(
+      "Range D4:A1 must run from its top-left cell to its bottom-right cell",
+    );
+    expect(boxProblem(parseReference("C:B")!)).toContain("must run from its top-left cell");
+  });
+
+  it("makes references absolute and quotes sheet names", () => {
+    expect(absolute("A1:C40")).toBe("$A$1:$C$40");
+    expect(absolute("B2")).toBe("$B$2");
+    expect(absolute("AB10:AC1048576")).toBe("$AB$10:$AC$1048576");
+    expect(quoteSheetName("Per O'Brien")).toBe("'Per O''Brien'");
   });
 });

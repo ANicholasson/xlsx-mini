@@ -56,6 +56,7 @@ export async function writeXlsx(
   const strings = createStringTable();
   const styles = createStyleTable();
   const sheets = workbook.sheets;
+  const sheetNames = sheets.map((sheet) => sheet.name);
 
   // Sheets render first: they fill the shared-strings and styles tables those parts are built from.
   const sheetParts: PackagePart[] = [];
@@ -68,11 +69,20 @@ export async function writeXlsx(
       styles,
       coerce: options.coerce,
       sheetIndex: i,
+      sheetNames,
       inlineStrings: false,
     };
     const rendered = renderWorksheet(sheet, context);
     sheetParts.push({ path: `xl/worksheets/sheet${i + 1}.xml`, data: rendered.data });
-    entries.push({ name: sheet.name, filterRange: rendered.filterRange });
+    if (rendered.relationships !== undefined) {
+      sheetParts.push(part(`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, rendered.relationships));
+    }
+    entries.push({
+      name: sheet.name,
+      filterRange: rendered.filterRange,
+      printTitles: rendered.printTitles,
+      hasFormulas: rendered.hasFormulas,
+    });
   }
 
   const compression = selectCompression(options.compression ?? "deflate");
@@ -126,6 +136,7 @@ export function streamXlsx(
   const strings = createStringTable();
   const styles = createStyleTable();
   const sheets = workbook.sheets;
+  const sheetNames = sheets.map((sheet) => sheet.name);
   const inlineStrings = (options.strings ?? "inline") === "inline";
   const compression = selectStreamCompression(options.compression ?? "deflate");
 
@@ -138,10 +149,21 @@ export function streamXlsx(
     const entries: SheetEntry[] = [];
     for (let i = 0; i < sheets.length; i++) {
       const sheet = sheets[i]!;
-      const context = { strings, styles, coerce: options.coerce, sheetIndex: i, inlineStrings };
+      const context = {
+        strings,
+        styles,
+        coerce: options.coerce,
+        sheetIndex: i,
+        sheetNames,
+        inlineStrings,
+      };
       const streamed = streamWorksheet(sheet, context);
       yield { path: `xl/worksheets/sheet${i + 1}.xml`, body: streamed.body };
-      entries.push({ name: sheet.name, filterRange: streamed.filterRange() });
+      const relationships = streamed.relationships();
+      if (relationships !== undefined) {
+        yield bytesPart(`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, relationships);
+      }
+      entries.push({ name: sheet.name, ...streamed.facts() });
     }
     yield bytesPart("xl/workbook.xml", renderWorkbook(entries));
     yield bytesPart("xl/styles.xml", styles.render());

@@ -245,3 +245,156 @@ export const appearanceWorkbook: Workbook = {
     },
   ],
 };
+
+const money = { numberFormat: '#,##0.00 "kr"' } as const;
+
+/** The workbook behind formulas.xlsx: per-row products, a sum, cached results, and text that only looks like a formula. */
+export const formulasWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Budget",
+      columns: [
+        { width: 16 },
+        { width: 8 },
+        { width: 12, style: money },
+        { width: 14, style: money },
+      ],
+      rows: [
+        [
+          { value: "Item", style: header },
+          { value: "Qty", style: header },
+          { value: "Price", style: header },
+          { value: "Total", style: header },
+        ],
+        ["Desk", 2, 4999, { formula: "B2*C2" }],
+        ["Chair", 4, 1299.5, { formula: "B3*C3" }],
+        ["Lamp", 1, 349, { formula: "B4*C4" }],
+        [
+          { value: "Sum", style: { bold: true } },
+          { formula: "SUM(B2:B4)", value: 7, style: { bold: true } },
+          null,
+          { formula: "SUM(D2:D4)", style: { bold: true } },
+        ],
+        [],
+        ["Items", { formula: "COUNTA(A2:A4)", value: 3 }],
+        ["Over budget", { formula: "D5>10000", value: true }],
+        ["Label", { formula: 'CONCATENATE("Items: ",COUNTA(A2:A4))', value: "Items: 3" }],
+        ["Not a formula", "=SUM(B2:B4)"],
+      ],
+    },
+  ],
+};
+
+const link = { fontColor: "#0563c1", underline: true } as const;
+
+/** The workbook behind hyperlinks.xlsx: external targets, a mail address, and jumps within the workbook. */
+export const hyperlinksWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Links",
+      columns: [{ width: 14 }, { width: 28 }],
+      rows: [
+        [
+          { value: "Kind", style: header },
+          { value: "Link", style: header },
+        ],
+        ["Web", { value: "Example docs", href: "https://example.com/docs?a=1&b=2", style: link }],
+        ["Mail", { value: "Write to us", href: "mailto:hello@example.com", style: link }],
+        ["Sheet", { value: "See the summary", sheet: "Summary", cell: "B2", style: link }],
+        ["Here", { value: "Back to the top", cell: "A1", style: link }],
+      ],
+    },
+    {
+      name: "Summary",
+      rows: [
+        ["Total", 42],
+        [{ value: "Back to the links", sheet: "Links", cell: "A1:B5", style: link }],
+      ],
+    },
+  ],
+};
+
+/** The workbook behind validation.xlsx: dropdowns from a list and from a range, number and date bounds, messages. */
+export const validationWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Orders",
+      columns: [
+        { width: 12 },
+        { width: 14 },
+        { width: 12 },
+        { width: 10 },
+        { width: 14 },
+        { width: 10 },
+      ],
+      rows: [
+        [
+          { value: "Order", style: header },
+          { value: "Status", style: header },
+          { value: "Priority", style: header },
+          { value: "Qty", style: header },
+          { value: "Due", style: header },
+          { value: "Discount", style: header },
+        ],
+        ["A-1001", "Open", "High", 2, new Date(Date.UTC(2026, 11, 1)), 0.1],
+        ["A-1002", "Closed", "Low", 10, new Date(Date.UTC(2026, 11, 15)), 0],
+      ],
+      validations: [
+        {
+          range: "B2:B100",
+          list: ["Open", "Closed", "On hold"],
+          input: { title: "Status", message: "Pick one of the three" },
+        },
+        { range: "C2:C100", list: "Lists!A2:A4" },
+        {
+          range: "D2:D100",
+          number: { min: 1, max: 1000, integer: true },
+          error: { title: "Quantity", message: "Enter a whole number from 1 to 1000" },
+        },
+        {
+          range: "E2:E100",
+          date: { min: new Date(Date.UTC(2026, 0, 1)), max: new Date(Date.UTC(2026, 11, 31)) },
+          allowBlank: false,
+          error: { message: "Due dates fall in 2026", style: "warning" },
+        },
+        {
+          range: "F:F",
+          number: { max: 0.5 },
+          error: { message: "At most 50 %", style: "information" },
+        },
+      ],
+    },
+    { name: "Lists", rows: [["Priority"], ["High"], ["Medium"], ["Low"]] },
+  ],
+};
+
+/** The workbook behind print.xlsx: landscape A4 fitted to one page wide, custom margins, header and footer, a repeated header row. */
+export const printWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Report",
+      columns: [{ width: 10 }, { width: 24 }, { width: 14, style: money }],
+      rows: [
+        [
+          { value: "Month", style: header },
+          { value: "Region", style: header },
+          { value: "Revenue", style: header },
+        ],
+        ...Array.from({ length: 30 }, (_, i) => [
+          `2026-${String((i % 12) + 1).padStart(2, "0")}`,
+          ["North", "South", "East", "West"][i % 4],
+          (i + 1) * 1250,
+        ]),
+      ],
+      print: {
+        orientation: "landscape",
+        paperSize: "A4",
+        fitTo: { width: 1 },
+        margins: { left: 0.5, right: 0.5 },
+        header: "&LQuarterly report&R&D",
+        footer: "&L&A&RPage &P of &N",
+        repeatRows: 1,
+      },
+    },
+  ],
+};

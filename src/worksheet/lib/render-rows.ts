@@ -2,13 +2,22 @@ import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js";
-import { columnLetter } from "./cell-ref.js";
-import type { Cell, CellObject, Coerce, Row, TemporalLike } from "./model.js";
+import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
+import type { Hyperlinks } from "./hyperlinks.js";
+import type {
+  Cell,
+  CellObject,
+  Coerce,
+  FormulaCell,
+  LinkCell,
+  Row,
+  SheetLinkCell,
+  TemporalLike,
+} from "./model.js";
 import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
 
-const MAX_ROWS = 1_048_576;
-const MAX_COLUMNS = 16_384;
 const MAX_TEXT_LENGTH = 32_767;
+const MAX_FORMULA_LENGTH = 8192;
 /** Built-in number formats a date-like value falls back to. */
 const GENERAL = 0;
 const DATE = 14;
@@ -29,8 +38,17 @@ export interface WorksheetContext {
   readonly coerce: Coerce | undefined;
   /** Zero-based position of the sheet in the workbook, for error paths. */
   readonly sheetIndex: number;
+  /** Every sheet's name in tab order, so a link to another sheet can be checked. */
+  readonly sheetNames: readonly string[];
   /** Write text into the cells rather than through the shared-strings table. */
   readonly inlineStrings?: boolean;
+}
+
+/** What the rows leave behind for the parts written after them. */
+export interface RowRecords {
+  readonly links: Hyperlinks;
+  /** Set once a formula has been written, so the workbook can ask Excel to calculate on open. */
+  hasFormulas: boolean;
 }
 
 /** What was written to the sink: the used range of cells, and whether any row element was emitted. */
@@ -62,6 +80,7 @@ export function renderSheetData(
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
   sink: TextSink,
+  records: RowRecords,
   rowHeights?: Readonly<Record<number, number>>,
 ): SheetData {
   let rowIndex = -1;
@@ -70,7 +89,7 @@ export function renderSheetData(
   let hasRows = false;
   for (const row of rows) {
     rowIndex++;
-    const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
+    const written = renderRow(row, rowIndex, columnStyles, context, sink, records, rowHeights);
     if (written === NOTHING) continue;
     hasRows = true;
     if (written === HEIGHT_ONLY) continue;
@@ -85,6 +104,7 @@ export function createSheetDataWriter(
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
   sink: TextSink,
+  records: RowRecords,
   rowHeights?: Readonly<Record<number, number>>,
 ): SheetDataWriter {
   let rowIndex = -1;
@@ -94,7 +114,7 @@ export function createSheetDataWriter(
   return {
     row(row) {
       rowIndex++;
-      const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
+      const written = renderRow(row, rowIndex, columnStyles, context, sink, records, rowHeights);
       if (written === NOTHING) return;
       hasRows = true;
       if (written === HEIGHT_ONLY) return;
@@ -115,6 +135,7 @@ function renderRow(
   columnStyles: readonly (CellStyle | undefined)[],
   context: WorksheetContext,
   sink: TextSink,
+  records: RowRecords,
   rowHeights: Readonly<Record<number, number>> | undefined,
 ): number {
   if (rowIndex >= MAX_ROWS) {
@@ -136,7 +157,7 @@ function renderRow(
   for (let column = 0; column < row.length; column++) {
     const cell = row[column];
     if (cell === null || cell === undefined) continue;
-    const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context);
+    const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context, records);
     if (rendered.length === 0) continue;
     cells += rendered;
     maxColumn = column;
@@ -154,6 +175,7 @@ function renderRow(
   return maxColumn;
 }
 
+/** Writes the heights of rows past the last one given and reports the used range. */
 function endSheetData(
   rowIndex: number,
   lastRowWithCells: number,
@@ -169,6 +191,7 @@ function endSheetData(
   return { range, hasRows };
 }
 
+/** The row attributes for a custom height in points. */
 function heightAttributes(height: number): string {
   return ` ht="${height}" customHeight="1"`;
 }
@@ -193,17 +216,38 @@ function renderTrailingHeights(
   return true;
 }
 
+/** One `<c>` element for a cell, or an empty string when nothing is written; link cells are also recorded. */
 function renderCell(
   cell: Cell,
   column: number,
   columnStyle: CellStyle | undefined,
   rowIndex: number,
   context: WorksheetContext,
+  records: RowRecords,
 ): string {
   let value: unknown = cell;
   let cellStyle: CellStyle | undefined;
+  const reference = columnLetter(column) + (rowIndex + 1);
   if (isWrapper(value)) {
     cellStyle = value.style;
+    if ("formula" in value) {
+      if ("href" in value || "cell" in value || "sheet" in value) {
+        throw new XlsxMiniError(
+          "INVALID_FORMULA",
+          cellPath(context, rowIndex, column),
+          "A formula cell cannot also be a link",
+        );
+      }
+      records.hasFormulas = true;
+      return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+    }
+    if ("href" in value || "cell" in value || "sheet" in value) {
+      records.links.add(
+        reference,
+        value as LinkCell | SheetLinkCell,
+        cellPath(context, rowIndex, column),
+      );
+    }
     value = value.value;
     if (isWrapper(value)) {
       throw new XlsxMiniError(
@@ -213,7 +257,6 @@ function renderCell(
       );
     }
   }
-  const reference = columnLetter(column) + (rowIndex + 1);
   if (value === null || value === undefined) {
     // A cell object with a style and no value is a styled empty cell: a border or fill can run
     // across a blank. A bare null stays nothing, even in a styled column.
@@ -238,6 +281,7 @@ function renderCell(
   );
 }
 
+/** A cell holding a plain value, after the coerce hook has had its say. */
 function renderValue(
   value: unknown,
   reference: string,
@@ -385,6 +429,74 @@ function renderValue(
   );
 }
 
+/**
+ * A formula cell: the formula escaped inside `<f>`, never evaluated, and the cached value, when
+ * given, typed as the cell's own value would be. Text is `str`, since a result is never shared.
+ */
+function renderFormula(
+  cell: FormulaCell,
+  reference: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  column: number,
+  rowIndex: number,
+  context: WorksheetContext,
+): string {
+  const path = cellPath(context, rowIndex, column);
+  const formula = cell.formula;
+  if (typeof formula !== "string" || formula.length === 0 || formula.length > MAX_FORMULA_LENGTH) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      `${path}.formula`,
+      `A formula is 1 to ${MAX_FORMULA_LENGTH} characters, not ${describeValue(formula)}`,
+    );
+  }
+  if (formula.startsWith("=")) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      `${path}.formula`,
+      "A formula is written without the leading =",
+    );
+  }
+  const style =
+    cellStyle === undefined && columnStyle === undefined
+      ? ""
+      : styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
+  const open = `<c r="${reference}"${style}`;
+  const f = `<f>${escapeXml(formula)}</f>`;
+  const value = cell.value;
+  if (value === null || value === undefined) return `${open}>${f}</c>`;
+  switch (typeof value) {
+    case "string":
+      if (value.length > MAX_TEXT_LENGTH) {
+        throw new XlsxMiniError(
+          "CELL_TEXT_TOO_LONG",
+          `${path}.value`,
+          `Excel allows at most ${MAX_TEXT_LENGTH} characters in a cell`,
+        );
+      }
+      return `${open} t="str">${f}<v>${escapeXml(value)}</v></c>`;
+    case "number":
+      if (!Number.isFinite(value)) {
+        throw new XlsxMiniError(
+          "INVALID_NUMBER",
+          `${path}.value`,
+          `${value} cannot be written to a cell`,
+        );
+      }
+      return `${open}>${f}<v>${value}</v></c>`;
+    case "boolean":
+      return `${open} t="b">${f}<v>${value ? 1 : 0}</v></c>`;
+    default:
+      throw new XlsxMiniError(
+        "INVALID_FORMULA",
+        `${path}.value`,
+        `A cached formula value is text, a number or a boolean, not ${describe(value)}`,
+      );
+  }
+}
+
+/** A numeric cell holding a date serial, styled with a date format unless the style sets one. */
 function dateCell(
   reference: string,
   serial: number,
@@ -427,21 +539,31 @@ function styleAttribute(
   return index === 0 ? "" : ` s="${index}"`;
 }
 
-/** A plain object with a `value` property is a cell object; class instances never are. */
-function isWrapper(value: unknown): value is CellObject {
+/** A plain object with a value, formula or link property is a cell object; class instances never are. */
+function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell | SheetLinkCell {
   if (typeof value !== "object" || value === null) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
-  return (prototype === Object.prototype || prototype === null) && "value" in value;
+  return (
+    (prototype === Object.prototype || prototype === null) &&
+    ("value" in value ||
+      "formula" in value ||
+      "href" in value ||
+      "cell" in value ||
+      "sheet" in value)
+  );
 }
 
+/** A value's type for an error message: the typeof for primitives, the tag or constructor for objects. */
 function describe(value: unknown): string {
   return typeof value !== "object" || value === null ? typeof value : describeValue(value);
 }
 
+/** The error path of a cell. */
 function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {
   return `sheets[${context.sheetIndex}].rows[${rowIndex}][${column}]`;
 }
 
+/** The error path of a row. */
 function rowPath(context: WorksheetContext, rowIndex: number): string {
   return `sheets[${context.sheetIndex}].rows[${rowIndex}]`;
 }

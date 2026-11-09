@@ -45,30 +45,42 @@ export function renderRootRelationships(): string {
   );
 }
 
-/** What the workbook part needs per sheet: its name and, when filtered, its autofilter range. */
+/** What the workbook part needs per sheet: its name, its autofilter range, its print titles and whether it has formulas. */
 export interface SheetEntry {
   readonly name: string;
   readonly filterRange: string | undefined;
+  /** The repeated print rows as `$1:$N`. */
+  readonly printTitles: string | undefined;
+  readonly hasFormulas: boolean;
 }
 
 /**
- * Renders `xl/workbook.xml`: the sheet list in tab order, each pointing at its relationship, and
- * the hidden `_xlnm._FilterDatabase` name Excel keeps for every autofilter.
+ * Renders `xl/workbook.xml`: the sheet list in tab order, each pointing at its relationship, the
+ * hidden `_xlnm._FilterDatabase` name Excel keeps for every autofilter, the `_xlnm.Print_Titles`
+ * name for repeated print rows, and, once any cell holds a formula, the request that Excel
+ * calculate on open. A workbook without formulas carries no `calcPr`, so it does not ask to be saved.
  */
 export function renderWorkbook(entries: readonly SheetEntry[]): string {
   let sheets = "";
   let definedNames = "";
+  let hasFormulas = false;
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;
     sheets += `<sheet name="${escapeXml(entry.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`;
+    const sheetName = escapeXml(quoteSheetName(entry.name));
     if (entry.filterRange !== undefined) {
-      definedNames += `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${escapeXml(quoteSheetName(entry.name))}!${absolute(entry.filterRange)}</definedName>`;
+      definedNames += `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${sheetName}!${absolute(entry.filterRange)}</definedName>`;
     }
+    if (entry.printTitles !== undefined) {
+      definedNames += `<definedName name="_xlnm.Print_Titles" localSheetId="${i}">${sheetName}!${entry.printTitles}</definedName>`;
+    }
+    if (entry.hasFormulas) hasFormulas = true;
   }
   return (
     `${XML_DECLARATION}<workbook xmlns="${SPREADSHEET_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">` +
     `<sheets>${sheets}</sheets>` +
     (definedNames.length === 0 ? "" : `<definedNames>${definedNames}</definedNames>`) +
+    (hasFormulas ? '<calcPr fullCalcOnLoad="1"/>' : "") +
     "</workbook>"
   );
 }

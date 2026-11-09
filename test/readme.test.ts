@@ -131,6 +131,40 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(readPart(bytes, "xl/sharedStrings.xml")).toContain("<t>Customer</t>");
     expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain('<autoFilter ref="A1:D2"/>');
   },
+  formulas: async (snippet) => {
+    const bytes = await (snippet["default"] as Fn<Uint8Array>)();
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="D2"><f>B2*C2</f></c>');
+    expect(sheet).toContain('<c r="B4"><f>SUM(B2:B3)</f><v>6</v></c>');
+    expect(sheet).toContain('<hyperlink ref="A7" location="&apos;Summary&apos;!A1"/>');
+    expect(readPart(bytes, "xl/worksheets/_rels/sheet1.xml.rels")).toContain(
+      'Target="https://example.com/prices"',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet2.xml")).toContain("<f>Budget!D4</f>");
+    expect(readPart(bytes, "xl/workbook.xml")).toContain('<calcPr fullCalcOnLoad="1"/>');
+  },
+  validation: async (snippet) => {
+    const bytes = await (snippet["default"] as Fn<Uint8Array>)();
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<dataValidations count="4">');
+    expect(sheet).toContain("<formula1>&quot;Open,Closed,On hold&quot;</formula1>");
+    expect(sheet).toContain("<formula1>&apos;People&apos;!$A$2:$A$50</formula1>");
+    expect(sheet).toContain(
+      'type="date" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorStyle="warning"',
+    );
+  },
+  print: async (snippet) => {
+    const bytes = await (snippet["default"] as Fn<Uint8Array>)();
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>',
+    );
+    expect(sheet).toContain("<oddFooter>&amp;L&amp;A&amp;RPage &amp;P of &amp;N</oddFooter>");
+    expect(readPart(bytes, "xl/workbook.xml")).toContain("_xlnm.Print_Titles");
+  },
   formats: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);
