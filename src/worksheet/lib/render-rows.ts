@@ -47,9 +47,15 @@ export interface SheetDataWriter {
   end(): SheetData;
 }
 
+/** `renderRow` wrote no row element. */
+const NOTHING = -2;
+/** `renderRow` wrote a row with a height and no cells. */
+const HEIGHT_ONLY = -1;
+
 /**
  * Renders every row with at least one cell, or a height, into the sink; positions survive
- * because rows and cells carry `r`.
+ * because rows and cells carry `r`. The loop keeps its counters in locals: this is the byte
+ * path, and the stream's row-at-a-time writer below shares `renderRow` with it.
  */
 export function renderSheetData(
   rows: Iterable<Row>,
@@ -58,9 +64,20 @@ export function renderSheetData(
   sink: TextSink,
   rowHeights?: Readonly<Record<number, number>>,
 ): SheetData {
-  const writer = createSheetDataWriter(columnStyles, context, sink, rowHeights);
-  for (const row of rows) writer.row(row);
-  return writer.end();
+  let rowIndex = -1;
+  let lastRowWithCells = 0;
+  let maxColumn = -1;
+  let hasRows = false;
+  for (const row of rows) {
+    rowIndex++;
+    const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
+    if (written === NOTHING) continue;
+    hasRows = true;
+    if (written === HEIGHT_ONLY) continue;
+    lastRowWithCells = rowIndex + 1;
+    if (written > maxColumn) maxColumn = written;
+  }
+  return endSheetData(rowIndex, lastRowWithCells, maxColumn, hasRows, sink, rowHeights);
 }
 
 /** The row loop as an object, so a stream can feed it one row per pull. */
@@ -74,56 +91,82 @@ export function createSheetDataWriter(
   let lastRowWithCells = 0;
   let maxColumn = -1;
   let hasRows = false;
-
   return {
     row(row) {
       rowIndex++;
-      if (rowIndex >= MAX_ROWS) {
-        throw new XlsxMiniError(
-          "TOO_MANY_ROWS",
-          rowPath(context, rowIndex),
-          `Excel allows at most ${MAX_ROWS} rows`,
-        );
-      }
-      if (row.length > MAX_COLUMNS) {
-        throw new XlsxMiniError(
-          "TOO_MANY_COLUMNS",
-          rowPath(context, rowIndex),
-          `Excel allows at most ${MAX_COLUMNS} columns`,
-        );
-      }
-      let cells = "";
-      for (let column = 0; column < row.length; column++) {
-        const cell = row[column];
-        if (cell === null || cell === undefined) continue;
-        const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context);
-        if (rendered.length === 0) continue;
-        cells += rendered;
-        if (column > maxColumn) maxColumn = column;
-      }
-      const rowNumber = rowIndex + 1;
-      const height = rowHeights?.[rowNumber];
-      if (cells.length === 0) {
-        if (height === undefined) return;
-        sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
-        hasRows = true;
-        return;
-      }
-      sink.write(
-        `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
-      );
+      const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
+      if (written === NOTHING) return;
       hasRows = true;
-      lastRowWithCells = rowNumber;
+      if (written === HEIGHT_ONLY) return;
+      lastRowWithCells = rowIndex + 1;
+      if (written > maxColumn) maxColumn = written;
     },
-    end() {
-      if (rowHeights !== undefined && renderTrailingHeights(rowHeights, rowIndex + 1, sink)) {
-        hasRows = true;
-      }
-      const range =
-        lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
-      return { range, hasRows };
-    },
+    end: () => endSheetData(rowIndex, lastRowWithCells, maxColumn, hasRows, sink, rowHeights),
   };
+}
+
+/**
+ * Writes one row and returns the highest column written, `HEIGHT_ONLY` for a row element
+ * without cells, or `NOTHING`.
+ */
+function renderRow(
+  row: Row,
+  rowIndex: number,
+  columnStyles: readonly (CellStyle | undefined)[],
+  context: WorksheetContext,
+  sink: TextSink,
+  rowHeights: Readonly<Record<number, number>> | undefined,
+): number {
+  if (rowIndex >= MAX_ROWS) {
+    throw new XlsxMiniError(
+      "TOO_MANY_ROWS",
+      rowPath(context, rowIndex),
+      `Excel allows at most ${MAX_ROWS} rows`,
+    );
+  }
+  if (row.length > MAX_COLUMNS) {
+    throw new XlsxMiniError(
+      "TOO_MANY_COLUMNS",
+      rowPath(context, rowIndex),
+      `Excel allows at most ${MAX_COLUMNS} columns`,
+    );
+  }
+  let cells = "";
+  let maxColumn = -1;
+  for (let column = 0; column < row.length; column++) {
+    const cell = row[column];
+    if (cell === null || cell === undefined) continue;
+    const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context);
+    if (rendered.length === 0) continue;
+    cells += rendered;
+    maxColumn = column;
+  }
+  const rowNumber = rowIndex + 1;
+  const height = rowHeights?.[rowNumber];
+  if (cells.length === 0) {
+    if (height === undefined) return NOTHING;
+    sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+    return HEIGHT_ONLY;
+  }
+  sink.write(
+    `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
+  );
+  return maxColumn;
+}
+
+function endSheetData(
+  rowIndex: number,
+  lastRowWithCells: number,
+  maxColumn: number,
+  hasRows: boolean,
+  sink: TextSink,
+  rowHeights: Readonly<Record<number, number>> | undefined,
+): SheetData {
+  if (rowHeights !== undefined && renderTrailingHeights(rowHeights, rowIndex + 1, sink)) {
+    hasRows = true;
+  }
+  const range = lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
+  return { range, hasRows };
 }
 
 function heightAttributes(height: number): string {

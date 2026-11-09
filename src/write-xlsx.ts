@@ -62,7 +62,14 @@ export async function writeXlsx(
   const entries: SheetEntry[] = [];
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i]!;
-    const context = { strings, styles, coerce: options.coerce, sheetIndex: i };
+    // The same shape as the streamed context, so the per-cell check reads a present property.
+    const context = {
+      strings,
+      styles,
+      coerce: options.coerce,
+      sheetIndex: i,
+      inlineStrings: false,
+    };
     const rendered = renderWorksheet(sheet, context);
     sheetParts.push({ path: `xl/worksheets/sheet${i + 1}.xml`, data: rendered.data });
     entries.push({ name: sheet.name, filterRange: rendered.filterRange });

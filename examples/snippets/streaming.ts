@@ -1,4 +1,3 @@
-// app/api/orders/route.ts
 import { type Row, XLSX_MIME_TYPE, streamXlsx } from "xlsx-mini";
 
 /** Rows arrive page by page from wherever they live; nothing is held beyond the page in hand. */
@@ -11,7 +10,8 @@ async function* orders(fetchPage: (page: number) => Promise<Row[]>): AsyncGenera
   }
 }
 
-export function GET(fetchPage: (page: number) => Promise<Row[]>): Response {
+/** The response a route handler returns; `fetchPage` is however the application reads a page. */
+export default function ordersResponse(fetchPage: (page: number) => Promise<Row[]>): Response {
   const stream = streamXlsx({
     sheets: [{ name: "Orders", rows: orders(fetchPage), autoFilter: true }],
   });

@@ -178,48 +178,63 @@ export function streamPackage(
     return out;
   };
 
+  /** Cancels the open part, lets a part still arriving be cancelled on arrival, and returns the iterator. */
+  const release = async (reason: unknown): Promise<void> => {
+    cancelled = { reason };
+    // A part still being taken from the iterator is cancelled by openNext once it arrives.
+    await opening?.catch(() => undefined);
+    if (open !== undefined) {
+      open.abort.abort(reason);
+      await open.reader.cancel(reason).catch(() => undefined);
+      await open.piped;
+    }
+    await parts.return?.(undefined);
+  };
+
+  /** One pull's work: a pull that enqueues nothing is never called again, so this loops until it has. */
+  const produce = async (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+  ): Promise<void> => {
+    for (;;) {
+      if (open === undefined) {
+        opening = openNext();
+        const header = await opening;
+        opening = undefined;
+        if (cancelled !== undefined) return;
+        if (header === undefined) {
+          controller.enqueue(centralDirectory());
+          controller.close();
+          return;
+        }
+        controller.enqueue(header);
+        return;
+      }
+      const { done, value } = await open.reader.read();
+      if (done) {
+        controller.enqueue(closeOpen(open.entry));
+        return;
+      }
+      if (value.length === 0) continue;
+      open.entry.compressedSize += value.length;
+      offset += value.length;
+      if (offset > MAX_32_BIT) throw tooLarge();
+      controller.enqueue(value);
+      return;
+    }
+  };
+
   return new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
-        // A pull that enqueues nothing is never called again, so this loops until it has.
-        for (;;) {
-          if (open === undefined) {
-            opening = openNext();
-            const header = await opening;
-            opening = undefined;
-            if (cancelled !== undefined) return;
-            if (header === undefined) {
-              controller.enqueue(centralDirectory());
-              controller.close();
-              return;
-            }
-            controller.enqueue(header);
-            return;
-          }
-          const { done, value } = await open.reader.read();
-          if (done) {
-            controller.enqueue(closeOpen(open.entry));
-            return;
-          }
-          if (value.length === 0) continue;
-          open.entry.compressedSize += value.length;
-          offset += value.length;
-          if (offset > MAX_32_BIT) throw tooLarge();
-          controller.enqueue(value);
-          return;
+        try {
+          await produce(controller);
+        } catch (error) {
+          // An errored stream never has its cancel called: let go of the part and the iterator here.
+          await release(error);
+          throw error;
         }
       },
-      async cancel(reason) {
-        cancelled = { reason };
-        // A part still being taken from the iterator is cancelled by openNext once it arrives.
-        await opening?.catch(() => undefined);
-        if (open !== undefined) {
-          open.abort.abort(reason);
-          await open.reader.cancel(reason);
-          await open.piped;
-        }
-        await parts.return?.(undefined);
-      },
+      cancel: release,
     },
     { highWaterMark: 0 },
   );

@@ -46,6 +46,10 @@ describe("streamWorksheet", () => {
     ],
     ["heights without cells", { name: "S", rows: [], rowHeights: { 1: 28 } }],
     [
+      "a height on an empty row before a row with cells",
+      { name: "S", rows: [[], ["a"]], rowHeights: { 1: 20 } },
+    ],
+    [
       "columns, freeze, merges and a filter",
       {
         name: "S",

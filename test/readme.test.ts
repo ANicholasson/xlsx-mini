@@ -94,7 +94,7 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     const pages = [[["A-1", "Kari", 10.5]], [["A-2", "Ola", 20]], []];
     let fetched = 0;
     const response = (
-      snippet["GET"] as (fetchPage: (page: number) => Promise<unknown[]>) => Response
+      snippet["default"] as (fetchPage: (page: number) => Promise<unknown[]>) => Response
     )((page) => {
       fetched++;
       return Promise.resolve(pages[page] ?? []);

@@ -36,7 +36,9 @@ export const CRC32_INITIAL = 0xffffffff;
 export function crc32Update(state: number, bytes: Uint8Array): number {
   const t = (tables ??= buildTables());
   const length = bytes.length;
-  let crc = state;
+  // Read as an unsigned 32-bit value: a plain parameter leaves the loop's type open, and the byte
+  // path measured a quarter slower on text-heavy sheets until this was added.
+  let crc = state >>> 0;
   let i = 0;
   // Indexes are in range by construction: every lookup masks to a byte within a 256-entry slice.
   for (const end = length - (length % 8); i < end; i += 8) {

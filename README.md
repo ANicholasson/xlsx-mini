@@ -166,12 +166,11 @@ export async function onExportClick(): Promise<void> {
 
 ## Streaming large workbooks
 
-`streamXlsx` returns a web `ReadableStream` of the file's bytes, produced as the consumer reads them, and takes rows from an async iterable, so a database cursor can feed a sheet page by page. Peak memory stays flat however many rows go out. Hand the stream to a `Response`, pipe it to a file, or `for await` over its chunks.
+`streamXlsx` returns a web `ReadableStream` of the file's bytes, produced as the consumer reads them, and takes rows from an async iterable, so a database cursor can feed a sheet page by page. Peak memory stays flat however many rows go out. Return the stream in a `Response` from any route handler, pipe it to a file, or `for await` over its chunks.
 
 <!-- snippet: streaming -->
 
 ```ts
-// app/api/orders/route.ts
 import { type Row, XLSX_MIME_TYPE, streamXlsx } from "xlsx-mini";
 
 /** Rows arrive page by page from wherever they live; nothing is held beyond the page in hand. */
@@ -184,7 +183,8 @@ async function* orders(fetchPage: (page: number) => Promise<Row[]>): AsyncGenera
   }
 }
 
-export function GET(fetchPage: (page: number) => Promise<Row[]>): Response {
+/** The response a route handler returns; `fetchPage` is however the application reads a page. */
+export default function ordersResponse(fetchPage: (page: number) => Promise<Row[]>): Response {
   const stream = streamXlsx({
     sheets: [{ name: "Orders", rows: orders(fetchPage), autoFilter: true }],
   });

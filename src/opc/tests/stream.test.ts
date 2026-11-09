@@ -351,6 +351,43 @@ describe("streamPackage", () => {
     await expect(pending).resolves.toMatchObject({ done: true });
   });
 
+  it("lets go of the open part and the iterator when the package itself fails", async () => {
+    let bodyCancelled = false;
+    let returned = false;
+    const endless: StreamedPart = {
+      path: "endless",
+      body: new ReadableStream({
+        pull(controller) {
+          controller.enqueue(encode("more "));
+        },
+        cancel() {
+          bodyCancelled = true;
+        },
+      }),
+    };
+    async function* source(): AsyncGenerator<StreamedPart> {
+      try {
+        yield endless;
+      } finally {
+        returned = true;
+      }
+    }
+    const huge: StreamCompression = {
+      method: 8,
+      transform: () =>
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(_chunk, controller) {
+            controller.enqueue({ length: 0x1_0000_0000 } as Uint8Array);
+          },
+        }),
+    };
+    await expect(collect(streamPackage(source(), huge))).rejects.toMatchObject({
+      code: "PACKAGE_TOO_LARGE",
+    });
+    expect(bodyCancelled).toBe(true);
+    expect(returned).toBe(true);
+  });
+
   it("errors the stream when a part fails", async () => {
     const failing: StreamedPart = {
       path: "bad",
