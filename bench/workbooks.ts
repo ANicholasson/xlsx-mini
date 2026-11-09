@@ -1,4 +1,4 @@
-import type { Cell, CellObject, Workbook } from "../src/index.ts";
+import type { Cell, CellObject, StreamedWorkbook, Workbook } from "../src/index.ts";
 
 /**
  * The three benchmark suites. Every suite is built from a seeded generator, so the same workbook
@@ -197,54 +197,76 @@ const DAY = 86_400_000;
 const START = Date.UTC(2026, 0, 1);
 
 /** 100 000 rows by 10 mixed columns: ids, names, cities, money, counts, dates, flags, unique SKUs, notes, statuses. */
-function wideWorkbook(): Workbook {
+/** The wide table's rows, one at a time: a header, then `count` rows of ten mixed columns. */
+function* wideRows(count: number): Generator<Cell[]> {
   const next = random(1);
   const notes = pool(next, 200);
-  const rows: Cell[][] = Array.from({ length: 100_000 }, (_, i) => [
-    i + 1,
-    `${pick(next, FIRST_NAMES)} ${pick(next, LAST_NAMES)}`,
-    pick(next, CITIES),
-    Math.round(next() * 1_000_000) / 100,
-    1 + Math.floor(next() * 500),
-    new Date(START + Math.floor(next() * 365 * DAY)),
-    next() < 0.5,
-    `SKU-${String(100_000 + i)}`,
-    pick(next, notes),
-    pick(next, STATUSES),
+  yield header([
+    "Id",
+    "Name",
+    "City",
+    "Amount",
+    "Quantity",
+    "When",
+    "Flag",
+    "SKU",
+    "Note",
+    "Status",
   ]);
+  for (let i = 0; i < count; i++) {
+    yield [
+      i + 1,
+      `${pick(next, FIRST_NAMES)} ${pick(next, LAST_NAMES)}`,
+      pick(next, CITIES),
+      Math.round(next() * 1_000_000) / 100,
+      1 + Math.floor(next() * 500),
+      new Date(START + Math.floor(next() * 365 * DAY)),
+      next() < 0.5,
+      `SKU-${String(100_000 + i)}`,
+      pick(next, notes),
+      pick(next, STATUSES),
+    ];
+  }
+}
+
+const wideColumns = [
+  { width: 10 },
+  { width: 24 },
+  { width: 16 },
+  { width: 14, style: { numberFormat: '#,##0.00 "kr"' } },
+  { width: 10 },
+  { width: 18, style: { numberFormat: "yyyy-mm-dd hh:mm" } },
+  { width: 8 },
+  { width: 12 },
+  { width: 32 },
+  { width: 12 },
+];
+
+/** 100 000 rows by 10 mixed columns, built in memory as `writeXlsx` takes it. */
+function wideWorkbook(): Workbook {
   return {
     sheets: [
       {
         name: "Orders",
-        columns: [
-          { width: 10 },
-          { width: 24 },
-          { width: 16 },
-          { width: 14, style: { numberFormat: '#,##0.00 "kr"' } },
-          { width: 10 },
-          { width: 18, style: { numberFormat: "yyyy-mm-dd hh:mm" } },
-          { width: 8 },
-          { width: 12 },
-          { width: 32 },
-          { width: 12 },
-        ],
+        columns: wideColumns,
         freeze: { rows: 1 },
         autoFilter: true,
-        rows: [
-          header([
-            "Id",
-            "Name",
-            "City",
-            "Amount",
-            "Quantity",
-            "When",
-            "Flag",
-            "SKU",
-            "Note",
-            "Status",
-          ]),
-          ...rows,
-        ],
+        rows: [...wideRows(100_000)],
+      },
+    ],
+  };
+}
+
+/** The wide table with `count` rows produced as they are pulled, as `streamXlsx` takes it. */
+export function wideStreamed(count: number): StreamedWorkbook {
+  return {
+    sheets: [
+      {
+        name: "Orders",
+        columns: wideColumns,
+        freeze: { rows: 1 },
+        autoFilter: true,
+        rows: wideRows(count),
       },
     ],
   };

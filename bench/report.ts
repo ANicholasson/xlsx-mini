@@ -3,7 +3,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
-export type Variant = "deflate" | "store";
+/** `stream` is `streamXlsx` with its defaults into a sink that discards the bytes. */
+export type Variant = "deflate" | "store" | "stream";
 
 /** The minimum and the median of a benchmark's runs, in milliseconds. */
 export interface Timing {

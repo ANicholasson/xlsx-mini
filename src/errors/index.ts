@@ -17,6 +17,7 @@ export type ErrorCode =
   | "TOO_MANY_COLUMNS"
   | "TOO_MANY_ROWS"
   | "PACKAGE_TOO_LARGE"
+  | "ASYNC_ROWS"
   | "NO_DOM";
 
 /**

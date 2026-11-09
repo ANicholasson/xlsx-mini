@@ -90,6 +90,26 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
   "next-route": async (snippet) => {
     await asResponse(snippet, "GET");
   },
+  streaming: async (snippet) => {
+    const pages = [[["A-1", "Kari", 10.5]], [["A-2", "Ola", 20]], []];
+    let fetched = 0;
+    const response = (
+      snippet["default"] as (fetchPage: (page: number) => Promise<unknown[]>) => Response
+    )((page) => {
+      fetched++;
+      return Promise.resolve(pages[page] ?? []);
+    });
+    expect(response.headers.get("Content-Type")).toBe(XLSX_MIME_TYPE);
+    expect(response.headers.get("Content-Disposition")).toContain("orders.xlsx");
+    // The handler returned before a single page was fetched: rows are pulled as the body is read.
+    expect(fetched).toBe(0);
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    isWorkbook(bytes);
+    expect(fetched).toBe(3);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="B3" t="inlineStr"><is><t>Ola</t></is></c>');
+    expect(sheet).toContain('<autoFilter ref="A1:C3"/>');
+  },
   "next-edge": async (snippet) => {
     expect(snippet["runtime"]).toBe("edge");
     await asResponse(snippet, "GET");
