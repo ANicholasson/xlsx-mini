@@ -50,6 +50,22 @@ The height of a row in points, set by row number; rows without one take Excel's 
 A workbook as `streamXlsx` takes it: the same sheets, whose rows may arrive asynchronously, so a cursor can feed a sheet page by page.
 _Avoid_: lazy workbook, async workbook
 
+**Formula**:
+A cell that holds an expression the application computes when the file opens, written without the leading `=`; an optional cached value shows until then. Never inferred from text.
+_Avoid_: function, calculation
+
+**Hyperlink**:
+A cell whose text opens an external URL or jumps to a cell in the workbook. External targets live in the worksheet's relationships part.
+_Avoid_: link target, URL cell
+
+**Data validation**:
+A rule on the cells of a range: a dropdown from a list or a range, or a number or date within bounds, with its input and error messages.
+_Avoid_: dropdown (one kind of rule), constraint
+
+**Print setup**:
+How a sheet prints: orientation, paper size, fit to pages, margins, header and footer, repeated rows.
+_Avoid_: page layout, page setup (reserved for the element)
+
 **Freeze panes**:
 The rows and columns that stay visible while the sheet scrolls.
 

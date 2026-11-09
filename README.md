@@ -352,6 +352,117 @@ export default function appearance(): Promise<Uint8Array> {
 
 Every distinct style is written once, however many cells share it, so styling costs nothing per cell beyond a lookup.
 
+## Formulas and hyperlinks
+
+A cell `{ formula: "SUM(B2:B4)" }` holds a formula, written without the leading `=`. The applications calculate it when the file opens; a cached `value` shows until then and is optional. Formulas are escaped and never evaluated, and text that starts with `=` stays text, so data never becomes code. A cell `{ value, href }` links its text to an absolute URL, `{ value, cell }` jumps to a cell or range on the same sheet, and `{ value, sheet, cell }` to another sheet. A link takes no look of its own: `underline` and a `fontColor` make it look like one.
+
+<!-- snippet: formulas -->
+
+```ts
+import { type CellStyle, writeXlsx } from "xlsx-mini";
+
+const link: CellStyle = { fontColor: "#0563c1", underline: true };
+
+export default function formulasAndLinks(): Promise<Uint8Array> {
+  return writeXlsx({
+    sheets: [
+      {
+        name: "Budget",
+        rows: [
+          ["Item", "Qty", "Price", "Total"],
+          ["Desk", 2, 4999, { formula: "B2*C2" }],
+          ["Chair", 4, 1299.5, { formula: "B3*C3" }],
+          // A cached value shows until the application recalculates; it is optional.
+          ["Sum", { formula: "SUM(B2:B3)", value: 6 }, null, { formula: "SUM(D2:D3)" }],
+          [],
+          [{ value: "Price list", href: "https://example.com/prices", style: link }],
+          [{ value: "Go to the summary", sheet: "Summary", cell: "A1", style: link }],
+        ],
+      },
+      { name: "Summary", rows: [["Grand total", { formula: "Budget!D4" }]] },
+    ],
+  });
+}
+```
+
+## Data validation
+
+A sheet's `validations` say what the cells of a range accept: a dropdown from a list of values or from a range of cells, a number or a date within bounds, each with an optional input message and error message. A range is a cell, a range in A1 form, or whole columns such as `E:E`. The rules are declared on the sheet, so a sheet whose rows come from a generator needs no second pass.
+
+<!-- snippet: validation -->
+
+```ts
+import { type DataValidation, writeXlsx } from "xlsx-mini";
+
+const status: DataValidation = {
+  range: "B2:B1000",
+  list: ["Open", "Closed", "On hold"],
+  input: { title: "Status", message: "Pick one from the list" },
+};
+const quantity: DataValidation = {
+  range: "C2:C1000",
+  number: { min: 1, max: 1000, integer: true },
+  error: { title: "Quantity", message: "A whole number from 1 to 1000" },
+};
+// A dropdown read from cells, here a column on another sheet.
+const owner: DataValidation = { range: "D2:D1000", list: "People!A2:A50" };
+// Whole columns are written as E1:E1048576; a warning lets the entry through after a prompt.
+const due: DataValidation = {
+  range: "E:E",
+  date: { min: new Date(Date.UTC(2026, 0, 1)) },
+  error: { message: "Due dates fall in 2026 or later", style: "warning" },
+};
+
+export default function validated(): Promise<Uint8Array> {
+  return writeXlsx({
+    sheets: [
+      {
+        name: "Orders",
+        rows: [
+          ["Order", "Status", "Qty", "Owner", "Due"],
+          ["A-1001", "Open", 2, "Kari", new Date(Date.UTC(2026, 11, 1))],
+        ],
+        validations: [status, quantity, owner, due],
+      },
+      { name: "People", rows: [["Name"], ["Kari"], ["Ola"]] },
+    ],
+  });
+}
+```
+
+## Print setup
+
+A sheet's `print` sets the orientation, the paper size by name (`letter`, `legal`, `tabloid`, `A3`, `A4`, `A5`), fit to a number of pages wide or tall, margins in inches as Excel stores them, header and footer text with Excel's codes, and `repeatRows`, the header rows printed at the top of every page.
+
+<!-- snippet: print -->
+
+```ts
+import { type PrintSetup, writeXlsx } from "xlsx-mini";
+
+// &L, &C and &R start the left, centre and right sections; &P, &N, &D and &A are the page
+// number, page count, date and sheet name; && is an ampersand.
+const print: PrintSetup = {
+  orientation: "landscape",
+  paperSize: "A4",
+  fitTo: { width: 1 },
+  margins: { left: 0.5, right: 0.5 },
+  header: "&LQuarterly report&R&D",
+  footer: "&L&A&RPage &P of &N",
+  repeatRows: 1,
+};
+
+export default function printable(): Promise<Uint8Array> {
+  const rows = Array.from({ length: 200 }, (_, i) => [
+    i + 1,
+    `Region ${(i % 4) + 1}`,
+    (i + 1) * 125,
+  ]);
+  return writeXlsx({
+    sheets: [{ name: "Report", rows: [["Week", "Region", "Revenue"], ...rows], print }],
+  });
+}
+```
+
 ## Dates and Temporal
 
 A `Date` is written as its UTC instant; what the reader shows follows the cell's format, or the built-in date-time format when the cell has none. Temporal values need no polyfill: `Temporal.PlainDate`, `PlainDateTime`, `ZonedDateTime` and `Instant` are recognised by their `Symbol.toStringTag`, and a `PlainDate` gets the built-in date format. Dates run from 1900-01-01 to 9999-12-31, in Excel's 1900 date system.
@@ -445,52 +556,60 @@ export default async function safely(): Promise<string> {
 }
 ```
 
-| Code                    | When                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `NO_SHEETS`             | The workbook has no sheet.                                                                        |
-| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.    |
-| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                           |
-| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                             |
-| `INVALID_DATE`          | An invalid `Date`.                                                                                |
-| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                            |
-| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                            |
-| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                    |
-| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                         |
-| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.      |
-| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                         |
-| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.           |
-| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                         |
-| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                      |
-| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                  |
-| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                         |
-| `PACKAGE_TOO_LARGE`     | The file, or when streaming one part before compression, would pass 4 GiB; or over 65 529 sheets. |
-| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                         |
-| `NO_DOM`                | `downloadXlsx` called where there is no document.                                                 |
+| Code                    | When                                                                                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NO_SHEETS`             | The workbook has no sheet.                                                                                                                    |
+| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.                                                |
+| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                                                                       |
+| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                                                                         |
+| `INVALID_DATE`          | An invalid `Date`.                                                                                                                            |
+| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                                                                        |
+| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                                                                        |
+| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                                                                |
+| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                                                                     |
+| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.                                                  |
+| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                     |
+| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
+| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                                                                     |
+| `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters or starts with `=`; a cached value that is not text, a number or a boolean.                    |
+| `INVALID_HYPERLINK`     | An `href` that is not an absolute URL, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.                            |
+| `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
+| `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                  |
+| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                                                                  |
+| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                                                              |
+| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                                                                     |
+| `PACKAGE_TOO_LARGE`     | The file, or when streaming one part before compression, would pass 4 GiB; or over 65 529 sheets.                                             |
+| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                                                                     |
+| `NO_DOM`                | `downloadXlsx` called where there is no document.                                                                                             |
 
 Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped, and positions stay where you put them.
 
 ## API
 
-| Export                              | Shape                                                                                                                                                             |
-| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                |
-| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                         |
-| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                            |
-| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                 |
-| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                    |
-| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                |
-| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number> }` |
-| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| { value: CellValue; style?: CellStyle }`                                                                                         |
-| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                          |
-| `CellStyle`                         | `{ bold?; italic?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                             |
-| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                      |
-| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                  |
-| `Column`, `Freeze`                  | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                    |
-| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                |
-| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                     |
-| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                      |
-| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                               |
-| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                     |
+| Export                              | Shape                                                                                                                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                                                                    |
+| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                                                                             |
+| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                                                                                |
+| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                                                                     |
+| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                        |
+| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                    |
+| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
+| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell`                                                                                                                              |
+| `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                      |
+| `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                  |
+| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                              |
+| `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                     |
+| `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                               |
+| `PrintSetup`                        | `{ orientation?; paperSize?: PaperSize; fitTo?: { width?; height? }; margins?: PrintMargins; header?; footer?; repeatRows? }`                                                                                         |
+| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                                                                          |
+| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                      |
+| `Column`, `Freeze`                  | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                                                                        |
+| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                    |
+| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                                                                         |
+| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                          |
+| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                   |
+| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                         |
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 
@@ -527,8 +646,12 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Built from objects               |        clean         |    clean     |     clean     |      clean       |
 | Fonts, fills, borders, merges    |        clean         |    clean     |     clean     |      clean       |
 | Streamed, descriptors, inline    |        clean         |    clean     |     clean     |      clean       |
+| Formulas, cached and not         |        clean         |    clean     |     clean     |      clean       |
+| Hyperlinks, external and within  |        clean         |    clean     |     clean     |      clean       |
+| Data validation                  |        clean         |    clean     |     clean     |      clean       |
+| Print setup                      |        clean         |    clean     |     clean     |      clean       |
 
-LibreOffice also reads every fixture back cell for cell in CI, on every change.
+LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 
 ## Contributing
 

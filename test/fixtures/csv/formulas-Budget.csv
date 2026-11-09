@@ -1,0 +1,10 @@
+Item,Qty,Price,Total
+Desk,2,4999,9998
+Chair,4,1299.5,5198
+Lamp,1,349,349
+Sum,7,,15545
+,,,
+Items,3,,
+Over budget,TRUE,,
+Label,Items: 3,,
+Not a formula,=SUM(B2:B4),,

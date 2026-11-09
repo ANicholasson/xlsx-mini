@@ -14,10 +14,14 @@ import {
   appearanceWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
+  formulasWorkbook,
+  hyperlinksWorkbook,
   layoutWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
+  printWorkbook,
   stylesWorkbook,
+  validationWorkbook,
 } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
@@ -44,6 +48,10 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["styles", stylesWorkbook, {}],
   ["layout", layoutWorkbook, {}],
   ["appearance", appearanceWorkbook, {}],
+  ["formulas", formulasWorkbook, {}],
+  ["hyperlinks", hyperlinksWorkbook, {}],
+  ["validation", validationWorkbook, {}],
+  ["print", printWorkbook, {}],
 ];
 
 describe("streamXlsx", () => {
@@ -149,6 +157,49 @@ describe("streamXlsx", () => {
     expect(log).toEqual(["opened"]);
     await reader.cancel("client went away");
     expect(log).toEqual(["opened", "closed"]);
+  });
+
+  it("streams formulas, links, validations and print setup from an async generator, in one pass", async () => {
+    async function* rows(): AsyncGenerator<Row> {
+      yield ["Item", "Total", "Link"];
+      for (let i = 2; i <= 3; i++) {
+        yield [
+          `item ${i}`,
+          { formula: `A${i}*2` },
+          { value: "docs", href: `https://example.com/${i}` },
+        ];
+      }
+      yield ["Sum", { formula: "SUM(B2:B3)", value: 10 }, { value: "top", cell: "A1" }];
+    }
+    const workbook: StreamedWorkbook = {
+      sheets: [
+        {
+          name: "Stream",
+          rows: rows(),
+          validations: [{ range: "A2:A100", list: ["item 2", "item 3"] }],
+          print: { orientation: "landscape", repeatRows: 1 },
+        },
+      ],
+    };
+    const bytes = await collect(streamXlsx(workbook, { compression: "none" }));
+    const names = unzip(bytes).map((e) => e.name);
+    expect(names.indexOf("xl/worksheets/_rels/sheet1.xml.rels")).toBe(
+      names.indexOf("xl/worksheets/sheet1.xml") + 1,
+    );
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="B2"><f>A2*2</f></c>');
+    expect(sheet).toContain('<c r="B4"><f>SUM(B2:B3)</f><v>10</v></c>');
+    expect(sheet).toMatch(
+      /<\/sheetData><dataValidations count="1">.*<\/dataValidations><hyperlinks><hyperlink ref="C2" r:id="rId1"\/><hyperlink ref="C3" r:id="rId2"\/><hyperlink ref="C4" location="&apos;Stream&apos;!A1"\/><\/hyperlinks><pageMargins [^>]*\/><pageSetup orientation="landscape"\/><\/worksheet>$/,
+    );
+    expect(readPart(bytes, "xl/worksheets/_rels/sheet1.xml.rels")).toContain(
+      'Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/3"',
+    );
+    const workbookPart = readPart(bytes, "xl/workbook.xml");
+    expect(workbookPart).toContain(
+      '<definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;Stream&apos;!$1:$1</definedName>',
+    );
+    expect(workbookPart).toContain('<calcPr fullCalcOnLoad="1"/>');
   });
 
   it("refuses async rows on the byte path with a coded error", async () => {

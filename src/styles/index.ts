@@ -26,6 +26,7 @@ export type VerticalAlign = "top" | "middle" | "bottom";
 export interface CellStyle {
   readonly bold?: boolean;
   readonly italic?: boolean;
+  readonly underline?: boolean;
   /** Font size in points, from 1 to 409; the default is 11. */
   readonly fontSize?: number;
   /** Font colour as `#rrggbb`. */
@@ -192,19 +193,22 @@ export function createStyleTable(): StyleTable {
   const fontId = (
     bold: boolean,
     italic: boolean,
+    underline: boolean,
     size: number | undefined,
     color: string | undefined,
   ): number => {
     const points = fontSize(size);
     const rgb = color === undefined ? "" : argb("fontColor", color);
-    if (!bold && !italic && points === DEFAULT_FONT_SIZE && rgb.length === 0) return 0;
-    const key = `${bold ? "b" : ""}${italic ? "i" : ""}|${points}|${rgb}`;
+    if (!bold && !italic && !underline && points === DEFAULT_FONT_SIZE && rgb.length === 0)
+      return 0;
+    const key = `${bold ? "b" : ""}${italic ? "i" : ""}${underline ? "u" : ""}|${points}|${rgb}`;
     const known = fontIds.get(key);
     if (known !== undefined) return known;
     fonts.push(
       "<font>" +
         (bold ? "<b/>" : "") +
         (italic ? "<i/>" : "") +
+        (underline ? "<u/>" : "") +
         `<sz val="${points}"/>` +
         (rgb.length === 0 ? "" : `<color rgb="${rgb}"/>`) +
         '<name val="Calibri"/><family val="2"/></font>',
@@ -361,6 +365,7 @@ export function createStyleTable(): StyleTable {
       fontId: fontId(
         flag("bold", cell?.bold ?? column?.bold),
         flag("italic", cell?.italic ?? column?.italic),
+        flag("underline", cell?.underline ?? column?.underline),
         cell?.fontSize ?? column?.fontSize,
         cell?.fontColor ?? column?.fontColor,
       ),
@@ -405,6 +410,7 @@ export function createStyleTable(): StyleTable {
       if (style.numberFormat !== undefined) formatId(style.numberFormat);
       flag("bold", style.bold);
       flag("italic", style.italic);
+      flag("underline", style.underline);
       fontSize(style.fontSize);
       if (style.fontColor !== undefined) argb("fontColor", style.fontColor);
       if (style.fill !== undefined) argb("fill", style.fill);

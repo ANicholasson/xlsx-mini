@@ -18,6 +18,7 @@ function context(overrides: Partial<WorksheetContext> = {}): WorksheetContext {
     styles: createStyleTable(),
     coerce: undefined,
     sheetIndex: 0,
+    sheetNames: ["S"],
     ...overrides,
   };
 }
@@ -70,7 +71,7 @@ describe("streamWorksheet", () => {
       const body = await collect(streamed.body);
       expect(body).toBe(withoutDimension(decode(rendered.data)));
       expect(body).not.toContain("<dimension");
-      expect(streamed.filterRange()).toBe(rendered.filterRange);
+      expect(streamed.facts().filterRange).toBe(rendered.filterRange);
     },
   );
 
@@ -105,10 +106,10 @@ describe("streamWorksheet", () => {
     expect(first.startsWith('<?xml version="1.0"')).toBe(true);
     expect(first).toContain("<sheetData>");
     expect(first).not.toContain("</sheetData>");
-    expect(streamed.filterRange()).toBeUndefined();
+    expect(streamed.facts().filterRange).toBeUndefined();
     reader.releaseLock();
     await collect(streamed.body);
-    expect(streamed.filterRange()).toBe("A1:B20000");
+    expect(streamed.facts().filterRange).toBe("A1:B20000");
   });
 
   it("reads no row before the consumer pulls, and returns the iterator when cancelled or finished", async () => {

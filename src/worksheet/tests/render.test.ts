@@ -17,6 +17,7 @@ function render(sheet: Sheet, overrides: Partial<WorksheetContext> = {}): string
     styles,
     coerce: undefined,
     sheetIndex: 0,
+    sheetNames: ["S"],
     ...overrides,
   });
   return new TextDecoder().decode(rendered.data);

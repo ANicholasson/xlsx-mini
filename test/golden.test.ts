@@ -7,11 +7,15 @@ import {
   appearanceWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
+  formulasWorkbook,
+  hyperlinksWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
+  printWorkbook,
   stylesWorkbook,
   layoutWorkbook,
   ordersWorkbook,
+  validationWorkbook,
 } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
@@ -359,5 +363,102 @@ describe("appearance workbook (golden)", () => {
   it("writes a cell with a style and no value, so a border can run across an empty cell", async () => {
     const sheet = readPart(await writeXlsx(appearanceWorkbook, STORE), "xl/worksheets/sheet1.xml");
     expect(sheet).toMatch(/<c r="B5" s="\d+"\/>/);
+  });
+});
+
+describe("formulas workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("formulas.xlsx", formulasWorkbook);
+  });
+
+  it("writes formulas without values, cached results typed, and asks Excel to calculate on open", async () => {
+    const bytes = await writeXlsx(formulasWorkbook, STORE);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<c r="D2" s="3"><f>B2*C2</f></c>');
+    expect(sheet).toContain('<c r="B5" s="1"><f>SUM(B2:B4)</f><v>7</v></c>');
+    expect(sheet).toContain('<c r="B8" t="b"><f>D5&gt;10000</f><v>1</v></c>');
+    expect(sheet).toContain(
+      '<c r="B9" t="str"><f>CONCATENATE(&quot;Items: &quot;,COUNTA(A2:A4))</f><v>Items: 3</v></c>',
+    );
+    // Text that starts with = is a shared string, not a formula.
+    expect(sheet).toContain('<c r="B10" t="s"><v>12</v></c>');
+    expect(readPart(bytes, "xl/sharedStrings.xml")).toContain("<t>=SUM(B2:B4)</t>");
+    expect(readPart(bytes, "xl/workbook.xml")).toContain('</sheets><calcPr fullCalcOnLoad="1"/>');
+    expect(readPart(await writeXlsx(minimalWorkbook, STORE), "xl/workbook.xml")).not.toContain(
+      "calcPr",
+    );
+  });
+});
+
+describe("hyperlinks workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("hyperlinks.xlsx", hyperlinksWorkbook);
+  });
+
+  it("writes external targets into the sheet's relationships part and jumps as locations", async () => {
+    const bytes = await writeXlsx(hyperlinksWorkbook, STORE);
+    expect(unzip(bytes).map((e) => e.name)).toEqual([
+      "[Content_Types].xml",
+      "_rels/.rels",
+      "xl/workbook.xml",
+      "xl/_rels/workbook.xml.rels",
+      "xl/styles.xml",
+      "xl/sharedStrings.xml",
+      "xl/worksheets/sheet1.xml",
+      "xl/worksheets/_rels/sheet1.xml.rels",
+      "xl/worksheets/sheet2.xml",
+    ]);
+    expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain(
+      '<hyperlinks><hyperlink ref="B2" r:id="rId1"/><hyperlink ref="B3" r:id="rId2"/><hyperlink ref="B4" location="&apos;Summary&apos;!B2"/><hyperlink ref="B5" location="&apos;Links&apos;!A1"/></hyperlinks>',
+    );
+    expect(readPart(bytes, "xl/worksheets/_rels/sheet1.xml.rels")).toContain(
+      'Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.com/docs?a=1&amp;b=2" TargetMode="External"',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet2.xml")).toContain(
+      '<hyperlink ref="A2" location="&apos;Links&apos;!A1:B5"/>',
+    );
+    expect(readPart(bytes, "xl/styles.xml")).toContain("<font><u/>");
+  });
+});
+
+describe("validation workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("validation.xlsx", validationWorkbook);
+  });
+
+  it("writes one rule per validation, after the rows", async () => {
+    const sheet = readPart(await writeXlsx(validationWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('</sheetData><dataValidations count="5">');
+    expect(sheet).toContain(
+      '<dataValidation type="list" allowBlank="1" showInputMessage="1" promptTitle="Status" prompt="Pick one of the three" sqref="B2:B100"><formula1>&quot;Open,Closed,On hold&quot;</formula1></dataValidation>',
+    );
+    expect(sheet).toContain("<formula1>&apos;Lists&apos;!$A$2:$A$4</formula1>");
+    expect(sheet).toContain(
+      'type="whole" operator="between" allowBlank="1" showErrorMessage="1" errorTitle="Quantity"',
+    );
+    expect(sheet).toContain(
+      'type="date" operator="between" showErrorMessage="1" errorStyle="warning"',
+    );
+    expect(sheet).toContain('errorStyle="information" error="At most 50 %" sqref="F1:F1048576"');
+  });
+});
+
+describe("print workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("print.xlsx", printWorkbook);
+  });
+
+  it("writes the page setup around the rows and the repeated rows as a defined name", async () => {
+    const bytes = await writeXlsx(printWorkbook, STORE);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:C31"/>',
+    );
+    expect(sheet).toContain(
+      '</sheetData><pageMargins left="0.5" right="0.5" top="0.75" bottom="0.75" header="0.3" footer="0.3"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/><headerFooter><oddHeader>&amp;LQuarterly report&amp;R&amp;D</oddHeader><oddFooter>&amp;L&amp;A&amp;RPage &amp;P of &amp;N</oddFooter></headerFooter></worksheet>',
+    );
+    expect(readPart(bytes, "xl/workbook.xml")).toContain(
+      '<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;Report&apos;!$1:$1</definedName></definedNames>',
+    );
   });
 });
