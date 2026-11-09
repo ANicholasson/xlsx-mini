@@ -42,6 +42,8 @@ interface Open {
   /** Aborting it cancels the part's body; `piped` settles once that has happened. */
   readonly abort: AbortController;
   readonly piped: Promise<void>;
+  /** Errors the tap on both sides, so a write blocked by backpressure lets the body's pipe shut down. */
+  readonly errorTap: (reason: unknown) => void;
 }
 
 /**
@@ -88,7 +90,11 @@ export function streamPackage(
       uncompressedSize: 0,
     };
     entries.push(entry);
+    let tapController!: TransformStreamDefaultController<Uint8Array>;
     const tap = new TransformStream<Uint8Array, Uint8Array>({
+      start(controller) {
+        tapController = controller;
+      },
       transform(chunk, controller) {
         entry.uncompressedSize += chunk.length;
         if (entry.uncompressedSize > MAX_32_BIT) throw tooLarge();
@@ -105,6 +111,7 @@ export function streamPackage(
       reader: tap.readable.pipeThrough(compression.transform()).getReader(),
       abort,
       piped,
+      errorTap: (reason) => tapController.error(reason),
     };
     const header = new Uint8Array(LOCAL_HEADER_SIZE + name.length);
     const view = new DataView(header.buffer);
@@ -184,9 +191,12 @@ export function streamPackage(
     // A part still being taken from the iterator is cancelled by openNext once it arrives.
     await opening?.catch(() => undefined);
     if (open !== undefined) {
+      // Older runtimes do not error a transform's writable side when its readable is cancelled, so
+      // a write held back by the compressor would never settle and the body's pipe never shut down.
+      open.errorTap(reason);
       open.abort.abort(reason);
-      await open.reader.cancel(reason).catch(() => undefined);
       await open.piped;
+      await open.reader.cancel(reason).catch(() => undefined);
     }
     await parts.return?.(undefined);
   };
