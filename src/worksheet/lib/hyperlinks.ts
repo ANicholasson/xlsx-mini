@@ -23,10 +23,13 @@ interface Link {
   readonly target: string;
 }
 
-function isAbsoluteUrl(href: string): boolean {
+/** Schemes that run code rather than open a document; no spreadsheet link needs them. */
+const REFUSED_SCHEMES: ReadonlySet<string> = new Set(["javascript:", "vbscript:", "data:"]);
+
+/** True for an absolute URL whose scheme opens something, such as https, mailto, file or an app's own. */
+function isLinkableUrl(href: string): boolean {
   try {
-    new URL(href);
-    return true;
+    return !REFUSED_SCHEMES.has(new URL(href).protocol);
   } catch {
     return false;
   }
@@ -51,10 +54,10 @@ export function createHyperlinks(sheetNames: readonly string[], sheetIndex: numb
           throw invalid(path, "A link has either href or a cell in the workbook, not both");
         }
         const href = cell.href;
-        if (typeof href !== "string" || !isAbsoluteUrl(href)) {
+        if (typeof href !== "string" || !isLinkableUrl(href)) {
           throw invalid(
             path + ".href",
-            `A link target is an absolute URL such as "https://example.com", not ${describeValue(href)}`,
+            `A link target is an absolute URL such as "https://example.com" that opens a document, not ${describeValue(href)}`,
           );
         }
         targets.push(href);

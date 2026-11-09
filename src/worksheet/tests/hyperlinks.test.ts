@@ -63,6 +63,22 @@ describe("hyperlink cells", () => {
     expect(rendered.relationships).toBeUndefined();
   });
 
+  it("accepts the schemes applications open: https, mailto, file, tel and an app's own", () => {
+    const rendered = render({
+      name: "Links",
+      rows: [
+        [
+          "https://a.b",
+          "mailto:x@y.z",
+          "file:///share/report.pdf",
+          "tel:+4712345678",
+          "obsidian://open?vault=v",
+        ].map((href) => ({ value: "x", href })),
+      ],
+    });
+    expect(rendered.relationships?.match(/TargetMode="External"/g)).toHaveLength(5);
+  });
+
   it("writes no hyperlinks element and no relationships part for a sheet without links", () => {
     const rendered = render({ name: "Links", rows: [["a"]] });
     expect(new TextDecoder().decode(rendered.data)).not.toContain("hyperlinks");
@@ -83,8 +99,16 @@ describe("hyperlink cells", () => {
     expect(sheet).toContain('<hyperlink ref="B1" location="&apos;Links&apos;!B9"/>');
   });
 
-  it("refuses a target that is not an absolute URL, at href", () => {
-    for (const href of ["/docs", "example.com", "", 42]) {
+  it("refuses a target that is not an absolute URL, or whose scheme runs code, at href", () => {
+    for (const href of [
+      "/docs",
+      "example.com",
+      "",
+      42,
+      "javascript:alert(1)",
+      "VBScript:x",
+      "data:text/html,x",
+    ]) {
       expect(() => xml({ name: "Links", rows: [[{ value: "x", href }]] } as Sheet)).toThrow(
         expect.objectContaining({
           code: "INVALID_HYPERLINK",
