@@ -617,7 +617,7 @@ Below 1.0.0 a minor version may change this API; 1.0.0 follows once it has survi
 
 ## Security
 
-No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
+No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
 
 ## Benchmarks
 
