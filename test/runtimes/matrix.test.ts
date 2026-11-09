@@ -6,9 +6,9 @@ import { EdgeVM } from "@edge-runtime/vm";
 import { Miniflare } from "miniflare";
 import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
-import { XLSX_MIME_TYPE, writeXlsx } from "../../src/index.js";
+import { XLSX_MIME_TYPE, streamXlsx, writeXlsx } from "../../src/index.js";
 import { type Command, binary as binaryIn, direct } from "../helpers/bin.js";
-import { unzip } from "../helpers/unzip.js";
+import { readPart as readPartOf, unzip } from "../helpers/unzip.js";
 import { type HostReport, workbook } from "./scenario.mjs";
 
 const execFile = promisify(execFileCallback);
@@ -96,6 +96,7 @@ const parts = (bytes: Uint8Array) =>
 
 describe("runtime matrix", () => {
   let expected: Uint8Array;
+  let expectedStreamed: Uint8Array;
 
   beforeAll(async () => {
     const tsc = binary("tsc");
@@ -105,6 +106,11 @@ describe("runtime matrix", () => {
       shell: tsc.shell,
     });
     expected = await writeXlsx(workbook, { compression: "none" });
+    expectedStreamed = new Uint8Array(
+      await new Response(
+        streamXlsx(workbook, { strings: "shared", compression: "none" }),
+      ).arrayBuffer(),
+    );
   }, 60_000);
 
   describe.each(hosts)("$name", (host) => {
@@ -122,6 +128,33 @@ describe("runtime matrix", () => {
       const entries = unzip(decode(report.deflated));
       expect(entries.map((e) => e.method)).toEqual(entries.map(() => host.method));
       expect(parts(decode(report.deflated))).toEqual(parts(expected));
+    });
+
+    it("streams the stored-block package byte for byte as the source does, from async rows", () => {
+      expect(decode(report.streamed)).toEqual(expectedStreamed);
+      const withoutDimension = (list: readonly (readonly [string, string])[]) =>
+        list.map(([name, xml]) => [name, xml.replace(/<dimension ref="[^"]*"\/>/, "")]);
+      const byName = (list: readonly (readonly [string, string])[]) =>
+        [...list].sort((a, b) => a[0].localeCompare(b[0]));
+      expect(withoutDimension(byName(parts(decode(report.streamed))))).toEqual(
+        withoutDimension(byName(parts(expected))),
+      );
+    });
+
+    it("streams the default package through the host's own deflate, or stored blocks, to the same parts", () => {
+      const entries = unzip(decode(report.streamedDeflated));
+      expect(entries.every((e) => e.method === 8)).toBe(true);
+      for (const entry of entries) {
+        // Stored blocks cost five bytes per 65 535-byte block plus the empty final block; raw
+        // deflate must beat that on every part of a workbook this repetitive.
+        const storedSize =
+          entry.uncompressedSize + 5 * Math.ceil(entry.uncompressedSize / 65_535) + 5;
+        if (host.method === 8) expect(entry.compressedSize).toBeLessThan(storedSize);
+        else expect(entry.compressedSize).toBe(storedSize);
+      }
+      expect(readPartOf(decode(report.streamedDeflated), "xl/worksheets/sheet1.xml")).toContain(
+        't="inlineStr"',
+      );
     });
 
     it("loads the browser entry, which refuses to download without a document", () => {

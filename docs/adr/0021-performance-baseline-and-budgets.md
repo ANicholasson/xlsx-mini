@@ -18,6 +18,27 @@ Peak memory is the growth of the process's resident set during the write, measur
 | Many sheets  | 3.9 MiB | 95 MiB      | 24×                | 30×    |
 | String-heavy | 5.1 MiB | 132 MiB     | 26×                | 30×    |
 
+## Streamed baseline, 2026-11-06, Apple M5 Pro, 48 GiB, Node 24.22.1
+
+`streamXlsx` with its defaults, inline strings and raw deflate, into a sink that discards the bytes; `pnpm bench` reports it as the `stream` variant next to `deflate` and `store`, and the pull-request comment shows it without a base until `main` streams too.
+
+| Suite                  | Output  | Minimum of 7 | Against `deflate` |
+| ---------------------- | ------- | ------------ | ----------------- |
+| Wide table, streamed   | 7.2 MiB | 522 ms       | same              |
+| Many sheets, streamed  | 4.0 MiB | 248 ms       | 12 % faster       |
+| String-heavy, streamed | 5.0 MiB | 913 ms       | 2.2× slower       |
+
+Inline strings cost one escape and one write per text cell instead of one per distinct string, and the deflater sees every repetition; on the string-heavy suite, 1 000 000 cells drawn from 2 000 phrases, that doubles the time. `strings: "shared"` restores the table for such data when memory allows.
+
+Peak memory when streaming is the heap still in use after a collection, sampled every 8 MiB of output, because the resident set grows with V8's appetite for heap rather than with what is held; `pnpm bench:memory` prints both:
+
+| Suite                      | Output   | Retained heap, peak | Resident growth | Budget |
+| -------------------------- | -------- | ------------------- | --------------- | ------ |
+| Wide table, 100 000 rows   | 7.2 MiB  | 9.0 MiB             | 39 MiB          | 12 MiB |
+| Wide table, 1 000 000 rows | 72.1 MiB | 10.1 MiB            | 124 MiB         | 12 MiB |
+
+Ten times the rows leave the retained heap where it was: the rows are produced as they are pulled, the sheet goes out in chunks of at most 65 535 bytes, and only the style table and the zip's central directory grow, with the vocabulary rather than the data.
+
 Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the pull-request report is where to look, since local numbers move with the machine, and it informs rather than gates. A change that lowers a number by more than the margin lowers the budget in the same change.
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs

@@ -104,20 +104,16 @@ export interface Freeze {
 }
 
 /**
- * One sheet of a workbook.
+ * One sheet of a workbook as `streamXlsx` takes it: rows may arrive asynchronously, so a database
+ * cursor can feed the sheet page by page while the package streams out.
  *
  * @example
- * const sheet: Sheet = {
- *   name: "Orders",
- *   columns: [undefined, { style: { numberFormat: '#,##0.00 "kr"' } }],
- *   rows: [["Order", "Total"], ["A-1001", 1234.5]],
- *   merges: ["A1:B1"],
- * };
+ * const sheet: StreamedSheet = { name: "Orders", rows: cursor.rows() };
  */
-export interface Sheet {
+export interface StreamedSheet {
   readonly name: string;
-  /** Any iterable of rows, so a generator or database cursor can feed a sheet without an array. */
-  readonly rows: Iterable<Row>;
+  /** Any iterable or async iterable of rows. */
+  readonly rows: Iterable<Row> | AsyncIterable<Row>;
   /** Per-column settings, by position; leave a slot `undefined` for a column with none. */
   readonly columns?: readonly (Column | undefined)[];
   /** Freeze panes: the header rows and the leading columns that stay visible. */
@@ -128,6 +124,22 @@ export interface Sheet {
   readonly merges?: readonly string[];
   /** Row heights in points by row number, counted from 1: `{ 1: 28 }` makes the first row 28 points. */
   readonly rowHeights?: Readonly<Record<number, number>>;
+}
+
+/**
+ * One sheet of a workbook.
+ *
+ * @example
+ * const sheet: Sheet = {
+ *   name: "Orders",
+ *   columns: [undefined, { style: { numberFormat: '#,##0.00 "kr"' } }],
+ *   rows: [["Order", "Total"], ["A-1001", 1234.5]],
+ *   merges: ["A1:B1"],
+ * };
+ */
+export interface Sheet extends StreamedSheet {
+  /** Any iterable of rows, so a generator can feed a sheet without an array. */
+  readonly rows: Iterable<Row>;
 }
 
 /**

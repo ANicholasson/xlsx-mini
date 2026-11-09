@@ -1,6 +1,6 @@
 import { XML_DECLARATION, escapeXml } from "../xml/index.js";
 
-export type { Workbook } from "./lib/model.js";
+export type { StreamedWorkbook, Workbook } from "./lib/model.js";
 export { validateWorkbook } from "./lib/validate.js";
 
 const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";

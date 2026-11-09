@@ -102,6 +102,15 @@ The edge VM package was last published in December 2024 and may lag the hosted r
 proves the fallback path, not deflate on Vercel. Both entries load on every host, and
 `downloadXlsx` reports `NO_DOM` on each of them.
 
+## streamed.xlsx (the appearance workbook written by `streamXlsx` with stored deflate blocks and inline strings: data descriptors on every entry, the sheet before the workbook, styles and shared-strings parts, no dimension element; also the same workbook streamed with raw deflate, which is what a server sends by default)
+
+| Application      | Version  | Platform | Result | How it was checked                                                                                                                                                                                                                        | Date       |
+| ---------------- | -------- | -------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Microsoft Excel  | 16.114.4 | macOS    | clean  | Both files opened from the shell without a prompt; read back through AppleScript: merge area `$A$1:$D$1`, bold header, row heights identical to those read from appearance.xlsx, the indented description and the empty styled total cell | 2026-11-06 |
+| Apple Numbers    | 14.4     | macOS    | clean  | Both files opened from the shell; title, description and the empty total cell read back through AppleScript as written                                                                                                                    | 2026-11-06 |
+| Google Sheets    | web      | browser  | clean  | Both files uploaded to Drive and opened; the workbook displayed as written on a visual check, no cell-by-cell readback                                                                                                                    | 2026-11-09 |
+| LibreOffice Calc | 26.8.2.2 | macOS    | clean  | Headless CSV conversion of both files is identical to the CSV recorded for appearance.xlsx; `unzip -t` accepts both                                                                                                                       | 2026-11-06 |
+
 ## Browser download (`downloadXlsx` from `xlsx-mini/browser`)
 
 | Browser       | Version       | Platform | Result | How it was checked                                                                                                                                                                                                               | Date       |

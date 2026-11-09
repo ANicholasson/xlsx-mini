@@ -1,12 +1,12 @@
 import { XlsxMiniError } from "../../errors/index.js";
-import type { Workbook } from "./model.js";
+import type { StreamedWorkbook } from "./model.js";
 
 const MAX_NAME_LENGTH = 31;
 const FORBIDDEN_CHARACTERS = /[[\]:*?/\\]/;
 const RESERVED_NAME = "history";
 
 /** Throws the first problem Excel would refuse: no sheets, a bad sheet name, a duplicate name. */
-export function validateWorkbook(workbook: Workbook): void {
+export function validateWorkbook(workbook: StreamedWorkbook): void {
   const sheets = workbook.sheets;
   if (sheets.length === 0) {
     throw new XlsxMiniError("NO_SHEETS", "sheets", "A workbook needs at least one sheet");

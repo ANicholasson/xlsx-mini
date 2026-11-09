@@ -26,16 +26,17 @@ function buildTables(): Uint32Array {
   return built;
 }
 
+/** The state a running CRC-32 starts from; feed chunks through `crc32Update`, then `crc32Finish`. */
+export const CRC32_INITIAL = 0xffffffff;
+
 /**
- * CRC-32 (IEEE 802.3, the polynomial zip uses) of a byte array, as an unsigned 32-bit integer.
- * Slice-by-8: the tables are built on first use and shared afterwards.
- *
- * @example crc32(new TextEncoder().encode("123456789")) // 0xcbf43926
+ * Advances a running CRC-32 over one chunk. Slice-by-8: the tables are built on first use and
+ * shared afterwards.
  */
-export function crc32(bytes: Uint8Array): number {
+export function crc32Update(state: number, bytes: Uint8Array): number {
   const t = (tables ??= buildTables());
   const length = bytes.length;
-  let crc = 0xffffffff;
+  let crc = state;
   let i = 0;
   // Indexes are in range by construction: every lookup masks to a byte within a 256-entry slice.
   for (const end = length - (length % 8); i < end; i += 8) {
@@ -58,5 +59,19 @@ export function crc32(bytes: Uint8Array): number {
   for (; i < length; i++) {
     crc = (t[(crc ^ bytes[i]!) & 0xff]! ^ (crc >>> 8)) >>> 0;
   }
-  return (crc ^ 0xffffffff) >>> 0;
+  return crc;
+}
+
+/** The checksum of everything fed so far, as an unsigned 32-bit integer. */
+export function crc32Finish(state: number): number {
+  return (state ^ 0xffffffff) >>> 0;
+}
+
+/**
+ * CRC-32 (IEEE 802.3, the polynomial zip uses) of a byte array, as an unsigned 32-bit integer.
+ *
+ * @example crc32(new TextEncoder().encode("123456789")) // 0xcbf43926
+ */
+export function crc32(bytes: Uint8Array): number {
+  return crc32Finish(crc32Update(CRC32_INITIAL, bytes));
 }

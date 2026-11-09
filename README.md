@@ -164,6 +164,41 @@ export async function onExportClick(): Promise<void> {
 }
 ```
 
+## Streaming large workbooks
+
+`streamXlsx` returns a web `ReadableStream` of the file's bytes, produced as the consumer reads them, and takes rows from an async iterable, so a database cursor can feed a sheet page by page. Peak memory stays flat however many rows go out. Hand the stream to a `Response`, pipe it to a file, or `for await` over its chunks.
+
+<!-- snippet: streaming -->
+
+```ts
+// app/api/orders/route.ts
+import { type Row, XLSX_MIME_TYPE, streamXlsx } from "xlsx-mini";
+
+/** Rows arrive page by page from wherever they live; nothing is held beyond the page in hand. */
+async function* orders(fetchPage: (page: number) => Promise<Row[]>): AsyncGenerator<Row> {
+  yield ["Order", "Customer", "Total"];
+  for (let page = 0; ; page++) {
+    const rows = await fetchPage(page);
+    if (rows.length === 0) return;
+    yield* rows;
+  }
+}
+
+export function GET(fetchPage: (page: number) => Promise<Row[]>): Response {
+  const stream = streamXlsx({
+    sheets: [{ name: "Orders", rows: orders(fetchPage), autoFilter: true }],
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": XLSX_MIME_TYPE,
+      "Content-Disposition": 'attachment; filename="orders.xlsx"',
+    },
+  });
+}
+```
+
+Text is written into each cell rather than through a shared-strings table, which is what keeps memory flat; `strings: "shared"` keeps the table instead, for a smaller file at the cost of holding every distinct string until the end. The stream throws before it exists when the workbook itself is invalid, and errors mid-way when a cell cannot be written. Cancelling it, as a client going away does, closes the row source.
+
 ## From an array of objects
 
 `sheetFromObjects` turns objects into a sheet: a bold header row, a frozen header and an autofilter by default, each switchable. A column names a key, and the types reject a key whose values a cell cannot hold; a `value` function computes a cell from the whole object.
@@ -429,29 +464,33 @@ export default async function safely(): Promise<string> {
 | `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                               |
 | `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                      |
 | `PACKAGE_TOO_LARGE`     | The file would pass 4 GiB.                                                                     |
+| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                      |
 | `NO_DOM`                | `downloadXlsx` called where there is no document.                                              |
 
 Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped, and positions stay where you put them.
 
 ## API
 
-| Export                             | Shape                                                                                                                                                             |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `writeXlsx(workbook, options?)`    | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                |
-| `WriteOptions`                     | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                         |
-| `Workbook`                         | `{ sheets: readonly Sheet[] }`                                                                                                                                    |
-| `Sheet`                            | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number> }` |
-| `Row`, `Cell`                      | `readonly Cell[]`; `CellValue \| { value: CellValue; style?: CellStyle }`                                                                                         |
-| `CellValue`                        | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                          |
-| `CellStyle`                        | `{ bold?; italic?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                             |
-| `BorderStyle`, `Borders`           | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                      |
-| `HorizontalAlign`, `VerticalAlign` | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                  |
-| `Column`, `Freeze`                 | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                    |
-| `Coerce`, `Register`, `Registered` | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                |
-| `sheetFromObjects(data, options)`  | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                     |
-| `XlsxMiniError`, `ErrorCode`       | `{ code: ErrorCode; path: string; message }`                                                                                                                      |
-| `XLSX_MIME_TYPE`                   | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                               |
-| `downloadXlsx(bytes, filename)`    | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                     |
+| Export                              | Shape                                                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                |
+| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                         |
+| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                            |
+| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                 |
+| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                    |
+| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                |
+| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number> }` |
+| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| { value: CellValue; style?: CellStyle }`                                                                                         |
+| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                          |
+| `CellStyle`                         | `{ bold?; italic?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                             |
+| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                      |
+| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                  |
+| `Column`, `Freeze`                  | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                    |
+| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                |
+| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                     |
+| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                      |
+| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                               |
+| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                     |
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 
@@ -465,13 +504,13 @@ No runtime dependencies and no install scripts. The writer touches no file, netw
 
 Every pull request gets one comment: the pull request and `main` built and timed on the same runner, in turns, on Node, Bun and Deno, for three suites. `pnpm bench` runs them here. On an Apple M5 Pro with Node 24, the minimum of seven runs:
 
-| Suite                                        | Deflate |  STORE |
-| -------------------------------------------- | ------: | -----: |
-| Wide table, 100 000 rows by 10 mixed columns |  495 ms | 177 ms |
-| Many sheets, 40 sheets of 2 500 rows by 6    |  238 ms |  74 ms |
-| String-heavy, 200 000 rows by 5 text columns |  367 ms |  90 ms |
+| Suite                                        | Deflate |  STORE | Streamed |
+| -------------------------------------------- | ------: | -----: | -------: |
+| Wide table, 100 000 rows by 10 mixed columns |  495 ms | 177 ms |   522 ms |
+| Many sheets, 40 sheets of 2 500 rows by 6    |  238 ms |  74 ms |   248 ms |
+| String-heavy, 200 000 rows by 5 text columns |  367 ms |  90 ms |   913 ms |
 
-STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
+STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
 
 ## Compatibility
 
@@ -487,6 +526,7 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Widths, frozen panes, autofilter |        clean         |    clean     |     clean     |      clean       |
 | Built from objects               |        clean         |    clean     |     clean     |      clean       |
 | Fonts, fills, borders, merges    |        clean         |    clean     |     clean     |      clean       |
+| Streamed, descriptors, inline    |        clean         |    clean     |     clean     |      clean       |
 
 LibreOffice also reads every fixture back cell for cell in CI, on every change.
 
