@@ -104,6 +104,8 @@ describe("renderValidations", () => {
       [{ range: "B2", list: ["a".repeat(254)] }, ".list", "at most 255 characters"],
       [{ range: "B2", list: "Open,Closed" }, ".list", 'such as "Lists!A2:A9"'],
       [{ range: "B2", list: "Nope!A1" }, ".list", 'no sheet named "Nope"'],
+      [{ range: "B2", list: "A0" }, ".list", '"A0" is not a cell or range'],
+      [{ range: "B2", list: "Lists!A01:A02" }, ".list", '"A01:A02" is not a cell or range'],
       [{ range: "B2", list: "A9999999" }, ".list", "outside the sheet"],
       [{ range: "B2", number: 5 }, ".number", "object with min and max"],
       [{ range: "B2", number: {} }, ".number", "min, a max or both"],

@@ -140,7 +140,11 @@ function listSource(list: unknown, path: string, sheetNames: readonly string[]):
     }
     const quoted = match[1];
     const sheet = quoted === undefined ? match[2] : quoted.replaceAll("''", "'");
-    const box = parseReference(match[3])!;
+    // The pattern accepts row numbers the parser does not, such as a leading zero.
+    const box = parseReference(match[3]);
+    if (box === undefined) {
+      throw invalid(path, `${describeValue(match[3])} is not a cell or range in A1 form`);
+    }
     const problem = boxProblem(box);
     if (problem !== undefined) throw invalid(path, problem);
     if (
