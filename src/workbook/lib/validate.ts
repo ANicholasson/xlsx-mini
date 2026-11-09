@@ -1,15 +1,27 @@
 import { XlsxMiniError } from "../../errors/index.js";
-import type { Workbook } from "./model.js";
+import type { StreamedWorkbook } from "./model.js";
 
 const MAX_NAME_LENGTH = 31;
 const FORBIDDEN_CHARACTERS = /[[\]:*?/\\]/;
 const RESERVED_NAME = "history";
+/** A zip archive counts its entries in 16 bits, and six parts are not sheets. */
+const MAX_SHEETS = 0xffff - 6;
 
-/** Throws the first problem Excel would refuse: no sheets, a bad sheet name, a duplicate name. */
-export function validateWorkbook(workbook: Workbook): void {
+/**
+ * Throws the first problem Excel would refuse: no sheets, more sheets than the package can hold,
+ * a bad sheet name, a duplicate name.
+ */
+export function validateWorkbook(workbook: StreamedWorkbook): void {
   const sheets = workbook.sheets;
   if (sheets.length === 0) {
     throw new XlsxMiniError("NO_SHEETS", "sheets", "A workbook needs at least one sheet");
+  }
+  if (sheets.length > MAX_SHEETS) {
+    throw new XlsxMiniError(
+      "PACKAGE_TOO_LARGE",
+      "sheets",
+      `A package holds at most ${MAX_SHEETS} sheets`,
+    );
   }
   const seen = new Set<string>();
   for (let i = 0; i < sheets.length; i++) {

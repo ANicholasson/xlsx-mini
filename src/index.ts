@@ -5,7 +5,7 @@ export {
   type SheetFromObjectsOptions,
   sheetFromObjects,
 } from "./worksheet/index.js";
-export { type WriteOptions, writeXlsx } from "./write-xlsx.js";
+export { type StreamOptions, type WriteOptions, streamXlsx, writeXlsx } from "./write-xlsx.js";
 export type {
   BorderStyle,
   Borders,
@@ -13,7 +13,7 @@ export type {
   HorizontalAlign,
   VerticalAlign,
 } from "./styles/index.js";
-export { type Workbook, XLSX_MIME_TYPE } from "./workbook/index.js";
+export { type StreamedWorkbook, type Workbook, XLSX_MIME_TYPE } from "./workbook/index.js";
 export type {
   Cell,
   CellObject,
@@ -25,6 +25,7 @@ export type {
   Registered,
   Row,
   Sheet,
+  StreamedSheet,
   TemporalInstantLike,
   TemporalLike,
   TemporalPlainDateLike,

@@ -28,13 +28,34 @@ export const workbook = {
   ],
 };
 
+async function* later(rows) {
+  for (const row of rows) {
+    await Promise.resolve();
+    yield row;
+  }
+}
+
 /**
- * Writes the workbook twice, with STORE entries and with the default compression, and probes the
- * browser entry, which must load anywhere and refuse to download where there is no document.
+ * Writes the workbook twice, with STORE entries and with the default compression, streams it
+ * twice, and probes the browser entry, which must load anywhere and refuse to download where
+ * there is no document.
  */
 export async function run(lib, browser) {
   const stored = await lib.writeXlsx(workbook, { compression: "none" });
   const deflated = await lib.writeXlsx(workbook);
+  // The same workbook streamed with shared strings and stored blocks, its rows arriving late,
+  // collected through a Response as a route handler's client would.
+  const streamed = new Uint8Array(
+    await new Response(
+      lib.streamXlsx(
+        { sheets: [{ ...workbook.sheets[0], rows: later(workbook.sheets[0].rows) }] },
+        { strings: "shared", compression: "none" },
+      ),
+    ).arrayBuffer(),
+  );
+  const streamedDeflated = new Uint8Array(
+    await new Response(lib.streamXlsx(workbook)).arrayBuffer(),
+  );
   let noDom;
   try {
     browser.downloadXlsx(stored, "runtime.xlsx");
@@ -44,6 +65,8 @@ export async function run(lib, browser) {
   return {
     stored: base64(stored),
     deflated: base64(deflated),
+    streamed: base64(streamed),
+    streamedDeflated: base64(streamedDeflated),
     mime: browser.XLSX_MIME_TYPE,
     noDom,
   };

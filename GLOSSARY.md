@@ -46,6 +46,10 @@ _Avoid_: span, merged region
 **Row height**:
 The height of a row in points, set by row number; rows without one take Excel's default.
 
+**Streamed workbook**:
+A workbook as `streamXlsx` takes it: the same sheets, whose rows may arrive asynchronously, so a cursor can feed a sheet page by page.
+_Avoid_: lazy workbook, async workbook
+
 **Freeze panes**:
 The rows and columns that stay visible while the sheet scrolls.
 
@@ -62,8 +66,17 @@ _Avoid_: archive, zip
 One file inside the package: workbook, worksheet, styles, shared strings, relationships, content types.
 
 **Shared string**:
-Text stored once in a workbook-wide table and referenced by index from every cell that uses it.
-_Avoid_: inline string
+Text stored once in a workbook-wide table and referenced by index from every cell that uses it. What `writeXlsx` writes.
+
+**Inline string**:
+Text written inside its own cell, so nothing has to be held until the end. What `streamXlsx` writes unless asked for shared strings.
+_Avoid_: rich string
+
+**Chunk**:
+One piece of a streamed part as the consumer receives it: at most 65 535 bytes, so it is one stored deflate block where that fallback applies.
+
+**Data descriptor**:
+The CRC and sizes of a streamed entry, written after its data because they are only known then; readers find them again in the central directory.
 
 **Serial**:
 Excel's number for a date and time: days since 1899-12-30, with the time of day as the fraction.
