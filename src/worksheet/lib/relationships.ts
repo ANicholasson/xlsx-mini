@@ -16,6 +16,7 @@ export interface SheetRelationships {
   render(): string | undefined;
 }
 
+/** A collector for one worksheet part; ids are handed out in the order relationships are added. */
 export function createSheetRelationships(): SheetRelationships {
   const relationships: Relationship[] = [];
   return {

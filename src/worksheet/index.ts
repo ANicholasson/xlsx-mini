@@ -129,6 +129,10 @@ interface Frame {
   readonly filterRange: (range: string) => string | undefined;
 }
 
+/**
+ * Validates the sheet's settings and prepares everything around its rows: columns, views, merges,
+ * heights, validations, print setup, the measurer, the links, the drawing and the relationships.
+ */
 function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
   const columns = collectColumns(sheet, context.sheetIndex, (style) =>
     context.styles.validate(style),

@@ -111,6 +111,7 @@ export async function writeXlsx(
   );
 }
 
+/** A package part from XML text. */
 function part(path: string, xml: string): PackagePart {
   return { path, data: encoder.encode(xml) };
 }
@@ -199,6 +200,7 @@ export function streamXlsx(
   return streamPackage(parts(), compression);
 }
 
+/** A streamed part from XML text. */
 function bytesPart(path: string, xml: string): StreamedPart {
   return rawPart(path, encoder.encode(xml));
 }

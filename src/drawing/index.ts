@@ -74,12 +74,14 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return true;
 }
 
+/** The media table for one workbook: create it once and hand it to every sheet. */
 export function createMediaTable(): MediaTable {
   /** Registered images by `length:crc32`; a list, since different bytes can share both. */
   const byKey = new Map<string, { bytes: Uint8Array; media: Media }[]>();
   let count = 0;
   let pending: MediaPart[] = [];
   return {
+    /** Validates the bytes as a PNG and returns the registered media, new or already known. */
     add(bytes, path) {
       if (!(bytes instanceof Uint8Array)) {
         throw new XlsxMiniError(
@@ -171,11 +173,13 @@ function dimension(value: unknown, path: string, name: string): number | undefin
   return value;
 }
 
+/** A drawing for one sheet, empty until a cell anchors an image. */
 export function createSheetDrawing(): SheetDrawing {
   const anchors: Anchor[] = [];
   /** Relationship number by media id. */
   const relationships = new Map<number, number>();
   const self: SheetDrawing = {
+    /** Resolves the drawn size from the request and the image, then records the anchor. */
     add(column, rowIndex, media, width, height, path) {
       const w = dimension(width, path, "width");
       const h = dimension(height, path, "height");
@@ -205,6 +209,7 @@ export function createSheetDrawing(): SheetDrawing {
     get hasImages() {
       return anchors.length > 0;
     },
+    /** One `oneCellAnchor` per picture, each with a unique shape id and its media relationship. */
     render() {
       const inset = IMAGE_INSET * EMU_PER_PIXEL;
       let xml = `${XML_DECLARATION}<xdr:wsDr xmlns:xdr="${DRAWING_NAMESPACE}" xmlns:a="${DRAWING_MAIN_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">`;
