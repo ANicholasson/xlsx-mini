@@ -120,12 +120,21 @@ describe("sheet drawing", () => {
       code: "INVALID_IMAGE",
       path: "c.height",
     });
-    expect(failure(() => drawing.add(0, 0, media, 100_000, undefined, "c")).code).toBe(
-      "INVALID_IMAGE",
-    );
+    const widest = drawing.add(0, 0, media, 100_000, undefined, "c");
+    expect(widest.width).toBe(100_000);
+    expect(widest.height).toBeCloseTo(33_333.33, 1);
     expect(drawing.add(0, 0, media, undefined, 30_000, "c")).toEqual({
       width: 90_000,
       height: 30_000,
+    });
+    // A tall, thin image: the header is read, not the pixels, so one can be declared.
+    const tall = new Uint8Array(stripes);
+    new DataView(tall.buffer).setUint32(16, 1);
+    new DataView(tall.buffer).setUint32(20, 100_000);
+    const tallMedia = createMediaTable().add(tall, "p");
+    expect(failure(() => drawing.add(0, 0, tallMedia, 2, undefined, "c"))).toMatchObject({
+      code: "INVALID_IMAGE",
+      path: "c.width",
     });
   });
 
