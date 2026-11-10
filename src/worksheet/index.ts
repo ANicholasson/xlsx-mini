@@ -150,7 +150,9 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     hasFormulas: false,
     widths,
     drawing,
+    imageRow: -1,
     rowImagePixels: 0,
+    rowTallestColumn: -1,
     rowImageColumn: -1,
     imagePixels: [],
   };

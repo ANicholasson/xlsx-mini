@@ -26,6 +26,8 @@ const MAX_ROW_HEIGHT = 409;
 const DEFAULT_ROW_HEIGHT = 15;
 /** Excel's 96 dpi against 72 points per inch. */
 const POINTS_PER_PIXEL = 0.75;
+/** The tallest picture a row can make room for: the row limit in pixels, less the inset. */
+const MAX_IMAGE_ROW_PIXELS = Math.floor(MAX_ROW_HEIGHT / POINTS_PER_PIXEL) - 2 * IMAGE_INSET;
 /** Built-in number formats a date-like value falls back to. */
 const GENERAL = 0;
 const DATE = 14;
@@ -63,9 +65,12 @@ export interface RowRecords {
   readonly widths: AutoWidths | undefined;
   /** The sheet's pictures, anchored as their cells are written. */
   readonly drawing: SheetDrawing;
-  /** The tallest picture in the row being written, in pixels, reset per row. */
+  /** The row the picture records below belong to; a row without pictures never touches them. */
+  imageRow: number;
+  /** The tallest picture in that row, in pixels, and the column holding it. */
   rowImagePixels: number;
-  /** The rightmost column holding a picture in the row being written, or -1, reset per row. */
+  rowTallestColumn: number;
+  /** The rightmost column holding a picture in that row. */
   rowImageColumn: number;
   /** The widest picture per column, in pixels, for the column widths. */
   readonly imagePixels: number[];
@@ -176,9 +181,6 @@ function renderRow(
   }
   let cells = "";
   let maxColumn = -1;
-  const records = context.records;
-  records.rowImagePixels = 0;
-  records.rowImageColumn = -1;
   for (let column = 0; column < row.length; column++) {
     const cell = row[column];
     if (cell === null || cell === undefined) continue;
@@ -187,11 +189,24 @@ function renderRow(
     cells += rendered;
     maxColumn = column;
   }
-  // A picture occupies its cell whether or not a cell element is written beneath it.
-  if (records.rowImageColumn > maxColumn) maxColumn = records.rowImageColumn;
   const rowNumber = rowIndex + 1;
-  // The caller's height wins; otherwise a row makes room for its tallest picture.
-  const height = rowHeights?.[rowNumber] ?? imageRowHeight(records.rowImagePixels);
+  let height = rowHeights?.[rowNumber];
+  const records = context.records;
+  if (records.imageRow === rowIndex) {
+    // A picture occupies its cell whether or not a cell element is written beneath it.
+    if (records.rowImageColumn > maxColumn) maxColumn = records.rowImageColumn;
+    // The caller's height wins; otherwise the row makes room for its tallest picture.
+    if (height === undefined) {
+      height = imageRowHeight(records.rowImagePixels);
+      if (height === undefined) {
+        throw new XlsxMiniError(
+          "INVALID_IMAGE",
+          cellPath(context, rowIndex, records.rowTallestColumn),
+          `A picture ${records.rowImagePixels} pixels tall does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_IMAGE_ROW_PIXELS} pixels); give it a height, or the row one`,
+        );
+      }
+    }
+  }
   if (cells.length === 0) {
     if (height === undefined) return NOTHING;
     sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
@@ -219,12 +234,11 @@ function endSheetData(
   return { range, hasRows };
 }
 
-/** The points a row needs for a picture this many pixels tall, or undefined when the row has none. */
+/** The points a row needs for a picture this many pixels tall, or undefined when no row can hold it. */
 function imageRowHeight(pixels: number): number | undefined {
-  if (pixels === 0) return undefined;
+  if (pixels > MAX_IMAGE_ROW_PIXELS) return undefined;
   const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
-  if (points < DEFAULT_ROW_HEIGHT) return DEFAULT_ROW_HEIGHT;
-  return points > MAX_ROW_HEIGHT ? MAX_ROW_HEIGHT : points;
+  return points < DEFAULT_ROW_HEIGHT ? DEFAULT_ROW_HEIGHT : points;
 }
 
 /** The row attributes for a custom height in points. */
@@ -625,7 +639,14 @@ function renderImage(
   const records = context.records;
   const media = context.media.add(cell.image, path);
   const size = records.drawing.add(column, rowIndex, media, cell.width, cell.height, path);
-  if (size.height > records.rowImagePixels) records.rowImagePixels = size.height;
+  if (records.imageRow !== rowIndex) {
+    records.imageRow = rowIndex;
+    records.rowImagePixels = 0;
+  }
+  if (size.height > records.rowImagePixels) {
+    records.rowImagePixels = size.height;
+    records.rowTallestColumn = column;
+  }
   // Cells are visited left to right, so the latest picture is the rightmost.
   records.rowImageColumn = column;
   if (size.width > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = size.width;

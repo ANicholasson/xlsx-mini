@@ -88,16 +88,30 @@ describe("image cells", () => {
   it("takes the tallest picture in a row, and the caller's row height over its own", () => {
     const { xml } = render({
       name: "S",
-      rowHeights: { 2: 60 },
+      rowHeights: { 2: 60, 3: 409 },
       rows: [
         [{ image: badge, height: 24 }, { image: stripes }],
         [{ image: stripes }],
         [{ image: stripes, height: 600 }],
+        [{ image: stripes, height: 541 }],
       ],
     });
     expect(xml).toContain('<row r="1" ht="33" customHeight="1"/>');
     expect(xml).toContain('<row r="2" ht="60" customHeight="1"/>');
     expect(xml).toContain('<row r="3" ht="409" customHeight="1"/>');
+    expect(xml).toContain('<row r="4" ht="408.75" customHeight="1"/>');
+  });
+
+  it("refuses a picture no row can hold unless the caller sizes the row, at the tallest picture's cell", () => {
+    expect(
+      failure({ name: "S", rows: [["a"], [{ image: badge }, { image: stripes, height: 542 }]] }),
+    ).toMatchObject({ code: "INVALID_IMAGE", path: "sheets[0].rows[1][1]" });
+    const { xml } = render({
+      name: "S",
+      rowHeights: { 1: 100 },
+      rows: [[{ image: stripes, height: 600 }]],
+    });
+    expect(xml).toContain('<row r="1" ht="100" customHeight="1"/>');
   });
 
   it("widens a column to its widest picture unless it has a numeric width, and counts it under auto width", () => {
@@ -119,7 +133,7 @@ describe("image cells", () => {
       rows: [["A text wider than the badge beneath it"], [{ image: badge }]],
     });
     expect(wider.xml).toContain('<col min="1" max="1" width="35.57" customWidth="1"/>');
-    const plain = render({ name: "S", rows: [[{ image: stripes, width: 2000 }]] });
+    const plain = render({ name: "S", rows: [[{ image: stripes, width: 2000, height: 40 }]] });
     expect(plain.xml).toContain('<col min="1" max="1" width="255" customWidth="1"/>');
   });
 

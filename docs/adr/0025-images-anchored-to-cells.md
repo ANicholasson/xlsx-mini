@@ -20,7 +20,7 @@ An image cell has no `value`; the cell beneath the picture stays empty, and `sty
 
 A picture lying across neighbouring cells is a broken table, so the writer sizes what it can:
 
-- **The row** holding the image gets the picture's height plus the inset, in points at three quarters of a point per pixel, unless `rowHeights` names that row, in which case the caller's height wins. A row with several images takes the tallest. This happens on both paths, since a row's height is written with the row.
+- **The row** holding the image gets the picture's height plus the inset, in points at three quarters of a point per pixel and never less than the default row, unless `rowHeights` names that row, in which case the caller's height wins. A row with several images takes the tallest. Excel caps a row at 409 points, 541 pixels of picture; a taller picture whose row the caller has not sized is refused rather than left to run into the next row. This happens on both paths, since a row's height is written with the row.
 - **The column** holding the image is measured like text under auto width: an image column with `width: "auto"`, or under `autoWidth`, counts the picture's width among its cells; an image column with no width at all is widened to its widest picture, since the default width fits no picture worth embedding. A numeric width is the caller's and stays. Column widths precede the rows in the file, so when streaming this follows the auto-width rule of ADR 0024: an image column is sized from the first 1 000 rows when the sheet holds the head for auto width, and otherwise the caller sets the width, which the README says next to the option.
 
 Nothing here is particular to any kind of picture; it is what a cell that holds one needs.
