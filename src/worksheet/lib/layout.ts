@@ -20,8 +20,14 @@ export interface CollectedColumns {
   readonly measured: readonly boolean[] | undefined;
   /** Whether columns past the list fit themselves: the sheet's `autoWidth`. */
   readonly beyond: boolean;
-  /** The `<cols>` element from the numeric widths and the measured ones, or an empty string. */
-  readonly cols: (measuredWidths: readonly (number | undefined)[] | undefined) => string;
+  /**
+   * The `<cols>` element from the numeric widths, the measured ones and the widest picture per
+   * column in pixels, or an empty string. A numeric width wins; a picture widens any other column.
+   */
+  readonly cols: (
+    measuredWidths: readonly (number | undefined)[] | undefined,
+    imagePixels: readonly number[],
+  ) => string;
 }
 
 /** Validates every column up front, so a bad width or style is reported at the column. */
@@ -78,11 +84,16 @@ export function collectColumns(
     styles,
     measured: anyMeasured ? measured : undefined,
     beyond,
-    cols: (measuredWidths) => {
+    cols: (measuredWidths, imagePixels) => {
       let cols = "";
-      const count = Math.max(fixed.length, measuredWidths?.length ?? 0);
+      const count = Math.max(fixed.length, measuredWidths?.length ?? 0, imagePixels.length);
       for (let i = 0; i < count; i++) {
-        const width = fixed[i] ?? measuredWidths?.[i];
+        let width = fixed[i] ?? measuredWidths?.[i];
+        const pixels = imagePixels[i];
+        if (fixed[i] === undefined && pixels !== undefined && pixels > 0) {
+          const forImage = Math.min(MAX_COLUMN_WIDTH, Math.round(((pixels + 12) / 7) * 100) / 100);
+          if (width === undefined || forImage > width) width = forImage;
+        }
         if (width === undefined) continue;
         cols += `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`;
       }

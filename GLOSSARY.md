@@ -31,6 +31,10 @@ _Avoid_: blank, null cell
 **Column**:
 A vertical position across every row, named by letters, carrying a width and a default style for its cells.
 
+**Image cell**:
+A cell holding a PNG, anchored to the cell at its pixel size and moving with it; the row grows to it, and so does a column without a numeric width.
+_Avoid_: picture, drawing, embedded image
+
 **Auto width**:
 A column width estimated from the column's widest cell, character by character against Calibri 11, numbers and dates by their format; from the first 1 000 rows when streaming.
 _Avoid_: autofit

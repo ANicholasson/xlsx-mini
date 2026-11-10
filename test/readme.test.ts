@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { XLSX_MIME_TYPE } from "../src/index.js";
+import { badgePng, stripesPng } from "./fixtures/workbooks.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 /**
@@ -187,6 +188,20 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(widths).toHaveLength(5);
     expect(widths[4]).toBe(40);
     expect(widths.slice(0, 4).every((w) => w > 3 && w < 60)).toBe(true);
+  },
+  images: async (snippet) => {
+    const products = [
+      { name: "Desk", code: "D-1001", picture: stripesPng },
+      { name: "Chair", code: "C-2002", picture: badgePng },
+    ];
+    const bytes = await (snippet["default"] as (products: unknown[]) => Promise<Uint8Array>)(
+      products,
+    );
+    isWorkbook(bytes);
+    expect(unzip(bytes).map((e) => e.name)).toContain("xl/media/image2.png");
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<drawing r:id="rId1"/>');
+    expect(sheet).toContain('ht="33" customHeight="1"');
   },
   formats: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();

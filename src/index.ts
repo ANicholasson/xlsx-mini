@@ -24,6 +24,7 @@ export type {
   DateBounds,
   FormulaCell,
   Freeze,
+  ImageCell,
   LinkCell,
   NumberBounds,
   PaperSize,

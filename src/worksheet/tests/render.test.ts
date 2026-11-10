@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { XlsxMiniError } from "../../errors/index.js";
+import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
 import { type Cell, type Sheet, type WorksheetContext, renderWorksheet } from "../index.js";
 
@@ -14,6 +15,7 @@ const styles = createStyleTable();
 function render(sheet: Sheet, overrides: Partial<WorksheetContext> = {}): string {
   const rendered = renderWorksheet(sheet, {
     strings: createStringTable(),
+    media: createMediaTable(),
     styles,
     coerce: undefined,
     sheetIndex: 0,

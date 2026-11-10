@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import type { XlsxMiniError } from "../../errors/index.js";
+import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
 import { createStyleTable } from "../../styles/index.js";
 import { type Cell, type Sheet, renderWorksheet } from "../index.js";
@@ -14,6 +15,7 @@ const plainDate = {
 function render(sheet: Sheet): string {
   const rendered = renderWorksheet(sheet, {
     strings: createStringTable(),
+    media: createMediaTable(),
     styles: createStyleTable(),
     coerce: undefined,
     sheetIndex: 0,

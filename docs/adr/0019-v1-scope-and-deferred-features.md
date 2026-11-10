@@ -5,3 +5,5 @@ Version 1 covers multiple sheets, typed cells (text, number, boolean, Date, Temp
 Update: merged cells, borders, fills, font colour and size, italic, alignment, wrap, indent and row heights shipped in 0.2.0 as additive style and sheet fields. Still deferred: images, hyperlinks, formulas.
 
 Update: hyperlinks and formulas shipped in 0.4.0 as explicit cell types, with data validation and print setup at sheet level (ADR 0023). Still deferred: images.
+
+Update: images shipped in 0.6.0 as a cell type anchored to its cell (ADR 0025). Nothing from this list remains deferred.

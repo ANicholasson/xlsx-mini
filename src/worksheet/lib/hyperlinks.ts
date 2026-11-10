@@ -1,9 +1,9 @@
 import { XlsxMiniError, describeValue } from "../../errors/index.js";
-import { XML_DECLARATION, escapeXml } from "../../xml/index.js";
+import { escapeXml } from "../../xml/index.js";
 import { boxProblem, parseReference, quoteSheetName } from "./cell-ref.js";
 import type { LinkCell, SheetLinkCell } from "./model.js";
+import type { SheetRelationships } from "./relationships.js";
 
-const RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
 const HYPERLINK_RELATIONSHIP =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
 
@@ -13,8 +13,6 @@ export interface Hyperlinks {
   add(reference: string, cell: LinkCell | SheetLinkCell, path: string): void;
   /** The `<hyperlinks>` element, or an empty string when no cell linked anywhere. */
   render(): string;
-  /** The sheet's relationships part, or undefined when no link is external. */
-  relationships(): string | undefined;
 }
 
 interface Link {
@@ -44,9 +42,12 @@ function invalid(path: string, message: string): XlsxMiniError {
  * External targets become relationships of the worksheet part, one per link; in-workbook targets
  * are written as locations and need none. A sheet named in a link must exist in the workbook.
  */
-export function createHyperlinks(sheetNames: readonly string[], sheetIndex: number): Hyperlinks {
+export function createHyperlinks(
+  sheetNames: readonly string[],
+  sheetIndex: number,
+  relationships: SheetRelationships,
+): Hyperlinks {
   const links: Link[] = [];
-  const targets: string[] = [];
   let lowerNames: readonly string[] | undefined;
   return {
     add(reference, cell, path) {
@@ -61,8 +62,8 @@ export function createHyperlinks(sheetNames: readonly string[], sheetIndex: numb
             `A link target is an absolute URL such as "https://example.com" that opens a document, not ${describeValue(href)}`,
           );
         }
-        targets.push(href);
-        links.push({ reference, target: ` r:id="rId${targets.length}"` });
+        const id = relationships.add(HYPERLINK_RELATIONSHIP, href, true);
+        links.push({ reference, target: ` r:id="${id}"` });
         return;
       }
       const box = parseReference(cell.cell);
@@ -93,14 +94,6 @@ export function createHyperlinks(sheetNames: readonly string[], sheetIndex: numb
       let xml = "<hyperlinks>";
       for (const link of links) xml += `<hyperlink ref="${link.reference}"${link.target}/>`;
       return `${xml}</hyperlinks>`;
-    },
-    relationships() {
-      if (targets.length === 0) return undefined;
-      let xml = `${XML_DECLARATION}<Relationships xmlns="${RELATIONSHIPS_NAMESPACE}">`;
-      for (let i = 0; i < targets.length; i++) {
-        xml += `<Relationship Id="rId${i + 1}" Type="${HYPERLINK_RELATIONSHIP}" Target="${escapeXml(targets[i]!)}" TargetMode="External"/>`;
-      }
-      return `${xml}</Relationships>`;
     },
   };
 }

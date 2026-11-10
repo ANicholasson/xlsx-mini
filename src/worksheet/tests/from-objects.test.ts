@@ -102,6 +102,21 @@ describe("sheetFromObjects", () => {
     expect(rowsOf(custom)[0]).toEqual([{ value: "id", style: { bold: true, numberFormat: "@" } }]);
   });
 
+  it("lets a value function return any cell, an image or a styled value included", () => {
+    const png = new Uint8Array([1, 2, 3]);
+    const sheet = sheetFromObjects(orders, {
+      name: "S",
+      columns: [
+        { key: "id", value: (order) => ({ value: order.id, style: { bold: true } }) },
+        { key: "tags", value: () => ({ image: png, height: 20 }) },
+      ],
+    });
+    expect(rowsOf(sheet)[1]).toEqual([
+      { value: "A-1001", style: { bold: true } },
+      { image: png, height: 20 },
+    ]);
+  });
+
   it("passes auto widths through: the sheet flag and a column's own", () => {
     const whole = sheetFromObjects(orders, { name: "S", autoWidth: true });
     expect(whole.autoWidth).toBe(true);

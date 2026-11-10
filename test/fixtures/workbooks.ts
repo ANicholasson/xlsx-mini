@@ -1,4 +1,12 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { type WriteOptions, type Workbook, sheetFromObjects } from "../../src/index.js";
+
+const imagesDir = join(dirname(fileURLToPath(import.meta.url)), "images");
+/** A 120 by 40 picture of vertical bars and a 48 by 48 badge, both PNG, both committed. */
+export const stripesPng = new Uint8Array(readFileSync(join(imagesDir, "stripes.png")));
+export const badgePng = new Uint8Array(readFileSync(join(imagesDir, "badge.png")));
 
 /** The workbook behind minimal.xlsx. Change it only together with the fixture. */
 export const minimalWorkbook: Workbook = {
@@ -415,6 +423,32 @@ export const autoWidthWorkbook: Workbook = {
         ["SKU-100003", "Monitor arm, dual", 899, new Date(Date.UTC(2025, 11, 1)), true, ""],
         ["SKU-42", "Lamp", 249.9, new Date(Date.UTC(2026, 6, 7)), false, null],
         [{ value: "Total", style: header }, null, { formula: "SUM(C3:C6)", value: 9938.4 }],
+      ],
+    },
+  ],
+};
+
+/**
+ * The workbook behind images.xlsx: a picture per row in one column, the same badge repeated in
+ * another, one picture scaled, a header row, a text column and a fixed-width column.
+ */
+export const imagesWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Catalogue",
+      autoWidth: true,
+      columns: [undefined, { width: 10 }],
+      rows: [
+        [
+          { value: "Product", style: header },
+          { value: "Code", style: header },
+          { value: "Picture", style: header },
+          { value: "Badge", style: header },
+        ],
+        ["Desk", "D-1001", { image: stripesPng }, { image: badgePng }],
+        ["Chair", "C-2002", { image: stripesPng, width: 60 }, { image: badgePng, height: 24 }],
+        ["Lamp", "L-3003", { image: stripesPng, style: { fill: "#fff2cc" } }, { image: badgePng }],
+        ["No picture", "N-0000", null, null],
       ],
     },
   ],

@@ -125,8 +125,23 @@ export interface SheetLinkCell {
   readonly style?: CellStyle;
 }
 
-/** One cell of a row: a bare value, or a plain object carrying a value, a formula or a link. */
-export type Cell = CellValue | CellObject | FormulaCell | LinkCell | SheetLinkCell;
+/**
+ * A cell showing a PNG, anchored to the cell at its pixel size or the size given; one of `width`
+ * and `height` scales the other. The row grows to the picture, and so does a column without a
+ * numeric width. The cell beneath stays empty; `style` reaches it for a fill or a border.
+ *
+ * @example
+ * const logo: ImageCell = { image: pngBytes, height: 40 };
+ */
+export interface ImageCell {
+  readonly image: Uint8Array;
+  readonly width?: number;
+  readonly height?: number;
+  readonly style?: CellStyle;
+}
+
+/** One cell of a row: a bare value, or a plain object carrying a value, a formula, a link or an image. */
+export type Cell = CellValue | CellObject | FormulaCell | LinkCell | SheetLinkCell | ImageCell;
 
 /** One row, left to right from column A. */
 export type Row = readonly Cell[];

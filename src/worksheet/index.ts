@@ -1,3 +1,4 @@
+import { DRAWING_RELATIONSHIP, createSheetDrawing, drawingPath } from "../drawing/index.js";
 import { XlsxMiniError } from "../errors/index.js";
 import { XML_DECLARATION, createChunkSink, createXmlSink } from "../xml/index.js";
 import { createAutoWidths } from "./lib/auto-width.js";
@@ -13,6 +14,7 @@ import {
 import type { CellStyle } from "../styles/index.js";
 import type { Row, Sheet, StreamedSheet } from "./lib/model.js";
 import { renderPrint } from "./lib/print.js";
+import { createSheetRelationships } from "./lib/relationships.js";
 import {
   type RowContext,
   type RowRecords,
@@ -32,6 +34,7 @@ export type {
   DateBounds,
   FormulaCell,
   Freeze,
+  ImageCell,
   LinkCell,
   NumberBounds,
   PaperSize,
@@ -79,11 +82,20 @@ interface WorksheetFacts {
   readonly hasFormulas: boolean;
 }
 
-/** A rendered worksheet part, its relationships part when it links outside, and its facts. */
+/** The sheet's drawing part and its relationships, when any cell holds an image. */
+interface SheetDrawingParts {
+  /** `xl/drawings/drawingN.xml`. */
+  readonly drawing: string;
+  /** `xl/drawings/_rels/drawingN.xml.rels`. */
+  readonly relationships: string;
+}
+
+/** A rendered worksheet part, its relationships part when it has any, its drawing, and its facts. */
 export interface RenderedWorksheet extends WorksheetFacts {
   readonly data: Uint8Array;
-  /** `xl/worksheets/_rels/sheetN.xml.rels`, only when a cell links to an external target. */
+  /** `xl/worksheets/_rels/sheetN.xml.rels`, when a cell links to an external target or the sheet has a drawing. */
   readonly relationships: string | undefined;
+  readonly drawing: SheetDrawingParts | undefined;
 }
 
 const WORKSHEET_OPEN = `${XML_DECLARATION}<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">`;
@@ -98,6 +110,10 @@ interface Frame {
   /** The context the rows render with, carrying what they record: links, formulas, widths. */
   readonly context: RowContext;
   readonly printTitles: string | undefined;
+  /** The sheet's relationships part, complete once the tail has been rendered. */
+  readonly relationships: () => string | undefined;
+  /** The drawing parts, once the rows have been rendered, or undefined without images. */
+  readonly drawing: () => SheetDrawingParts | undefined;
   /** Everything before the rows; the dimension only when the range is known. */
   readonly head: (range: string | undefined, hasRows: boolean) => string;
   /** Everything after the rows, in the order the schema fixes. */
@@ -119,10 +135,15 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     columns.measured === undefined
       ? undefined
       : createAutoWidths(columns.measured, columns.beyond, mergeStarts(boxes));
+  const relationships = createSheetRelationships();
+  const drawing = createSheetDrawing();
   const records: RowRecords = {
-    links: createHyperlinks(context.sheetNames, context.sheetIndex),
+    links: createHyperlinks(context.sheetNames, context.sheetIndex, relationships),
     hasFormulas: false,
     widths,
+    drawing,
+    rowImagePixels: 0,
+    imagePixels: [],
   };
   const filterRange = (range: string): string | undefined =>
     sheet.autoFilter === true && range.length > 0 ? range : undefined;
@@ -131,12 +152,17 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     rowHeights,
     context: { ...context, records },
     printTitles: print.printTitles,
+    relationships: () => relationships.render(),
+    drawing: () =>
+      drawing.hasImages
+        ? { drawing: drawing.render(), relationships: drawing.relationships() }
+        : undefined,
     head: (range, hasRows) =>
       WORKSHEET_OPEN +
       print.sheetPr +
       (range === undefined || range.length === 0 ? "" : `<dimension ref="${range}"/>`) +
       views +
-      columns.cols(widths?.widths()) +
+      columns.cols(widths?.widths(), records.imagePixels) +
       (hasRows ? "<sheetData>" : "<sheetData/>"),
     tail: (range, hasRows) => {
       const filter = filterRange(range);
@@ -147,6 +173,9 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
         validations +
         records.links.render() +
         print.tail +
+        (drawing.hasImages
+          ? `<drawing r:id="${relationships.add(DRAWING_RELATIONSHIP, `../${drawingPath(context.sheetIndex + 1).slice(3)}`, false)}"/>`
+          : "") +
         "</worksheet>"
       );
     },
@@ -169,6 +198,8 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
     rowHeights,
     context: rowContext,
     printTitles,
+    relationships,
+    drawing,
     head,
     tail,
     filterRange,
@@ -182,9 +213,12 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
     rowHeights,
   );
   const records = rowContext.records;
+  // The tail adds the drawing relationship, so the relationships part is read after it.
+  const data = sink.finish(head(range, hasRows), tail(range, hasRows));
   return {
-    data: sink.finish(head(range, hasRows), tail(range, hasRows)),
-    relationships: records.links.relationships(),
+    data,
+    relationships: relationships(),
+    drawing: drawing(),
     filterRange: filterRange(range),
     printTitles,
     hasFormulas: records.hasFormulas,
@@ -194,8 +228,10 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
 /** A worksheet part produced row by row as it is pulled. */
 export interface StreamedWorksheet {
   readonly body: ReadableStream<Uint8Array>;
-  /** The relationships part for external links, known once the body has been read to its end. */
+  /** The relationships part for external links and the drawing, known once the body has been read to its end. */
   readonly relationships: () => string | undefined;
+  /** The drawing parts, known once the body has been read to its end, or undefined without images. */
+  readonly drawing: () => SheetDrawingParts | undefined;
   /** What the workbook part needs, known once the body has been read to its end. */
   readonly facts: () => WorksheetFacts;
 }
@@ -216,6 +252,8 @@ export function streamWorksheet(
     rowHeights,
     context: rowContext,
     printTitles,
+    relationships,
+    drawing,
     head,
     tail,
     filterRange,
@@ -305,7 +343,8 @@ export function streamWorksheet(
       },
       { highWaterMark: 0 },
     ),
-    relationships: () => records.links.relationships(),
+    relationships,
+    drawing,
     facts: () => ({
       filterRange: range === undefined ? undefined : filterRange(range),
       printTitles,

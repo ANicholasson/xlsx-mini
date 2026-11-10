@@ -2,6 +2,7 @@ import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js";
+import { IMAGE_INSET, type MediaTable, type SheetDrawing } from "../../drawing/index.js";
 import type { AutoWidths } from "./auto-width.js";
 import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
 import type { Hyperlinks } from "./hyperlinks.js";
@@ -10,6 +11,7 @@ import type {
   CellObject,
   Coerce,
   FormulaCell,
+  ImageCell,
   LinkCell,
   Row,
   SheetLinkCell,
@@ -19,6 +21,9 @@ import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
 
 const MAX_TEXT_LENGTH = 32_767;
 const MAX_FORMULA_LENGTH = 8192;
+const MAX_ROW_HEIGHT = 409;
+/** Excel's 96 dpi against 72 points per inch. */
+const POINTS_PER_PIXEL = 0.75;
 /** Built-in number formats a date-like value falls back to. */
 const GENERAL = 0;
 const DATE = 14;
@@ -41,6 +46,8 @@ export interface WorksheetContext {
   readonly sheetIndex: number;
   /** Every sheet's name in tab order, so a link to another sheet can be checked. */
   readonly sheetNames: readonly string[];
+  /** The workbook's images, shared by every sheet so a repeated image is written once. */
+  readonly media: MediaTable;
   /** Write text into the cells rather than through the shared-strings table. */
   readonly inlineStrings?: boolean;
 }
@@ -52,6 +59,12 @@ export interface RowRecords {
   hasFormulas: boolean;
   /** The measurer for the columns that size themselves, or undefined when none does. */
   readonly widths: AutoWidths | undefined;
+  /** The sheet's pictures, anchored as their cells are written. */
+  readonly drawing: SheetDrawing;
+  /** The tallest picture in the row being written, in pixels, reset per row. */
+  rowImagePixels: number;
+  /** The widest picture per column, in pixels, for the column widths. */
+  readonly imagePixels: number[];
 }
 
 /** The worksheet context with the sheet's records, so the per-cell calls carry one argument for both. */
@@ -159,6 +172,8 @@ function renderRow(
   }
   let cells = "";
   let maxColumn = -1;
+  const records = context.records;
+  records.rowImagePixels = 0;
   for (let column = 0; column < row.length; column++) {
     const cell = row[column];
     if (cell === null || cell === undefined) continue;
@@ -168,7 +183,8 @@ function renderRow(
     maxColumn = column;
   }
   const rowNumber = rowIndex + 1;
-  const height = rowHeights?.[rowNumber];
+  // The caller's height wins; otherwise a row makes room for its tallest picture.
+  const height = rowHeights?.[rowNumber] ?? imageRowHeight(records.rowImagePixels);
   if (cells.length === 0) {
     if (height === undefined) return NOTHING;
     sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
@@ -194,6 +210,13 @@ function endSheetData(
   }
   const range = lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
   return { range, hasRows };
+}
+
+/** The points a row needs for a picture this many pixels tall, or undefined when the row has none. */
+function imageRowHeight(pixels: number): number | undefined {
+  if (pixels === 0) return undefined;
+  const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
+  return points > MAX_ROW_HEIGHT ? MAX_ROW_HEIGHT : points;
 }
 
 /** The row attributes for a custom height in points. */
@@ -235,6 +258,9 @@ function renderCell(
   const reference = columnLetter(column) + (rowIndex + 1);
   if (isWrapper(value)) {
     cellStyle = value.style;
+    if ("image" in value) {
+      return renderImage(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+    }
     if ("formula" in value) {
       if ("href" in value || "cell" in value || "sheet" in value) {
         throw new XlsxMiniError(
@@ -567,8 +593,41 @@ function styleAttribute(
   return index === 0 ? "" : ` s="${index}"`;
 }
 
-/** A plain object with a value, formula or link property is a cell object; class instances never are. */
-function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell | SheetLinkCell {
+/**
+ * An image cell: the picture is registered once per distinct image and anchored to this cell; the
+ * row and the column learn its size. The cell beneath is written only when it carries a style.
+ */
+function renderImage(
+  cell: ImageCell,
+  reference: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  column: number,
+  rowIndex: number,
+  context: RowContext,
+): string {
+  const path = cellPath(context, rowIndex, column);
+  if ("value" in cell || "formula" in cell || "href" in cell || "cell" in cell || "sheet" in cell) {
+    throw new XlsxMiniError(
+      "INVALID_IMAGE",
+      path,
+      "An image cell holds the image, its width and height and a style, not a value, formula or link",
+    );
+  }
+  const records = context.records;
+  const media = context.media.add(cell.image, path);
+  const size = records.drawing.add(column, rowIndex, media, cell.width, cell.height, path);
+  if (size.height > records.rowImagePixels) records.rowImagePixels = size.height;
+  if (size.width > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = size.width;
+  if (cellStyle === undefined) return "";
+  const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
+  return style.length === 0 ? "" : `<c r="${reference}"${style}/>`;
+}
+
+/** A plain object with a value, formula, link or image property is a cell object; class instances never are. */
+function isWrapper(
+  value: unknown,
+): value is CellObject | FormulaCell | LinkCell | SheetLinkCell | ImageCell {
   if (typeof value !== "object" || value === null) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
   return (
@@ -577,7 +636,8 @@ function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell
       "formula" in value ||
       "href" in value ||
       "cell" in value ||
-      "sheet" in value)
+      "sheet" in value ||
+      "image" in value)
   );
 }
 
