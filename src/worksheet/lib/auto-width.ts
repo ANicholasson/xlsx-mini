@@ -33,10 +33,13 @@ const ASCII_PIXELS = new Uint8Array([
   5, 7, 5, 7, // { | } ~
 ]);
 
+/** Pixels by code unit below 128: controls and DEL take none. */
+const LOW_PIXELS = new Uint8Array(128);
+LOW_PIXELS.set(ASCII_PIXELS, 32);
+
 /** The pixels one UTF-16 code unit takes; a surrogate pair counts once, a combining mark not at all. */
 function pixelsOf(code: number): number {
-  if (code < 32) return 0;
-  if (code < 127) return ASCII_PIXELS[code - 32]!;
+  if (code < 128) return LOW_PIXELS[code]!;
   if (code >= 0x0300 && code <= 0x036f) return 0;
   if (code >= 0xdc00 && code <= 0xdfff) return 0;
   if (
@@ -54,20 +57,30 @@ function pixelsOf(code: number): number {
   return OTHER_PIXELS;
 }
 
-/** The pixels of the widest line of a text. */
-function textPixels(text: string): number {
-  let widest = 0;
-  let line = 0;
-  for (let i = 0; i < text.length; i++) {
+/** The pixels of one line of text, from `start` up to `end`. */
+function linePixels(text: string, start: number, end: number): number {
+  let pixels = 0;
+  for (let i = start; i < end; i++) {
     const code = text.charCodeAt(i);
-    if (code === 10) {
-      if (line > widest) widest = line;
-      line = 0;
-    } else {
-      line += pixelsOf(code);
-    }
+    pixels += code < 128 ? LOW_PIXELS[code]! : pixelsOf(code);
   }
-  return line > widest ? line : widest;
+  return pixels;
+}
+
+/** The pixels of the widest line of a text; the one-line case, which is most text, scans once. */
+function textPixels(text: string): number {
+  let newline = text.indexOf("\n");
+  if (newline === -1) return linePixels(text, 0, text.length);
+  let widest = 0;
+  let start = 0;
+  for (;;) {
+    const end = newline === -1 ? text.length : newline;
+    const line = linePixels(text, start, end);
+    if (line > widest) widest = line;
+    if (newline === -1) return widest;
+    start = newline + 1;
+    newline = text.indexOf("\n", start);
+  }
 }
 
 /** What a number format says about the length of what it shows, read once per format. */
@@ -284,6 +297,18 @@ export interface AutoWidths {
     cell: CellStyle | undefined,
     columnStyle: CellStyle | undefined,
   ): void;
+  /**
+   * Records a text cell that went through the shared-strings table, by its index there: a string
+   * is scanned once per sheet however often it repeats, which is what a table of names or
+   * statuses does.
+   */
+  sharedText(
+    column: number,
+    index: number,
+    text: string,
+    cell: CellStyle | undefined,
+    columnStyle: CellStyle | undefined,
+  ): void;
   /** Records a number or a date serial under the number format the cell resolves to, or `dateDefault`. */
   number(
     column: number,
@@ -326,6 +351,8 @@ export function createAutoWidths(
   /** A slot per column that sizes itself, null for one that does not, undefined until first seen. */
   const slots: (Slot | null | undefined)[] = [];
   const shapes = new Map<string | number, FormatShape>();
+  /** Pixels by shared-string index, 0 until measured; grown as the table grows, never sparse. */
+  let sharedPixels = new Float64Array(1024);
   let active = true;
 
   const shapeOf = (format: string | number | undefined, dateDefault: number): FormatShape => {
@@ -371,6 +398,24 @@ export function createAutoWidths(
         cell === undefined ? slotFactor(slot, columnStyle) : factorOf(cell, columnStyle);
       if (text.length * WIDEST_PIXELS * factor <= slot.pixels) return;
       const measuredPixels = textPixels(text) * factor;
+      if (measuredPixels > slot.pixels) slot.pixels = measuredPixels;
+    },
+    sharedText(column, index, text, cell, columnStyle) {
+      const slot = slots[column]!;
+      const factor =
+        cell === undefined ? slotFactor(slot, columnStyle) : factorOf(cell, columnStyle);
+      if (text.length * WIDEST_PIXELS * factor <= slot.pixels) return;
+      if (index >= sharedPixels.length) {
+        const grown = new Float64Array(Math.max(index + 1, sharedPixels.length * 2));
+        grown.set(sharedPixels);
+        sharedPixels = grown;
+      }
+      let pixels = sharedPixels[index]!;
+      if (pixels === 0) {
+        pixels = textPixels(text);
+        sharedPixels[index] = pixels;
+      }
+      const measuredPixels = pixels * factor;
       if (measuredPixels > slot.pixels) slot.pixels = measuredPixels;
     },
     number(column, value, dateDefault, cell, columnStyle) {

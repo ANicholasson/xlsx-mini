@@ -43,15 +43,15 @@ Budgets are the means rounded up to the next ten milliseconds and the growth rat
 
 ## Auto width, 2026-11-10, Apple M5 Pro, 48 GiB, Node 24.22.1
 
-The `auto` variant is each suite with every column sized to its content (ADR 0024), written as STORE, read against `store` in the same run: the difference is the cost of measuring, since nothing else changes. Minimum of seven.
+The `auto` variant is each suite with every column sized to its content (ADR 0024), written as STORE, read against `store` in the same run: the difference is the cost of measuring, since nothing else changes. Minimum of seven, `store` then `auto`, in milliseconds.
 
-| Suite        | `store` | `auto` | Measuring costs |
-| ------------ | ------- | ------ | --------------- |
-| Wide table   | 163 ms  | 162 ms | within noise    |
-| Many sheets  | 69 ms   | 80 ms  | 15 %            |
-| String-heavy | 87 ms   | 93 ms  | 7 %             |
+| Suite        | Node 24.22.1 | Bun 1.4.4 | Deno 2.9.6 |
+| ------------ | ------------ | --------- | ---------- |
+| Wide table   | 159 / 153    | 131 / 119 | 102 / 116  |
+| Many sheets  | 74 / 79      | 54 / 61   | 52 / 57    |
+| String-heavy | 91 / 89      | 91 / 95   | 83 / 84    |
 
-The wide table, the suite the issue budgeted at ten percent, measures for free: its columns reach their widest cell within the first rows, after which a text cell is skipped on its length and a number cell on its magnitude. The many-sheets suite pays most because every one of its forty sheets learns its widths from scratch. The three suites without auto width are unchanged, which the pull-request report against `main` confirms. No budget changes.
+Two `store` runs of the same build in one session differed by fifteen percent on Node, so differences inside ten percent here are noise. The wide table, the suite the issue budgeted at ten percent, measures within that noise on Node and Bun and fourteen percent above it on Deno; the many-sheets suite pays seven to thirteen percent, the string-heavy suite nothing. What remains per cell is the call that asks whether the column is measured: a shared string is scanned once per sheet by its table index, a text whose length cannot beat the column is not scanned, a number whose magnitude cannot beat the column is not counted, and a column at the ceiling is left alone. The three suites without auto width are unchanged, which the pull-request report against `main` confirms; on the report the `auto` row has no `main` side, since a build from before auto widths would write the suite without widths rather than measure it. No budget changes.
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 

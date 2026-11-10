@@ -48,6 +48,12 @@ describe("auto column width", () => {
       expect(width(["illi"])).toBe(3.43);
     });
 
+    it("scans a shared string once per sheet, and measures past a thousand distinct strings", () => {
+      const names = Array.from({ length: 1500 }, (_, i) => `name ${i}`);
+      expect(width([...names, "Kari Nordmann", ...names])).toBe(14.86);
+      expect(width(["", "", "ab"])).toBe(3.86);
+    });
+
     it("takes the widest cell, however the rows are ordered", () => {
       expect(width(["Kari Nordmann", "Oslo", "Ola"])).toBe(14.86);
       expect(width(["Ola", "Oslo", "Kari Nordmann"])).toBe(14.86);
@@ -86,6 +92,9 @@ describe("auto column width", () => {
       expect(width([true])).toBe(6.14);
       expect(width([false])).toBe(6.86);
       expect(width([{ value: "Docs", href: "https://example.com" }])).toBe(5.86);
+      expect(width([{ value: true, style: { bold: true } }])).toBe(6.59);
+      expect(width(["x".repeat(50), true])).toBe(51.71);
+      expect(width(["xxxxx", true])).toBe(6.71);
     });
 
     it("stays between 3 and 60 characters, and stops measuring at the ceiling", () => {

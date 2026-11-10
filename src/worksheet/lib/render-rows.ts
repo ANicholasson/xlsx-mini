@@ -309,14 +309,15 @@ function renderValue(
         );
       }
       const widths = context.records.widths;
-      if (widths !== undefined && widths.wants(column, rowIndex)) {
-        widths.text(column, value, cellStyle, columnStyle);
-      }
+      const measure = widths !== undefined && widths.wants(column, rowIndex);
       if (context.inlineStrings === true) {
+        if (measure) widths.text(column, value, cellStyle, columnStyle);
         const space = needsSpacePreserve(value) ? ' xml:space="preserve"' : "";
         return `<c r="${reference}"${style} t="inlineStr"><is><t${space}>${escapeXml(value)}</t></is></c>`;
       }
-      return `<c r="${reference}"${style} t="s"><v>${context.strings.intern(value)}</v></c>`;
+      const index = context.strings.intern(value);
+      if (measure) widths.sharedText(column, index, value, cellStyle, columnStyle);
+      return `<c r="${reference}"${style} t="s"><v>${index}</v></c>`;
     }
     case "number": {
       if (!Number.isFinite(value)) {

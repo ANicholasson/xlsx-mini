@@ -56,10 +56,24 @@ function summarize(samples: readonly number[]): Timing {
   return { minMs: sorted[0]!, p50Ms: sorted[Math.floor(sorted.length / 2)]! };
 }
 
+/** Whether a build knows auto widths: one from before them refuses the column rather than ignoring it. */
+async function supportsAutoWidth(api: typeof Api): Promise<boolean> {
+  try {
+    await api.writeXlsx(
+      { sheets: [{ name: "probe", columns: [{ width: "auto" }], rows: [["x"]] }] },
+      { compression: "none" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.meta.url));
 const baseDist = argument("--base");
 const head = await load(headDist);
 const base = baseDist === undefined ? undefined : await load(baseDist);
+const baseHasAutoWidth = base === undefined ? false : await supportsAutoWidth(base);
 const iterations = Number(argument("--iterations") ?? 7);
 
 const benchmarks: BenchmarkResult[] = [];
@@ -76,24 +90,24 @@ for (const [suite, build] of suites) {
     const writeWith = (api: typeof Api): Write | undefined => {
       if (variant === "deflate") return () => api.writeXlsx(workbook);
       if (variant === "store") return () => api.writeXlsx(workbook, store);
-      if (variant === "auto") return () => api.writeXlsx(autoWorkbook, store);
+      if (variant === "auto") {
+        // A base build without auto widths would write the suite with no widths at all, which
+        // is not the same work, so the row shows no base rather than a wrong one.
+        if (api === base && !baseHasAutoWidth) return undefined;
+        return () => api.writeXlsx(autoWorkbook, store);
+      }
       // A build without streaming, such as a base from before it, skips the variant.
       if (typeof api.streamXlsx !== "function") return undefined;
       return () => api.streamXlsx(workbook).pipeTo(new WritableStream());
     };
     const headWrite = writeWith(head);
     if (headWrite === undefined) continue;
-    let baseWrite = base === undefined ? undefined : writeWith(base);
+    const baseWrite = base === undefined ? undefined : writeWith(base);
     // One warm-up each, then the two builds in turns, the order swapped every iteration so that
     // neither side always pays for the other's garbage or always gets the warmer cache; a
     // collection before each timed call, where the host exposes one, takes the rest of that bias.
-    // A base build that refuses the variant's input, such as one from before auto widths, skips it.
     await headWrite();
-    try {
-      await baseWrite?.();
-    } catch {
-      baseWrite = undefined;
-    }
+    await baseWrite?.();
     const headSamples: number[] = [];
     const baseSamples: number[] = [];
     for (let i = 0; i < iterations; i++) {
