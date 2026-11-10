@@ -12,6 +12,7 @@ import {
 } from "../src/index.js";
 import {
   appearanceWorkbook,
+  autoWidthWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
   formulasWorkbook,
@@ -52,6 +53,7 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["hyperlinks", hyperlinksWorkbook, {}],
   ["validation", validationWorkbook, {}],
   ["print", printWorkbook, {}],
+  ["auto-width", autoWidthWorkbook, {}],
 ];
 
 describe("streamXlsx", () => {
@@ -200,6 +202,57 @@ describe("streamXlsx", () => {
       '<definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;Stream&apos;!$1:$1</definedName>',
     );
     expect(workbookPart).toContain('<calcPr fullCalcOnLoad="1"/>');
+  });
+
+  it("sizes auto columns from the first 1 000 rows, holding the head until they have been read", async () => {
+    async function* rows(wideAt: number): AsyncGenerator<Row> {
+      yield ["Name"];
+      for (let i = 1; i < 1500; i++)
+        yield [i === wideAt ? "a much longer text past the sample" : "ab"];
+    }
+    const stream = (wideAt: number) =>
+      collect(
+        streamXlsx(
+          { sheets: [{ name: "S", columns: [{ width: "auto" }], rows: rows(wideAt) }] },
+          { compression: "none" },
+        ),
+      );
+    const colsOf = (bytes: Uint8Array) =>
+      /<cols>.*?<\/cols>/.exec(readPart(bytes, "xl/worksheets/sheet1.xml"))?.[0];
+    // Inside the sample the wide value counts; past it the first thousand rows have set the width.
+    expect(colsOf(await stream(999))).toBe(
+      '<cols><col min="1" max="1" width="32.29" customWidth="1"/></cols>',
+    );
+    expect(colsOf(await stream(1200))).toBe(
+      '<cols><col min="1" max="1" width="7" customWidth="1"/></cols>',
+    );
+    const sheet = readPart(await stream(1200), "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<row r="1"><c r="A1" t="inlineStr"><is><t>Name</t></is></c></row>');
+    expect(sheet).toContain('<row r="1500">');
+  });
+
+  it("streams an auto-width sheet without rows as an empty sheet, and one whose sample is empty rows", async () => {
+    const empty = await collect(
+      streamXlsx({ sheets: [{ name: "S", autoWidth: true, rows: [] }] }, { compression: "none" }),
+    );
+    expect(readPart(empty, "xl/worksheets/sheet1.xml")).toContain("<sheetData/></worksheet>");
+    const late = await collect(
+      streamXlsx(
+        {
+          sheets: [
+            {
+              name: "S",
+              autoWidth: true,
+              rows: [...Array.from({ length: 1200 }, () => []), ["ab"]],
+            },
+          ],
+        },
+        { compression: "none" },
+      ),
+    );
+    const sheet = readPart(late, "xl/worksheets/sheet1.xml");
+    expect(sheet).not.toContain("<cols>");
+    expect(sheet).toContain('<row r="1201">');
   });
 
   it("refuses async rows on the byte path with a coded error", async () => {

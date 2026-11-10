@@ -1,0 +1,7 @@
+"Inventory, a title wider than its first column",,,,,
+SKU,Product,Unit price,Restocked,In stock,Note
+SKU-100001,Height-adjustable desk,7490,2026-03-14,TRUE,Delivered and assembled on site
+SKU-7,Chair,1299.5,2026-10-30,FALSE,"A note long enough to reach the sixty-character ceiling, which a fixed width would need to raise"
+SKU-100003,"Monitor arm, dual",899,2025-12-01,TRUE,
+SKU-42,Lamp,249.9,2026-07-07,FALSE,
+Total,,9938.4,,,

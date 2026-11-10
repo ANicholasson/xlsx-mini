@@ -2,6 +2,7 @@ import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js";
+import type { AutoWidths } from "./auto-width.js";
 import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
 import type { Hyperlinks } from "./hyperlinks.js";
 import type {
@@ -49,6 +50,13 @@ export interface RowRecords {
   readonly links: Hyperlinks;
   /** Set once a formula has been written, so the workbook can ask Excel to calculate on open. */
   hasFormulas: boolean;
+  /** The measurer for the columns that size themselves, or undefined when none does. */
+  readonly widths: AutoWidths | undefined;
+}
+
+/** The worksheet context with the sheet's records, so the per-cell calls carry one argument for both. */
+export interface RowContext extends WorksheetContext {
+  readonly records: RowRecords;
 }
 
 /** What was written to the sink: the used range of cells, and whether any row element was emitted. */
@@ -78,9 +86,8 @@ const HEIGHT_ONLY = -1;
 export function renderSheetData(
   rows: Iterable<Row>,
   columnStyles: readonly (CellStyle | undefined)[],
-  context: WorksheetContext,
+  context: RowContext,
   sink: TextSink,
-  records: RowRecords,
   rowHeights?: Readonly<Record<number, number>>,
 ): SheetData {
   let rowIndex = -1;
@@ -89,7 +96,7 @@ export function renderSheetData(
   let hasRows = false;
   for (const row of rows) {
     rowIndex++;
-    const written = renderRow(row, rowIndex, columnStyles, context, sink, records, rowHeights);
+    const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
     if (written === NOTHING) continue;
     hasRows = true;
     if (written === HEIGHT_ONLY) continue;
@@ -102,9 +109,8 @@ export function renderSheetData(
 /** The row loop as an object, so a stream can feed it one row per pull. */
 export function createSheetDataWriter(
   columnStyles: readonly (CellStyle | undefined)[],
-  context: WorksheetContext,
+  context: RowContext,
   sink: TextSink,
-  records: RowRecords,
   rowHeights?: Readonly<Record<number, number>>,
 ): SheetDataWriter {
   let rowIndex = -1;
@@ -114,7 +120,7 @@ export function createSheetDataWriter(
   return {
     row(row) {
       rowIndex++;
-      const written = renderRow(row, rowIndex, columnStyles, context, sink, records, rowHeights);
+      const written = renderRow(row, rowIndex, columnStyles, context, sink, rowHeights);
       if (written === NOTHING) return;
       hasRows = true;
       if (written === HEIGHT_ONLY) return;
@@ -133,9 +139,8 @@ function renderRow(
   row: Row,
   rowIndex: number,
   columnStyles: readonly (CellStyle | undefined)[],
-  context: WorksheetContext,
+  context: RowContext,
   sink: TextSink,
-  records: RowRecords,
   rowHeights: Readonly<Record<number, number>> | undefined,
 ): number {
   if (rowIndex >= MAX_ROWS) {
@@ -157,7 +162,7 @@ function renderRow(
   for (let column = 0; column < row.length; column++) {
     const cell = row[column];
     if (cell === null || cell === undefined) continue;
-    const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context, records);
+    const rendered = renderCell(cell, column, columnStyles[column], rowIndex, context);
     if (rendered.length === 0) continue;
     cells += rendered;
     maxColumn = column;
@@ -222,9 +227,9 @@ function renderCell(
   column: number,
   columnStyle: CellStyle | undefined,
   rowIndex: number,
-  context: WorksheetContext,
-  records: RowRecords,
+  context: RowContext,
 ): string {
+  const records = context.records;
   let value: unknown = cell;
   let cellStyle: CellStyle | undefined;
   const reference = columnLetter(column) + (rowIndex + 1);
@@ -290,7 +295,7 @@ function renderValue(
   columnStyle: CellStyle | undefined,
   column: number,
   rowIndex: number,
-  context: WorksheetContext,
+  context: RowContext,
   coerced: boolean,
 ): string {
   if (value === null || value === undefined) return "";
@@ -302,6 +307,10 @@ function renderValue(
           cellPath(context, rowIndex, column),
           `Excel allows at most ${MAX_TEXT_LENGTH} characters in a cell`,
         );
+      }
+      const widths = context.records.widths;
+      if (widths !== undefined && widths.wants(column, rowIndex)) {
+        widths.text(column, value, cellStyle, columnStyle);
       }
       if (context.inlineStrings === true) {
         const space = needsSpacePreserve(value) ? ' xml:space="preserve"' : "";
@@ -317,10 +326,19 @@ function renderValue(
           `${value} cannot be written to a cell`,
         );
       }
+      const widths = context.records.widths;
+      if (widths !== undefined && widths.wants(column, rowIndex)) {
+        widths.number(column, value, GENERAL, cellStyle, columnStyle);
+      }
       return `<c r="${reference}"${style}><v>${value}</v></c>`;
     }
-    case "boolean":
+    case "boolean": {
+      const widths = context.records.widths;
+      if (widths !== undefined && widths.wants(column, rowIndex)) {
+        widths.text(column, value ? "TRUE" : "FALSE", cellStyle, columnStyle);
+      }
       return `<c r="${reference}"${style} t="b"><v>${value ? 1 : 0}</v></c>`;
+    }
     default:
       break;
   }
@@ -440,7 +458,7 @@ function renderFormula(
   columnStyle: CellStyle | undefined,
   column: number,
   rowIndex: number,
-  context: WorksheetContext,
+  context: RowContext,
 ): string {
   const path = cellPath(context, rowIndex, column);
   const formula = cell.formula;
@@ -466,6 +484,8 @@ function renderFormula(
   const f = `<f>${escapeXml(formula)}</f>`;
   const value = cell.value;
   if (value === null || value === undefined) return `${open}>${f}</c>`;
+  const widths = context.records.widths;
+  const measure = widths !== undefined && widths.wants(column, rowIndex);
   switch (typeof value) {
     case "string":
       if (value.length > MAX_TEXT_LENGTH) {
@@ -475,6 +495,7 @@ function renderFormula(
           `Excel allows at most ${MAX_TEXT_LENGTH} characters in a cell`,
         );
       }
+      if (measure) widths.text(column, value, cellStyle, columnStyle);
       return `${open} t="str">${f}<v>${escapeXml(value)}</v></c>`;
     case "number":
       if (!Number.isFinite(value)) {
@@ -484,8 +505,10 @@ function renderFormula(
           `${value} cannot be written to a cell`,
         );
       }
+      if (measure) widths.number(column, value, GENERAL, cellStyle, columnStyle);
       return `${open}>${f}<v>${value}</v></c>`;
     case "boolean":
+      if (measure) widths.text(column, value ? "TRUE" : "FALSE", cellStyle, columnStyle);
       return `${open} t="b">${f}<v>${value ? 1 : 0}</v></c>`;
     default:
       throw new XlsxMiniError(
@@ -505,7 +528,7 @@ function dateCell(
   columnStyle: CellStyle | undefined,
   column: number,
   rowIndex: number,
-  context: WorksheetContext,
+  context: RowContext,
 ): string {
   if (Number.isNaN(serial)) {
     throw new XlsxMiniError(
@@ -513,6 +536,10 @@ function dateCell(
       cellPath(context, rowIndex, column),
       "Excel dates run from 1900-01-01 to 9999-12-31",
     );
+  }
+  const widths = context.records.widths;
+  if (widths !== undefined && widths.wants(column, rowIndex)) {
+    widths.number(column, serial, dateDefault, cellStyle, columnStyle);
   }
   const style = styleAttribute(cellStyle, columnStyle, dateDefault, column, rowIndex, context);
   return `<c r="${reference}"${style}><v>${serial}</v></c>`;

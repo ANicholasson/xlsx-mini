@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 
 /** `stream` is `streamXlsx` with its defaults into a sink that discards the bytes. */
-export type Variant = "deflate" | "store" | "stream";
+/** `auto` is the suite with every column sized to its content, written as STORE, to read against `store`. */
+export type Variant = "deflate" | "store" | "stream" | "auto";
 
 /** The minimum and the median of a benchmark's runs, in milliseconds. */
 export interface Timing {

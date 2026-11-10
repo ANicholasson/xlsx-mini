@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as Api from "../src/index.ts";
 import type { BenchmarkResult, RunResult, Timing, Variant } from "./report.ts";
-import { suites } from "./workbooks.ts";
+import { suites, withAutoWidths } from "./workbooks.ts";
 
 type Write = () => Promise<unknown>;
 
@@ -65,22 +65,35 @@ const iterations = Number(argument("--iterations") ?? 7);
 const benchmarks: BenchmarkResult[] = [];
 for (const [suite, build] of suites) {
   const workbook = build();
-  for (const variant of ["deflate", "store", "stream"] as const satisfies readonly Variant[]) {
-    const options = variant === "store" ? { compression: "none" as const } : undefined;
+  const autoWorkbook = withAutoWidths(workbook);
+  for (const variant of [
+    "deflate",
+    "store",
+    "stream",
+    "auto",
+  ] as const satisfies readonly Variant[]) {
+    const store = { compression: "none" as const };
     const writeWith = (api: typeof Api): Write | undefined => {
-      if (variant !== "stream") return () => api.writeXlsx(workbook, options);
+      if (variant === "deflate") return () => api.writeXlsx(workbook);
+      if (variant === "store") return () => api.writeXlsx(workbook, store);
+      if (variant === "auto") return () => api.writeXlsx(autoWorkbook, store);
       // A build without streaming, such as a base from before it, skips the variant.
       if (typeof api.streamXlsx !== "function") return undefined;
       return () => api.streamXlsx(workbook).pipeTo(new WritableStream());
     };
     const headWrite = writeWith(head);
     if (headWrite === undefined) continue;
-    const baseWrite = base === undefined ? undefined : writeWith(base);
+    let baseWrite = base === undefined ? undefined : writeWith(base);
     // One warm-up each, then the two builds in turns, the order swapped every iteration so that
     // neither side always pays for the other's garbage or always gets the warmer cache; a
     // collection before each timed call, where the host exposes one, takes the rest of that bias.
+    // A base build that refuses the variant's input, such as one from before auto widths, skips it.
     await headWrite();
-    await baseWrite?.();
+    try {
+      await baseWrite?.();
+    } catch {
+      baseWrite = undefined;
+    }
     const headSamples: number[] = [];
     const baseSamples: number[] = [];
     for (let i = 0; i < iterations; i++) {

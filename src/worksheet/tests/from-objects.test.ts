@@ -102,6 +102,18 @@ describe("sheetFromObjects", () => {
     expect(rowsOf(custom)[0]).toEqual([{ value: "id", style: { bold: true, numberFormat: "@" } }]);
   });
 
+  it("passes auto widths through: the sheet flag and a column's own", () => {
+    const whole = sheetFromObjects(orders, { name: "S", autoWidth: true });
+    expect(whole.autoWidth).toBe(true);
+    expect(whole.columns).toBeUndefined();
+    const some = sheetFromObjects(orders, {
+      name: "S",
+      columns: [{ key: "id", width: "auto" }, { key: "customer", width: 20 }, { key: "total" }],
+    });
+    expect(some.autoWidth).toBeUndefined();
+    expect(some.columns).toEqual([{ width: "auto" }, { width: 20 }, {}]);
+  });
+
   it("drops the header row, and with it the freeze and filter defaults, for header: false", () => {
     const sheet = sheetFromObjects(orders, { name: "S", columns: [{ key: "id" }], header: false });
     expect(rowsOf(sheet)).toEqual([["A-1001"], ["A-1002"]]);

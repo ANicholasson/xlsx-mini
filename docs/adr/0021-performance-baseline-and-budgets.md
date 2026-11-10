@@ -41,6 +41,18 @@ Ten times the rows leave the retained heap where it was: the rows are produced a
 
 Budgets are the means rounded up to the next ten milliseconds and the growth ratios rounded up to a round number. A local run that lands above a budget by more than its own margin of error is a regression to explain in the pull request; the pull-request report is where to look, since local numbers move with the machine, and it informs rather than gates. A change that lowers a number by more than the margin lowers the budget in the same change.
 
+## Auto width, 2026-11-10, Apple M5 Pro, 48 GiB, Node 24.22.1
+
+The `auto` variant is each suite with every column sized to its content (ADR 0024), written as STORE, read against `store` in the same run: the difference is the cost of measuring, since nothing else changes. Minimum of seven.
+
+| Suite        | `store` | `auto` | Measuring costs |
+| ------------ | ------- | ------ | --------------- |
+| Wide table   | 163 ms  | 162 ms | within noise    |
+| Many sheets  | 69 ms   | 80 ms  | 15 %            |
+| String-heavy | 87 ms   | 93 ms  | 7 %             |
+
+The wide table, the suite the issue budgeted at ten percent, measures for free: its columns reach their widest cell within the first rows, after which a text cell is skipped on its length and a number cell on its magnitude. The many-sheets suite pays most because every one of its forty sheets learns its widths from scratch. The three suites without auto width are unchanged, which the pull-request report against `main` confirms. No budget changes.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.

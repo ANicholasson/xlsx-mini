@@ -31,6 +31,10 @@ _Avoid_: blank, null cell
 **Column**:
 A vertical position across every row, named by letters, carrying a width and a default style for its cells.
 
+**Auto width**:
+A column width estimated from the column's widest cell, character by character against Calibri 11, numbers and dates by their format; from the first 1 000 rows when streaming.
+_Avoid_: autofit
+
 **Style**:
 How a cell looks: font (bold, italic, size, colour), fill, border, alignment, wrap, indent and number format. A cell's own style wins over its column's, property by property.
 _Avoid_: formatting, format (reserved for number format)

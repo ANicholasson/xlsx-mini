@@ -315,6 +315,19 @@ function stringHeavyWorkbook(): Workbook {
   return { sheets: [{ name: "Text", rows: [header(["A", "B", "C", "D", "E"]), ...rows] }] };
 }
 
+/** The same workbook with every column sized to its content instead of a fixed width. */
+export function withAutoWidths(workbook: Workbook): Workbook {
+  return {
+    sheets: workbook.sheets.map((sheet) => ({
+      ...sheet,
+      autoWidth: true,
+      columns: (sheet.columns ?? []).map((column) =>
+        column?.style === undefined ? undefined : { style: column.style },
+      ),
+    })),
+  };
+}
+
 export type SuiteName = "wide table" | "many sheets" | "string-heavy";
 
 /** The suites in report order. */

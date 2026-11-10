@@ -369,6 +369,57 @@ export const validationWorkbook: Workbook = {
 };
 
 /** The workbook behind print.xlsx: landscape A4 fitted to one page wide, custom margins, header and footer, a repeated header row. */
+/**
+ * The workbook behind auto-width.xlsx: every column but one fits itself, with a bold header, a
+ * merged title that must not count, money and date formats, booleans and a note past the ceiling.
+ */
+export const autoWidthWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Inventory",
+      autoWidth: true,
+      columns: [
+        undefined,
+        undefined,
+        { style: money },
+        { style: { numberFormat: "yyyy-mm-dd" } },
+        { width: 9 },
+      ],
+      merges: ["A1:F1"],
+      rows: [
+        [{ value: "Inventory, a title wider than its first column", style: { bold: true } }],
+        [
+          { value: "SKU", style: header },
+          { value: "Product", style: header },
+          { value: "Unit price", style: header },
+          { value: "Restocked", style: header },
+          { value: "In stock", style: header },
+          { value: "Note", style: header },
+        ],
+        [
+          "SKU-100001",
+          "Height-adjustable desk",
+          7490,
+          new Date(Date.UTC(2026, 2, 14)),
+          true,
+          "Delivered and assembled on site",
+        ],
+        [
+          "SKU-7",
+          "Chair",
+          1299.5,
+          new Date(Date.UTC(2026, 9, 30)),
+          false,
+          "A note long enough to reach the sixty-character ceiling, which a fixed width would need to raise",
+        ],
+        ["SKU-100003", "Monitor arm, dual", 899, new Date(Date.UTC(2025, 11, 1)), true, ""],
+        ["SKU-42", "Lamp", 249.9, new Date(Date.UTC(2026, 6, 7)), false, null],
+        [{ value: "Total", style: header }, null, { formula: "SUM(C3:C6)", value: 9938.4 }],
+      ],
+    },
+  ],
+};
+
 export const printWorkbook: Workbook = {
   sheets: [
     {
