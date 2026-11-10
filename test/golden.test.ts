@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { type WriteOptions, type Workbook, writeXlsx } from "../src/index.js";
 import {
   appearanceWorkbook,
+  autoWidthWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
   formulasWorkbook,
@@ -440,6 +441,19 @@ describe("validation workbook (golden)", () => {
       'type="date" operator="between" showErrorMessage="1" errorStyle="warning"',
     );
     expect(sheet).toContain('errorStyle="information" error="At most 50 %" sqref="F1:F1048576"');
+  });
+});
+
+describe("auto-width workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("auto-width.xlsx", autoWidthWorkbook);
+  });
+
+  it("writes a measured width for every column but the fixed one, the note at the ceiling", async () => {
+    const sheet = readPart(await writeXlsx(autoWidthWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<cols><col min="1" max="1" width="11.86" customWidth="1"/><col min="2" max="2" width="21.86" customWidth="1"/><col min="3" max="3" width="11.86" customWidth="1"/><col min="4" max="4" width="11.77" customWidth="1"/><col min="5" max="5" width="9" customWidth="1"/><col min="6" max="6" width="60" customWidth="1"/></cols>',
+    );
   });
 });
 

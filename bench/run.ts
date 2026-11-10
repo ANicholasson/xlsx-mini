@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as Api from "../src/index.ts";
 import type { BenchmarkResult, RunResult, Timing, Variant } from "./report.ts";
-import { suites } from "./workbooks.ts";
+import { suites, withAutoWidths } from "./workbooks.ts";
 
 type Write = () => Promise<unknown>;
 
@@ -56,19 +56,46 @@ function summarize(samples: readonly number[]): Timing {
   return { minMs: sorted[0]!, p50Ms: sorted[Math.floor(sorted.length / 2)]! };
 }
 
+/** Whether a build knows auto widths: one from before them refuses the column rather than ignoring it. */
+async function supportsAutoWidth(api: typeof Api): Promise<boolean> {
+  try {
+    await api.writeXlsx(
+      { sheets: [{ name: "probe", columns: [{ width: "auto" }], rows: [["x"]] }] },
+      { compression: "none" },
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.meta.url));
 const baseDist = argument("--base");
 const head = await load(headDist);
 const base = baseDist === undefined ? undefined : await load(baseDist);
+const baseHasAutoWidth = base === undefined ? false : await supportsAutoWidth(base);
 const iterations = Number(argument("--iterations") ?? 7);
 
 const benchmarks: BenchmarkResult[] = [];
 for (const [suite, build] of suites) {
   const workbook = build();
-  for (const variant of ["deflate", "store", "stream"] as const satisfies readonly Variant[]) {
-    const options = variant === "store" ? { compression: "none" as const } : undefined;
+  const autoWorkbook = withAutoWidths(workbook);
+  for (const variant of [
+    "deflate",
+    "store",
+    "stream",
+    "auto",
+  ] as const satisfies readonly Variant[]) {
+    const store = { compression: "none" as const };
     const writeWith = (api: typeof Api): Write | undefined => {
-      if (variant !== "stream") return () => api.writeXlsx(workbook, options);
+      if (variant === "deflate") return () => api.writeXlsx(workbook);
+      if (variant === "store") return () => api.writeXlsx(workbook, store);
+      if (variant === "auto") {
+        // A base build without auto widths would write the suite with no widths at all, which
+        // is not the same work, so the row shows no base rather than a wrong one.
+        if (api === base && !baseHasAutoWidth) return undefined;
+        return () => api.writeXlsx(autoWorkbook, store);
+      }
       // A build without streaming, such as a base from before it, skips the variant.
       if (typeof api.streamXlsx !== "function") return undefined;
       return () => api.streamXlsx(workbook).pipeTo(new WritableStream());

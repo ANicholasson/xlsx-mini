@@ -133,8 +133,12 @@ export type Row = readonly Cell[];
 
 /** What a column carries for every cell in it. Positions match the row arrays: index 0 is column A. */
 export interface Column {
-  /** Width in Excel's character units (the unit the column-width dialog shows), from above 0 to 255. */
-  readonly width?: number;
+  /**
+   * Width in Excel's character units (the unit the column-width dialog shows), from above 0 to
+   * 255, or `"auto"` to fit the column to its widest cell, from 3 to 60. When streaming, the first
+   * 1 000 rows set an auto width.
+   */
+  readonly width?: number | "auto";
   /** Default style for the column's cells; a cell's own style properties win. */
   readonly style?: CellStyle;
 }
@@ -262,6 +266,8 @@ export interface StreamedSheet {
   readonly freeze?: Freeze;
   /** Filter dropdowns on row 1 across the used range. */
   readonly autoFilter?: boolean;
+  /** Fit every column without a numeric width to its widest cell, as `width: "auto"` does for one. */
+  readonly autoWidth?: boolean;
   /** Ranges to merge into one cell each, in A1 form such as `"A1:D1"`; the top-left cell keeps its value. */
   readonly merges?: readonly string[];
   /** Row heights in points by row number, counted from 1: `{ 1: 28 }` makes the first row 28 points. */

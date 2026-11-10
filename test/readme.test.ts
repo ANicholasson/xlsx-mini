@@ -165,6 +165,29 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(sheet).toContain("<oddFooter>&amp;L&amp;A&amp;RPage &amp;P of &amp;N</oddFooter>");
     expect(readPart(bytes, "xl/workbook.xml")).toContain("_xlnm.Print_Titles");
   },
+  "auto-width": async (snippet) => {
+    const products = [
+      {
+        sku: "SKU-100001",
+        name: "Height-adjustable desk",
+        price: 7490,
+        restocked: new Date(0),
+        note: "",
+      },
+      { sku: "SKU-7", name: "Chair", price: 1299.5, restocked: new Date(0), note: "Delivered" },
+    ];
+    const bytes = await (snippet["default"] as (products: unknown[]) => Promise<Uint8Array>)(
+      products,
+    );
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    const widths = [...sheet.matchAll(/<col min="\d+" max="\d+" width="([\d.]+)"/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(widths).toHaveLength(5);
+    expect(widths[4]).toBe(40);
+    expect(widths.slice(0, 4).every((w) => w > 3 && w < 60)).toBe(true);
+  },
   formats: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);

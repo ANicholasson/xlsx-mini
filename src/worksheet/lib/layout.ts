@@ -13,10 +13,15 @@ import type { StreamedSheet } from "./model.js";
 const MAX_COLUMN_WIDTH = 255;
 const MAX_ROW_HEIGHT = 409;
 
-/** What the sheet's columns contribute: a style per position and the `<cols>` element. */
+/** What the sheet's columns contribute: a style per position, which columns size themselves, and the `<cols>` element. */
 export interface CollectedColumns {
   readonly styles: readonly (CellStyle | undefined)[];
-  readonly cols: string;
+  /** Whether each listed column fits itself to its cells, or undefined when no column does. */
+  readonly measured: readonly boolean[] | undefined;
+  /** Whether columns past the list fit themselves: the sheet's `autoWidth`. */
+  readonly beyond: boolean;
+  /** The `<cols>` element from the numeric widths and the measured ones, or an empty string. */
+  readonly cols: (measuredWidths: readonly (number | undefined)[] | undefined) => string;
 }
 
 /** Validates every column up front, so a bad width or style is reported at the column. */
@@ -25,10 +30,12 @@ export function collectColumns(
   sheetIndex: number,
   validateStyle: (style: CellStyle) => void,
 ): CollectedColumns {
-  const columns = sheet.columns;
-  if (columns === undefined) return { styles: [], cols: "" };
+  const columns = sheet.columns ?? [];
+  const beyond = sheet.autoWidth === true;
   const styles: (CellStyle | undefined)[] = [];
-  let cols = "";
+  const fixed: (number | undefined)[] = [];
+  const measured: boolean[] = [];
+  let anyMeasured = beyond;
   for (let i = 0; i < columns.length; i++) {
     const column = columns[i];
     const style = column?.style;
@@ -43,19 +50,45 @@ export function collectColumns(
       }
     }
     styles.push(style);
-    const width = column?.width;
+    const width: unknown = column?.width;
+    if (width === "auto") {
+      measured.push(true);
+      fixed.push(undefined);
+      anyMeasured = true;
+      continue;
+    }
     if (width !== undefined) {
-      if (!Number.isFinite(width) || width <= 0 || width > MAX_COLUMN_WIDTH) {
+      if (
+        typeof width !== "number" ||
+        !Number.isFinite(width) ||
+        width <= 0 ||
+        width > MAX_COLUMN_WIDTH
+      ) {
         throw new XlsxMiniError(
           "INVALID_COLUMN_WIDTH",
           `sheets[${sheetIndex}].columns[${i}].width`,
-          `Column widths run from above 0 to ${MAX_COLUMN_WIDTH} characters, not ${width}`,
+          `Column widths run from above 0 to ${MAX_COLUMN_WIDTH} characters, or "auto", not ${describeValue(width)}`,
         );
       }
-      cols += `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`;
     }
+    fixed.push(width);
+    measured.push(width === undefined && beyond);
   }
-  return { styles, cols: cols.length === 0 ? "" : `<cols>${cols}</cols>` };
+  return {
+    styles,
+    measured: anyMeasured ? measured : undefined,
+    beyond,
+    cols: (measuredWidths) => {
+      let cols = "";
+      const count = Math.max(fixed.length, measuredWidths?.length ?? 0);
+      for (let i = 0; i < count; i++) {
+        const width = fixed[i] ?? measuredWidths?.[i];
+        if (width === undefined) continue;
+        cols += `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`;
+      }
+      return cols.length === 0 ? "" : `<cols>${cols}</cols>`;
+    },
+  };
 }
 
 /** The `<sheetViews>` element with a frozen pane, or an empty string when nothing is frozen. */
@@ -87,13 +120,13 @@ export function renderFreeze(sheet: StreamedSheet, sheetIndex: number): string {
 }
 
 /**
- * The `<mergeCells>` element, or an empty string. Every range is validated as A1 form inside the
- * sheet, larger than one cell, and overlapping no other: Excel repairs a file whose merges overlap.
+ * The sheet's merges as boxes. Every range is validated as A1 form inside the sheet, larger than
+ * one cell, and overlapping no other: Excel repairs a file whose merges overlap.
  */
-export function renderMerges(sheet: StreamedSheet, sheetIndex: number): string {
+export function collectMerges(sheet: StreamedSheet, sheetIndex: number): readonly Box[] {
   const merges = sheet.merges;
-  if (merges === undefined || merges.length === 0) return "";
   const boxes: Box[] = [];
+  if (merges === undefined) return boxes;
   for (let i = 0; i < merges.length; i++) {
     const ref = merges[i]!;
     const path = `sheets[${sheetIndex}].merges[${i}]`;
@@ -127,9 +160,26 @@ export function renderMerges(sheet: StreamedSheet, sheetIndex: number): string {
     }
     boxes.push(box);
   }
+  return boxes;
+}
+
+/** The `<mergeCells>` element, or an empty string when there are none. */
+export function renderMerges(boxes: readonly Box[]): string {
+  if (boxes.length === 0) return "";
   let xml = `<mergeCells count="${boxes.length}">`;
   for (const box of boxes) xml += `<mergeCell ref="${box.ref}"/>`;
   return `${xml}</mergeCells>`;
+}
+
+/** The cells that start a merge across more than one column, keyed as the measurer expects. */
+export function mergeStarts(boxes: readonly Box[]): ReadonlySet<number> | undefined {
+  let starts: Set<number> | undefined;
+  for (const box of boxes) {
+    if (box.right === box.left) continue;
+    starts ??= new Set();
+    starts.add((box.top - 1) * MAX_COLUMNS + box.left);
+  }
+  return starts;
 }
 
 /** Row heights validated up front: whole row numbers from 1, heights from above 0 to 409 points. */

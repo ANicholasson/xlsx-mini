@@ -197,7 +197,7 @@ export default function ordersResponse(fetchPage: (page: number) => Promise<Row[
 }
 ```
 
-Text is written into each cell rather than through a shared-strings table, which is what keeps memory flat; `strings: "shared"` keeps the table instead, for a smaller file at the cost of holding every distinct string until the end. The stream throws before it exists when the workbook itself is invalid, and errors mid-way when a cell cannot be written. Cancelling it, as a client going away does, closes the row source.
+Text is written into each cell rather than through a shared-strings table, which is what keeps memory flat; `strings: "shared"` keeps the table instead, for a smaller file at the cost of holding every distinct string until the end. The stream throws before it exists when the workbook itself is invalid, and errors mid-way when a cell cannot be written. Cancelling it, as a client going away does, closes the row source. A column with `width: "auto"` is sized from the first 1 000 rows, since the widths go out before the rows.
 
 ## From an array of objects
 
@@ -223,6 +223,41 @@ export default function fromObjects(orders: Order[]): Promise<Uint8Array> {
       { key: "customer", header: "Customer", width: 24 },
       { key: "total", header: "Total", width: 14, style: { numberFormat: '#,##0.00 "kr"' } },
       { key: "placed", header: "Placed", width: 18, style: { numberFormat: "yyyy-mm-dd hh:mm" } },
+    ],
+  });
+  return writeXlsx({ sheets: [sheet] });
+}
+```
+
+## Auto column width
+
+`width: "auto"` on a column fits it to its widest cell; `autoWidth: true` on a sheet does that for every column without a numeric width. The width is estimated from what each cell shows: text character by character against Calibri 11, numbers and dates by the length their format produces, bold a little wider, from 3 to 60 characters. No font is measured, so the fit is close rather than exact and errs wide; a column whose cells are all empty keeps the application's default. When streaming, the first 1 000 rows of a sheet set its widths and the rows after them take those widths, because the widths go out before the rows (ADR 0024).
+
+<!-- snippet: auto-width -->
+
+```ts
+import { sheetFromObjects, writeXlsx } from "xlsx-mini";
+
+interface Product {
+  sku: string;
+  name: string;
+  price: number;
+  restocked: Date;
+  note: string;
+}
+
+export default function inventory(products: Product[]): Promise<Uint8Array> {
+  // Every column without a numeric width fits its widest cell, bold header included; the note
+  // column keeps the width it is given. On a single column, width: "auto" does the same.
+  const sheet = sheetFromObjects(products, {
+    name: "Inventory",
+    autoWidth: true,
+    columns: [
+      { key: "sku", header: "SKU" },
+      { key: "name", header: "Product" },
+      { key: "price", header: "Unit price", style: { numberFormat: '#,##0.00 "kr"' } },
+      { key: "restocked", header: "Restocked", style: { numberFormat: "yyyy-mm-dd" } },
+      { key: "note", header: "Note", width: 40, style: { wrap: true } },
     ],
   });
   return writeXlsx({ sheets: [sheet] });
@@ -566,7 +601,7 @@ export default async function safely(): Promise<string> {
 | `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                                                                        |
 | `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                                                                        |
 | `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                                                                |
-| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255.                                                                                                                     |
+| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255, or a string other than `"auto"`.                                                                                    |
 | `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.                                                  |
 | `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                     |
 | `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
@@ -586,30 +621,30 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## API
 
-| Export                              | Shape                                                                                                                                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                                                                    |
-| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                                                                             |
-| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                                                                                |
-| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                                                                     |
-| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                        |
-| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                    |
-| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
-| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell`                                                                                                                              |
-| `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                      |
-| `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                  |
-| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                              |
-| `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                     |
-| `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                               |
-| `PrintSetup`                        | `{ orientation?; paperSize?: PaperSize; fitTo?: { width?; height? }; margins?: PrintMargins; header?; footer?; repeatRows? }`                                                                                         |
-| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                                                                          |
-| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                      |
-| `Column`, `Freeze`                  | `{ width?: number; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                                                                        |
-| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                    |
-| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean }`                                                                                         |
-| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                          |
-| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                   |
-| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                         |
+| Export                              | Shape                                                                                                                                                                                                                                      |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                                                                                         |
+| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                                                                                                  |
+| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                                                                                                     |
+| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                                                                                          |
+| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                                             |
+| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                                         |
+| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; autoWidth?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
+| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell`                                                                                                                                                   |
+| `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                           |
+| `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                       |
+| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                                                   |
+| `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                                          |
+| `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                                                    |
+| `PrintSetup`                        | `{ orientation?; paperSize?: PaperSize; fitTo?: { width?; height? }; margins?: PrintMargins; header?; footer?; repeatRows? }`                                                                                                              |
+| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                                                                                               |
+| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                                           |
+| `Column`, `Freeze`                  | `{ width?: number \| "auto"; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                                                                                   |
+| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                                         |
+| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean; autoWidth?: boolean }`                                                                                         |
+| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                                               |
+| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                                        |
+| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                                              |
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 

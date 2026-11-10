@@ -7,8 +7,8 @@ type CellKeys<T> = { [K in keyof T]-?: T[K] extends CellValue ? K : never }[keyo
 interface ColumnBase {
   /** Header text; the key when omitted. */
   readonly header?: string;
-  /** Width in Excel's character units. */
-  readonly width?: number;
+  /** Width in Excel's character units, or `"auto"` to fit the column to its content. */
+  readonly width?: number | "auto";
   /** Default style for the column's data cells. */
   readonly style?: CellStyle;
 }
@@ -37,6 +37,8 @@ export interface SheetFromObjectsOptions<T> {
   readonly freeze?: boolean;
   /** Filter dropdowns on the header row. Default: on when there is a header row. */
   readonly autoFilter?: boolean;
+  /** Fit every column without a numeric width to its content. Default: off. */
+  readonly autoWidth?: boolean;
 }
 
 const BOLD_HEADER: CellStyle = { bold: true };
@@ -70,14 +72,15 @@ export function sheetFromObjects<T extends object>(
         ? inferredRows(data, headerStyle)
         : explicitRows(data, columns, headerStyle),
   };
-  const sheet: Sheet = freeze
+  let sheet: Sheet = freeze
     ? { name: options.name, rows, freeze: { rows: 1 }, autoFilter }
     : { name: options.name, rows, autoFilter };
+  if (options.autoWidth === true) sheet = { ...sheet, autoWidth: true };
   return columns === undefined ? sheet : { ...sheet, columns: columns.map(toColumn) };
 }
 
 function toColumn(column: ColumnBase): Column {
-  const result: { width?: number; style?: CellStyle } = {};
+  const result: { width?: number | "auto"; style?: CellStyle } = {};
   if (column.width !== undefined) result.width = column.width;
   if (column.style !== undefined) result.style = column.style;
   return result;
