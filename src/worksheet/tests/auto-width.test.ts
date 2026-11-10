@@ -120,6 +120,25 @@ describe("auto column width", () => {
       expect(width([100000, new Date(Date.UTC(2026, 10, 4, 13, 45))])).toBe(16.43);
       expect(width([new Date(Date.UTC(2026, 10, 4, 13, 45)), 100000])).toBe(16.43);
       expect(width([-5, 4, 3])).toBe(3.71);
+      // A huge whole number shows in exponent form, so a smaller one can be wider.
+      expect(width([1e21, 9e20])).toBe(12.71);
+      expect(width([9e20, 1e21])).toBe(12.71);
+      // Padding hides the magnitude, but a sign still adds a character.
+      expect(
+        width([
+          { value: 999, style: { numberFormat: "0000" } },
+          { value: -1, style: { numberFormat: "0000" } },
+        ]),
+      ).toBe(6.71);
+      expect(
+        width([999, -1], { columns: [{ width: "auto", style: { numberFormat: "0000" } }] }),
+      ).toBe(6.71);
+      expect(
+        width([-1, 999], { columns: [{ width: "auto", style: { numberFormat: "0000" } }] }),
+      ).toBe(6.71);
+      expect(
+        width([-999, -1], { columns: [{ width: "auto", style: { numberFormat: "0000" } }] }),
+      ).toBe(6.71);
     });
 
     it("treats the General format string as General, not as date tokens", () => {
