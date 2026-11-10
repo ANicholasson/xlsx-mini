@@ -19,10 +19,10 @@ interface ValueColumn<T> extends ColumnBase {
   readonly value?: undefined;
 }
 
-/** A column computed from the whole object; the key only names it. */
+/** A column computed from the whole object; the key only names it. The function may return any cell, an image included. */
 interface DerivedColumn<T> extends ColumnBase {
   readonly key: keyof T & string;
-  readonly value: (item: T) => CellValue;
+  readonly value: (item: T) => Cell;
 }
 
 export type ObjectColumn<T> = ValueColumn<T> | DerivedColumn<T>;

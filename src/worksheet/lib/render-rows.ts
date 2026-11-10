@@ -2,6 +2,7 @@ import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
 import type { StringTable } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js";
+import { IMAGE_INSET, type MediaTable, type SheetDrawing } from "../../drawing/index.js";
 import type { AutoWidths } from "./auto-width.js";
 import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
 import type { Hyperlinks } from "./hyperlinks.js";
@@ -10,6 +11,7 @@ import type {
   CellObject,
   Coerce,
   FormulaCell,
+  ImageCell,
   LinkCell,
   Row,
   SheetLinkCell,
@@ -19,6 +21,13 @@ import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
 
 const MAX_TEXT_LENGTH = 32_767;
 const MAX_FORMULA_LENGTH = 8192;
+const MAX_ROW_HEIGHT = 409;
+/** The height of a row nobody sized, in points; a picture never makes a row smaller than that. */
+const DEFAULT_ROW_HEIGHT = 15;
+/** Excel's 96 dpi against 72 points per inch. */
+const POINTS_PER_PIXEL = 0.75;
+/** The tallest picture a row can make room for: the row limit in pixels, less the inset. */
+const MAX_IMAGE_ROW_PIXELS = Math.floor(MAX_ROW_HEIGHT / POINTS_PER_PIXEL) - 2 * IMAGE_INSET;
 /** Built-in number formats a date-like value falls back to. */
 const GENERAL = 0;
 const DATE = 14;
@@ -41,6 +50,8 @@ export interface WorksheetContext {
   readonly sheetIndex: number;
   /** Every sheet's name in tab order, so a link to another sheet can be checked. */
   readonly sheetNames: readonly string[];
+  /** The workbook's images, shared by every sheet so a repeated image is written once. */
+  readonly media: MediaTable;
   /** Write text into the cells rather than through the shared-strings table. */
   readonly inlineStrings?: boolean;
 }
@@ -52,6 +63,17 @@ export interface RowRecords {
   hasFormulas: boolean;
   /** The measurer for the columns that size themselves, or undefined when none does. */
   readonly widths: AutoWidths | undefined;
+  /** The sheet's pictures, anchored as their cells are written. */
+  readonly drawing: SheetDrawing;
+  /** The row the picture records below belong to; a row without pictures never touches them. */
+  imageRow: number;
+  /** The tallest picture in that row, in pixels, and the column holding it. */
+  rowImagePixels: number;
+  rowTallestColumn: number;
+  /** The rightmost column holding a picture in that row. */
+  rowImageColumn: number;
+  /** The widest picture per column, in pixels, for the column widths. */
+  readonly imagePixels: number[];
 }
 
 /** The worksheet context with the sheet's records, so the per-cell calls carry one argument for both. */
@@ -168,11 +190,18 @@ function renderRow(
     maxColumn = column;
   }
   const rowNumber = rowIndex + 1;
-  const height = rowHeights?.[rowNumber];
+  let height = rowHeights?.[rowNumber];
+  const records = context.records;
+  if (records.imageRow === rowIndex) {
+    // A picture occupies its cell whether or not a cell element is written beneath it.
+    if (records.rowImageColumn > maxColumn) maxColumn = records.rowImageColumn;
+    // The caller's height wins; otherwise the row makes room for its tallest picture.
+    height ??= pictureRowHeight(records, rowIndex, context);
+  }
   if (cells.length === 0) {
     if (height === undefined) return NOTHING;
     sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
-    return HEIGHT_ONLY;
+    return maxColumn === -1 ? HEIGHT_ONLY : maxColumn;
   }
   sink.write(
     `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
@@ -194,6 +223,20 @@ function endSheetData(
   }
   const range = lastRowWithCells === 0 ? "" : `A1:${columnLetter(maxColumn)}${lastRowWithCells}`;
   return { range, hasRows };
+}
+
+/** The points the row needs for its tallest picture, or the error when no row can hold it. */
+function pictureRowHeight(records: RowRecords, rowIndex: number, context: RowContext): number {
+  const pixels = records.rowImagePixels;
+  if (pixels > MAX_IMAGE_ROW_PIXELS) {
+    throw new XlsxMiniError(
+      "INVALID_IMAGE",
+      cellPath(context, rowIndex, records.rowTallestColumn),
+      `A picture ${pixels} pixels tall does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_IMAGE_ROW_PIXELS} pixels); give it a height, or the row one`,
+    );
+  }
+  const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
+  return points < DEFAULT_ROW_HEIGHT ? DEFAULT_ROW_HEIGHT : points;
 }
 
 /** The row attributes for a custom height in points. */
@@ -235,16 +278,16 @@ function renderCell(
   const reference = columnLetter(column) + (rowIndex + 1);
   if (isWrapper(value)) {
     cellStyle = value.style;
-    if ("formula" in value) {
-      if ("href" in value || "cell" in value || "sheet" in value) {
-        throw new XlsxMiniError(
-          "INVALID_FORMULA",
-          cellPath(context, rowIndex, column),
-          "A formula cell cannot also be a link",
-        );
-      }
-      records.hasFormulas = true;
-      return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+    if ("image" in value || "formula" in value) {
+      return renderImageOrFormula(
+        value,
+        reference,
+        cellStyle,
+        columnStyle,
+        column,
+        rowIndex,
+        context,
+      );
     }
     if ("href" in value || "cell" in value || "sheet" in value) {
       records.links.add(
@@ -567,8 +610,77 @@ function styleAttribute(
   return index === 0 ? "" : ` s="${index}"`;
 }
 
-/** A plain object with a value, formula or link property is a cell object; class instances never are. */
-function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell | SheetLinkCell {
+/**
+ * The two kinds of cell object that are not a value: kept out of `renderCell` so the function on
+ * the path of every ordinary cell stays small enough to be inlined into the row loop.
+ */
+function renderImageOrFormula(
+  value: ImageCell | FormulaCell,
+  reference: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  column: number,
+  rowIndex: number,
+  context: RowContext,
+): string {
+  if ("image" in value) {
+    return renderImage(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+  }
+  if ("href" in value || "cell" in value || "sheet" in value) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      cellPath(context, rowIndex, column),
+      "A formula cell cannot also be a link",
+    );
+  }
+  context.records.hasFormulas = true;
+  return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+}
+
+/**
+ * An image cell: the picture is registered once per distinct image and anchored to this cell; the
+ * row and the column learn its size. The cell beneath is written only when it carries a style.
+ */
+function renderImage(
+  cell: ImageCell,
+  reference: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  column: number,
+  rowIndex: number,
+  context: RowContext,
+): string {
+  const path = cellPath(context, rowIndex, column);
+  if ("value" in cell || "formula" in cell || "href" in cell || "cell" in cell || "sheet" in cell) {
+    throw new XlsxMiniError(
+      "INVALID_IMAGE",
+      path,
+      "An image cell holds the image, its width and height and a style, not a value, formula or link",
+    );
+  }
+  const records = context.records;
+  const media = context.media.add(cell.image, path);
+  const size = records.drawing.add(column, rowIndex, media, cell.width, cell.height, path);
+  if (records.imageRow !== rowIndex) {
+    records.imageRow = rowIndex;
+    records.rowImagePixels = 0;
+  }
+  if (size.height > records.rowImagePixels) {
+    records.rowImagePixels = size.height;
+    records.rowTallestColumn = column;
+  }
+  // Cells are visited left to right, so the latest picture is the rightmost.
+  records.rowImageColumn = column;
+  if (size.width > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = size.width;
+  if (cellStyle === undefined) return "";
+  const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
+  return style.length === 0 ? "" : `<c r="${reference}"${style}/>`;
+}
+
+/** A plain object with a value, formula, link or image property is a cell object; class instances never are. */
+function isWrapper(
+  value: unknown,
+): value is CellObject | FormulaCell | LinkCell | SheetLinkCell | ImageCell {
   if (typeof value !== "object" || value === null) return false;
   const prototype = Object.getPrototypeOf(value) as unknown;
   return (
@@ -577,7 +689,8 @@ function isWrapper(value: unknown): value is CellObject | FormulaCell | LinkCell
       "formula" in value ||
       "href" in value ||
       "cell" in value ||
-      "sheet" in value)
+      "sheet" in value ||
+      "image" in value)
   );
 }
 

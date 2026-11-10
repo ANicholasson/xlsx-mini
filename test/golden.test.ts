@@ -10,6 +10,7 @@ import {
   cellTypesWorkbook,
   formulasWorkbook,
   hyperlinksWorkbook,
+  imagesWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
   printWorkbook,
@@ -453,6 +454,41 @@ describe("auto-width workbook (golden)", () => {
     const sheet = readPart(await writeXlsx(autoWidthWorkbook, STORE), "xl/worksheets/sheet1.xml");
     expect(sheet).toContain(
       '<cols><col min="1" max="1" width="11.86" customWidth="1"/><col min="2" max="2" width="21.86" customWidth="1"/><col min="3" max="3" width="11.86" customWidth="1"/><col min="4" max="4" width="11.77" customWidth="1"/><col min="5" max="5" width="9" customWidth="1"/><col min="6" max="6" width="60" customWidth="1"/></cols>',
+    );
+  });
+});
+
+describe("images workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("images.xlsx", imagesWorkbook);
+  });
+
+  it("writes two media parts, one drawing with six anchors, and the content types for both", async () => {
+    const bytes = await writeXlsx(imagesWorkbook, STORE);
+    const names = unzip(bytes).map((e) => e.name);
+    expect(names).toContain("xl/media/image1.png");
+    expect(names).toContain("xl/media/image2.png");
+    expect(names).not.toContain("xl/media/image3.png");
+    expect(names).toContain("xl/drawings/drawing1.xml");
+    expect(names).toContain("xl/drawings/_rels/drawing1.xml.rels");
+    const types = readPart(bytes, "[Content_Types].xml");
+    expect(types).toContain('<Default Extension="png" ContentType="image/png"/>');
+    expect(types).toContain(
+      '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>',
+    );
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain(
+      '<cols><col min="1" max="1" width="10.86" customWidth="1"/><col min="2" max="2" width="10" customWidth="1"/><col min="3" max="3" width="18.86" customWidth="1"/><col min="4" max="4" width="8.57" customWidth="1"/></cols>',
+    );
+    expect(sheet).toContain('<row r="2" ht="39" customHeight="1">');
+    expect(sheet).toContain('<row r="3" ht="21" customHeight="1">');
+    expect(sheet).toContain('<row r="5"><c r="A5"');
+    expect(sheet).toContain('<drawing r:id="rId1"/></worksheet>');
+    expect(readPart(bytes, "xl/drawings/drawing1.xml").match(/<xdr:oneCellAnchor>/g)).toHaveLength(
+      6,
+    );
+    expect(readPart(bytes, "xl/worksheets/_rels/sheet1.xml.rels")).toContain(
+      'Target="../drawings/drawing1.xml"',
     );
   });
 });

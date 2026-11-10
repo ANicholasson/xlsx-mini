@@ -111,6 +111,8 @@ proves the fallback path, not deflate on Vercel. Both entries load on every host
 | Google Sheets    | web      | browser  | clean  | Both files uploaded to Drive and opened; the workbook displayed as written on a visual check, no cell-by-cell readback                                                                                                                    | 2026-11-09 |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean  | Headless CSV conversion of both files is identical to the CSV recorded for appearance.xlsx; `unzip -t` accepts both                                                                                                                       | 2026-11-06 |
 
+Re-checked 2026-11-10 after the streamed package moved `[Content_Types].xml` to its last entry (ADR 0025): Excel 16.114.4 and Numbers 14.4 opened the fixture from the shell without a dialog and read the cells back, and the headless LibreOffice CSV is unchanged; Google Sheets opened it from Drive without a dialog, every cell and style as before.
+
 ## Browser download (`downloadXlsx` from `xlsx-mini/browser`)
 
 | Browser       | Version       | Platform | Result | How it was checked                                                                                                                                                                                                               | Date       |
@@ -152,6 +154,15 @@ proves the fallback path, not deflate on Vercel. Both entries load on every host
 | Apple Numbers    | 14.4     | macOS    | clean  | Opened from the shell without a dialog; every cell shown whole in its column, the title across the merge, the note cut at the ceiling                                                                                                                                                                                           | 2026-11-10 |
 | Google Sheets    | web      | browser  | clean  | Uploaded to Drive and opened; no dialog, every column shows its cells whole, the note overflowing into the empty cells beside it as a fixed width would let it                                                                                                                                                                  | 2026-11-10 |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean  | `soffice --headless --convert-to csv`; the CSV matches cell for cell, the formula total computed                                                                                                                                                                                                                                | 2026-11-10 |
+
+## images.xlsx (six pictures from two PNGs anchored to their cells, one scaled by width and one by height, a styled cell beneath one, a header row, text columns, a fixed-width column and a row without pictures)
+
+| Application      | Version  | Platform | Result | How it was checked                                                                                                                                                                                                                                        | Date       |
+| ---------------- | -------- | -------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Microsoft Excel  | 16.114.4 | macOS    | clean  | Opened from the shell; six shapes read back through AppleScript at 90×30, 36×36, 45×15, 18×18, 90×30 and 36×36 points, each starting inside its own row; column widths read back as 10, 9.17, 18 and 7.67; no picture crosses into another cell on screen | 2026-11-10 |
+| Apple Numbers    | 14.4     | macOS    | clean  | Opened from the shell without a dialog; six images counted through AppleScript, rows 2 and 3 read back as 39 and 21 points; every picture inside its cell, the fill beneath the third picture shown (screenshot)                                          | 2026-11-10 |
+| Google Sheets    | web      | browser  | clean  | Uploaded to Drive and opened; no dialog, six pictures shown inside their cells at two sizes, the fill beneath the third picture shown, rows sized to the pictures                                                                                         | 2026-11-10 |
+| LibreOffice Calc | 26.8.2.2 | macOS    | clean  | `soffice --headless --convert-to csv`; the CSV matches every text cell, the picture cells empty as a CSV has them                                                                                                                                         | 2026-11-10 |
 
 ## print.xlsx (landscape A4 fitted to one page wide, half-inch side margins, a header and a footer with page codes, the first row repeated on every page)
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
 import { createStyleTable } from "../../styles/index.js";
 import { type DataValidation, type Sheet, renderValidations, renderWorksheet } from "../index.js";
@@ -166,6 +167,7 @@ describe("renderValidations", () => {
     const xml = new TextDecoder().decode(
       renderWorksheet(sheet, {
         strings: createStringTable(),
+        media: createMediaTable(),
         styles: createStyleTable(),
         coerce: undefined,
         sheetIndex: 0,

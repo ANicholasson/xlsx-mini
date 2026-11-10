@@ -197,7 +197,7 @@ export default function ordersResponse(fetchPage: (page: number) => Promise<Row[
 }
 ```
 
-Text is written into each cell rather than through a shared-strings table, which is what keeps memory flat; `strings: "shared"` keeps the table instead, for a smaller file at the cost of holding every distinct string until the end. The stream throws before it exists when the workbook itself is invalid, and errors mid-way when a cell cannot be written. Cancelling it, as a client going away does, closes the row source. A column with `width: "auto"` is sized from the first 1 000 rows, since the widths go out before the rows.
+Text is written into each cell rather than through a shared-strings table, which is what keeps memory flat; `strings: "shared"` keeps the table instead, for a smaller file at the cost of holding every distinct string until the end. The stream throws before it exists when the workbook itself is invalid, and errors mid-way when a cell cannot be written. Cancelling it, as a client going away does, closes the row source. A column with `width: "auto"` is sized from the first 1 000 rows, since the widths go out before the rows, and a sheet's images are held until the sheet ends.
 
 ## From an array of objects
 
@@ -420,6 +420,43 @@ export default function formulasAndLinks(): Promise<Uint8Array> {
 }
 ```
 
+## Images
+
+A cell can hold a PNG: `{ image: bytes }`, with an optional `width` and `height` in pixels, one scaling the other, and a `style` for the cell beneath. The picture is anchored to its cell at that size and moves with it without stretching; the row grows to the picture's height, and so does a column without a numeric width. Identical images are written once however many cells show them. The writer reads only the PNG header; producing the image is the application's job.
+
+<!-- snippet: images -->
+
+```ts
+import { sheetFromObjects, writeXlsx } from "xlsx-mini";
+
+interface Product {
+  name: string;
+  code: string;
+  /** The bytes of a PNG the application produced; the writer reads only its size. */
+  picture: Uint8Array;
+}
+
+export default function catalogue(products: Product[]): Promise<Uint8Array> {
+  // A picture is a cell like any other: the row grows to its height and the column to its width.
+  const sheet = sheetFromObjects(products, {
+    name: "Catalogue",
+    autoWidth: true,
+    columns: [
+      { key: "name", header: "Product" },
+      { key: "code", header: "Code" },
+      {
+        key: "picture",
+        header: "Picture",
+        value: (product) => ({ image: product.picture, height: 40 }),
+      },
+    ],
+  });
+  return writeXlsx({ sheets: [sheet] });
+}
+```
+
+When streaming, the images of a sheet are held until the sheet ends, since the parts that carry them follow it; set the image column's width or use `autoWidth`, because column widths go out before the rows.
+
 ## Data validation
 
 A sheet's `validations` say what the cells of a range accept: a dropdown from a list of values or from a range of cells, a number or a date within bounds, each with an optional input message and error message. A range is a cell, a range in A1 form, or whole columns such as `E:E`. The rules are declared on the sheet, so a sheet whose rows come from a generator needs no second pass.
@@ -610,6 +647,7 @@ export default async function safely(): Promise<string> {
 | `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.  |
 | `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
 | `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                  |
+| `INVALID_IMAGE`         | Bytes that are not a PNG, a width or height that is not positive pixels, or an image cell that also holds a value, formula or link.           |
 | `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                                                                  |
 | `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                                                              |
 | `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                                                                     |
@@ -630,9 +668,10 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 | `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                                             |
 | `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                                         |
 | `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; autoWidth?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
-| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell`                                                                                                                                                   |
+| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell \| ImageCell`                                                                                                                                      |
 | `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                           |
 | `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                       |
+| `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; style? }`; a PNG anchored to the cell, sizes in pixels                                                                                                                              |
 | `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                                                   |
 | `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                                          |
 | `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                                                    |

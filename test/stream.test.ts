@@ -17,10 +17,12 @@ import {
   cellTypesWorkbook,
   formulasWorkbook,
   hyperlinksWorkbook,
+  imagesWorkbook,
   layoutWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
   printWorkbook,
+  stripesPng,
   stylesWorkbook,
   validationWorkbook,
 } from "./fixtures/workbooks.js";
@@ -54,6 +56,7 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["validation", validationWorkbook, {}],
   ["print", printWorkbook, {}],
   ["auto-width", autoWidthWorkbook, {}],
+  ["images", imagesWorkbook, {}],
 ];
 
 describe("streamXlsx", () => {
@@ -67,11 +70,10 @@ describe("streamXlsx", () => {
       expect(comparable(streamed)).toEqual(comparable(written));
       const entries = unzip(streamed);
       expect(entries.every((e) => e.method === 8)).toBe(true);
-      expect(entries.map((e) => e.name).slice(0, 3)).toEqual([
-        "[Content_Types].xml",
-        "_rels/.rels",
-        "xl/_rels/workbook.xml.rels",
-      ]);
+      // The content types go last when streaming: only the sheets know whether a drawing exists.
+      const names = entries.map((e) => e.name);
+      expect(names.slice(0, 2)).toEqual(["_rels/.rels", "xl/_rels/workbook.xml.rels"]);
+      expect(names.at(-1)).toBe("[Content_Types].xml");
     },
   );
 
@@ -253,6 +255,49 @@ describe("streamXlsx", () => {
     const sheet = readPart(late, "xl/worksheets/sheet1.xml");
     expect(sheet).not.toContain("<cols>");
     expect(sheet).toContain('<row r="1201">');
+  });
+
+  it("holds the head for images only under auto width: otherwise an image column keeps its width when streaming", async () => {
+    const rows = () => [["Picture"], [{ image: stripesPng }]];
+    const streamed = await collect(
+      streamXlsx({ sheets: [{ name: "S", rows: rows() }] }, { compression: "none" }),
+    );
+    const written = await writeXlsx(
+      { sheets: [{ name: "S", rows: rows() }] },
+      { compression: "none" },
+    );
+    expect(readPart(written, "xl/worksheets/sheet1.xml")).toContain(
+      '<cols><col min="1" max="1" width="18.86"',
+    );
+    const sheet = readPart(streamed, "xl/worksheets/sheet1.xml");
+    expect(sheet).not.toContain("<cols>");
+    expect(sheet).toContain('<row r="2" ht="33" customHeight="1"/>');
+    expect(unzip(streamed).map((e) => e.name)).toContain("xl/media/image1.png");
+    const fitted = await collect(
+      streamXlsx(
+        { sheets: [{ name: "S", autoWidth: true, rows: rows() }] },
+        { compression: "none" },
+      ),
+    );
+    const filtered = await collect(
+      streamXlsx(
+        { sheets: [{ name: "S", autoFilter: true, rows: rows() }] },
+        { compression: "none" },
+      ),
+    );
+    expect(readPart(filtered, "xl/worksheets/sheet1.xml")).toContain('<autoFilter ref="A1:A2"/>');
+    // Whichever row holds the first picture, the head has left without a width for its column.
+    const firstRow = await collect(
+      streamXlsx(
+        { sheets: [{ name: "S", rows: [[{ image: stripesPng }], ["x"]] }] },
+        { compression: "none" },
+      ),
+    );
+    expect(readPart(firstRow, "xl/worksheets/sheet1.xml")).not.toContain("<cols>");
+    expect(readPart(filtered, "xl/workbook.xml")).toContain("$A$1:$A$2</definedName>");
+    expect(readPart(fitted, "xl/worksheets/sheet1.xml")).toContain(
+      '<cols><col min="1" max="1" width="18.86"',
+    );
   });
 
   it("refuses async rows on the byte path with a coded error", async () => {

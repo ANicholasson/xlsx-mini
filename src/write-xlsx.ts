@@ -1,3 +1,4 @@
+import { createMediaTable, drawingPath, drawingRelationshipsPath } from "./drawing/index.js";
 import {
   type CompressionMode,
   createPackage,
@@ -55,18 +56,21 @@ export async function writeXlsx(
   validateWorkbook(workbook);
   const strings = createStringTable();
   const styles = createStyleTable();
+  const media = createMediaTable();
   const sheets = workbook.sheets;
   const sheetNames = sheets.map((sheet) => sheet.name);
 
   // Sheets render first: they fill the shared-strings and styles tables those parts are built from.
   const sheetParts: PackagePart[] = [];
   const entries: SheetEntry[] = [];
+  const drawingSheets: number[] = [];
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i]!;
     // The same shape as the streamed context, so the per-cell check reads a present property.
     const context = {
       strings,
       styles,
+      media,
       coerce: options.coerce,
       sheetIndex: i,
       sheetNames,
@@ -77,6 +81,12 @@ export async function writeXlsx(
     if (rendered.relationships !== undefined) {
       sheetParts.push(part(`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, rendered.relationships));
     }
+    if (rendered.drawing !== undefined) {
+      drawingSheets.push(i + 1);
+      sheetParts.push(part(drawingPath(i + 1), rendered.drawing.drawing));
+      sheetParts.push(part(drawingRelationshipsPath(i + 1), rendered.drawing.relationships));
+    }
+    sheetParts.push(...media.takeParts());
     entries.push({
       name: sheet.name,
       filterRange: rendered.filterRange,
@@ -86,9 +96,10 @@ export async function writeXlsx(
   }
 
   const compression = selectCompression(options.compression ?? "deflate");
+  const hasPng = drawingSheets.length > 0;
   return createPackage(
     [
-      part("[Content_Types].xml", renderContentTypes(sheets.length)),
+      part("[Content_Types].xml", renderContentTypes(sheets.length, drawingSheets, hasPng)),
       part("_rels/.rels", renderRootRelationships()),
       part("xl/workbook.xml", renderWorkbook(entries)),
       part("xl/_rels/workbook.xml.rels", renderWorkbookRelationships(sheets.length)),
@@ -100,6 +111,7 @@ export async function writeXlsx(
   );
 }
 
+/** A package part from XML text. */
 function part(path: string, xml: string): PackagePart {
   return { path, data: encoder.encode(xml) };
 }
@@ -135,23 +147,27 @@ export function streamXlsx(
   validateWorkbook(workbook);
   const strings = createStringTable();
   const styles = createStyleTable();
+  const media = createMediaTable();
   const sheets = workbook.sheets;
   const sheetNames = sheets.map((sheet) => sheet.name);
   const inlineStrings = (options.strings ?? "inline") === "inline";
   const compression = selectStreamCompression(options.compression ?? "deflate");
 
   // The packager takes each part only once the previous one has gone out, so the parts after the
-  // sheets see every string and style the sheets registered.
+  // sheets see every string, style and image the sheets registered. The content types go last,
+  // since only the sheets know whether a drawing part exists; readers find parts through the
+  // central directory, not by position.
   async function* parts(): AsyncGenerator<StreamedPart> {
-    yield bytesPart("[Content_Types].xml", renderContentTypes(sheets.length));
     yield bytesPart("_rels/.rels", renderRootRelationships());
     yield bytesPart("xl/_rels/workbook.xml.rels", renderWorkbookRelationships(sheets.length));
     const entries: SheetEntry[] = [];
+    const drawingSheets: number[] = [];
     for (let i = 0; i < sheets.length; i++) {
       const sheet = sheets[i]!;
       const context = {
         strings,
         styles,
+        media,
         coerce: options.coerce,
         sheetIndex: i,
         sheetNames,
@@ -163,18 +179,34 @@ export function streamXlsx(
       if (relationships !== undefined) {
         yield bytesPart(`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, relationships);
       }
+      const drawing = streamed.drawing();
+      if (drawing !== undefined) {
+        drawingSheets.push(i + 1);
+        yield bytesPart(drawingPath(i + 1), drawing.drawing);
+        yield bytesPart(drawingRelationshipsPath(i + 1), drawing.relationships);
+      }
+      for (const image of media.takeParts()) yield rawPart(image.path, image.data);
       entries.push({ name: sheet.name, ...streamed.facts() });
     }
     yield bytesPart("xl/workbook.xml", renderWorkbook(entries));
     yield bytesPart("xl/styles.xml", styles.render());
     yield bytesPart("xl/sharedStrings.xml", strings.render());
+    yield bytesPart(
+      "[Content_Types].xml",
+      renderContentTypes(sheets.length, drawingSheets, drawingSheets.length > 0),
+    );
   }
 
   return streamPackage(parts(), compression);
 }
 
+/** A streamed part from XML text. */
 function bytesPart(path: string, xml: string): StreamedPart {
-  const data = encoder.encode(xml);
+  return rawPart(path, encoder.encode(xml));
+}
+
+/** A part whose bytes are known in full, such as an image. */
+function rawPart(path: string, data: Uint8Array): StreamedPart {
   return {
     path,
     body: new ReadableStream({

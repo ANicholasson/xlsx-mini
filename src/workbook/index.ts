@@ -18,16 +18,27 @@ const OFFICE_RELATIONSHIPS_NAMESPACE =
  */
 export const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
-/** Renders `[Content_Types].xml`: one override per part, plus the defaults readers expect. */
-export function renderContentTypes(sheetCount: number): string {
+/**
+ * Renders `[Content_Types].xml`: one override per part, plus the defaults readers expect. Sheets
+ * with a drawing are named by their one-based number; a workbook with any image declares PNG.
+ */
+export function renderContentTypes(
+  sheetCount: number,
+  drawingSheets: readonly number[] = [],
+  hasPng = false,
+): string {
   let overrides = "";
   for (let i = 1; i <= sheetCount; i++) {
     overrides += `<Override PartName="/xl/worksheets/sheet${i}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  }
+  for (const n of drawingSheets) {
+    overrides += `<Override PartName="/xl/drawings/drawing${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`;
   }
   return (
     `${XML_DECLARATION}<Types xmlns="${CONTENT_TYPES_NAMESPACE}">` +
     '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
     '<Default Extension="xml" ContentType="application/xml"/>' +
+    (hasPng ? '<Default Extension="png" ContentType="image/png"/>' : "") +
     `<Override PartName="/xl/workbook.xml" ContentType="${XLSX_MIME_TYPE}.main+xml"/>` +
     '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
     '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>' +
