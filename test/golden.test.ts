@@ -463,7 +463,7 @@ describe("images workbook (golden)", () => {
     await golden("images.xlsx", imagesWorkbook);
   });
 
-  it("writes two media parts, one drawing with five anchors, and the content types for both", async () => {
+  it("writes two media parts, one drawing with six anchors, and the content types for both", async () => {
     const bytes = await writeXlsx(imagesWorkbook, STORE);
     const names = unzip(bytes).map((e) => e.name);
     expect(names).toContain("xl/media/image1.png");

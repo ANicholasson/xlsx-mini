@@ -114,8 +114,16 @@ interface Frame {
   readonly relationships: () => string | undefined;
   /** The drawing parts, once the rows have been rendered, or undefined without images. */
   readonly drawing: () => SheetDrawingParts | undefined;
-  /** Everything before the rows; the dimension only when the range is known. */
-  readonly head: (range: string | undefined, hasRows: boolean) => string;
+  /**
+   * Everything before the rows; the dimension only when the range is known. `imagePixels` is the
+   * widest picture per column that may widen a column: all of them on the byte path, those of the
+   * sample when streaming under auto width, none when the head goes out before the rows.
+   */
+  readonly head: (
+    range: string | undefined,
+    hasRows: boolean,
+    imagePixels: readonly number[],
+  ) => string;
   /** Everything after the rows, in the order the schema fixes. */
   readonly tail: (range: string, hasRows: boolean) => string;
   readonly filterRange: (range: string) => string | undefined;
@@ -158,12 +166,12 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
       drawing.hasImages
         ? { drawing: drawing.render(), relationships: drawing.relationships() }
         : undefined,
-    head: (range, hasRows) =>
+    head: (range, hasRows, imagePixels) =>
       WORKSHEET_OPEN +
       print.sheetPr +
       (range === undefined || range.length === 0 ? "" : `<dimension ref="${range}"/>`) +
       views +
-      columns.cols(widths?.widths(), records.imagePixels) +
+      columns.cols(widths?.widths(), imagePixels) +
       (hasRows ? "<sheetData>" : "<sheetData/>"),
     tail: (range, hasRows) => {
       const filter = filterRange(range);
@@ -215,7 +223,7 @@ export function renderWorksheet(sheet: Sheet, context: WorksheetContext): Render
   );
   const records = rowContext.records;
   // The tail adds the drawing relationship, so the relationships part is read after it.
-  const data = sink.finish(head(range, hasRows), tail(range, hasRows));
+  const data = sink.finish(head(range, hasRows, records.imagePixels), tail(range, hasRows));
   return {
     data,
     relationships: relationships(),
@@ -271,8 +279,10 @@ export function streamWorksheet(
         return;
       }
       if (!headed) {
+        // The head leaves before the rows: a picture in the first row must not widen its column
+        // when one in the second cannot, so none does without auto width.
         headed = true;
-        sink.write(head(undefined, true));
+        sink.write(head(undefined, true, []));
       }
       sink.write(text);
     },
@@ -284,7 +294,7 @@ export function streamWorksheet(
     records.widths?.stop();
     if (held.length === 0) return;
     headed = true;
-    sink.write(head(undefined, true));
+    sink.write(head(undefined, true, records.imagePixels));
     sink.write(held.join(""));
     held.length = 0;
   };
@@ -304,7 +314,7 @@ export function streamWorksheet(
     release();
     range = data.range;
     if (headed) sink.write(tail(data.range, true));
-    else sink.write(head(undefined, false) + tail(data.range, false));
+    else sink.write(head(undefined, false, []) + tail(data.range, false));
     sink.end();
     ended = true;
   };

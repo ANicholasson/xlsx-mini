@@ -182,6 +182,20 @@ describe("image cells", () => {
     expect(failure({ name: "S", rows: [[unsafe(badge)]] }).code).toBe("UNSUPPORTED_VALUE");
   });
 
+  it("reads rows from a generator once, pictures included", () => {
+    let pulls = 0;
+    function* rows(): Generator<Cell[]> {
+      for (let i = 0; i < 3; i++) {
+        pulls++;
+        yield [`Row ${i + 1}`, { image: i === 1 ? badge : stripes }];
+      }
+    }
+    const { xml, drawing } = render({ name: "S", rows: rows() });
+    expect(pulls).toBe(3);
+    expect(xml).toContain('<dimension ref="A1:B3"/>');
+    expect(drawing?.drawing.match(/<xdr:oneCellAnchor>/g)).toHaveLength(3);
+  });
+
   it("leaves a sheet without images without a drawing", () => {
     const { xml, relationships, drawing } = render({ name: "S", rows: [["a"]] });
     expect(xml).not.toContain("<drawing");

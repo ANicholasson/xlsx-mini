@@ -286,6 +286,14 @@ describe("streamXlsx", () => {
       ),
     );
     expect(readPart(filtered, "xl/worksheets/sheet1.xml")).toContain('<autoFilter ref="A1:A2"/>');
+    // Whichever row holds the first picture, the head has left without a width for its column.
+    const firstRow = await collect(
+      streamXlsx(
+        { sheets: [{ name: "S", rows: [[{ image: stripesPng }], ["x"]] }] },
+        { compression: "none" },
+      ),
+    );
+    expect(readPart(firstRow, "xl/worksheets/sheet1.xml")).not.toContain("<cols>");
     expect(readPart(filtered, "xl/workbook.xml")).toContain("$A$1:$A$2</definedName>");
     expect(readPart(fitted, "xl/worksheets/sheet1.xml")).toContain(
       '<cols><col min="1" max="1" width="18.86"',
