@@ -105,6 +105,26 @@ describe("auto column width", () => {
       expect(width([1e21])).toBe(6.71);
     });
 
+    it("measures a fraction after a larger whole number, and a date after a larger number, in one column", () => {
+      expect(width([1000, 0.123456789])).toBe(12.71);
+      expect(width([0.123456789, 1000])).toBe(12.71);
+      expect(width([100000, new Date(Date.UTC(2026, 10, 4, 13, 45))])).toBe(16.43);
+      expect(width([new Date(Date.UTC(2026, 10, 4, 13, 45)), 100000])).toBe(16.43);
+      expect(width([-5, 4, 3])).toBe(3.71);
+    });
+
+    it("treats the General format string as General, not as date tokens", () => {
+      expect(width([{ value: 1234567.891234, style: { numberFormat: "General" } }])).toBe(12.71);
+      expect(width([{ value: 1234567.891234, style: { numberFormat: "general;-general" } }])).toBe(
+        12.71,
+      );
+      expect(
+        width([1234567.891234], {
+          columns: [{ width: "auto", style: { numberFormat: "GENERAL" } }],
+        }),
+      ).toBe(12.71);
+    });
+
     it("reads a format's placeholders, grouping, decimals and literal text", () => {
       const money = { numberFormat: '#,##0.00 "kr"' };
       expect(width([{ value: -1234567.891, style: money }])).toBe(16.86);

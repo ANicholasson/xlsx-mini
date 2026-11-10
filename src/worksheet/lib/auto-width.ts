@@ -147,6 +147,10 @@ const PLACEHOLDERS = new Set(["0", "#", "?"]);
  * and everything else is literal text. Unknown constructs count as literal, which errs wide.
  */
 function readFormat(format: string): FormatShape {
+  const section = format.indexOf(";");
+  if ((section === -1 ? format : format.slice(0, section)).trim().toLowerCase() === "general") {
+    return GENERAL_SHAPE;
+  }
   let datePixels = 0;
   let integerMin = 0;
   let grouping = false;
@@ -301,8 +305,12 @@ interface Slot {
   factor: number;
   /** The shape per date default the column's format resolves to, filled on first use. */
   readonly shapes: (FormatShape | undefined)[];
-  /** The largest magnitude measured under the column's shape; a smaller one cannot widen the column. */
-  largest: number;
+  /**
+   * Per date default, the largest magnitude measured under that shape: a smaller one cannot widen
+   * the column, since a format's width grows with the magnitude. General is the exception, where
+   * only whole numbers grow that way; `0.123456789` is wider than `1000`.
+   */
+  readonly largest: number[];
 }
 
 /**
@@ -351,7 +359,7 @@ export function createAutoWidths(
       let slot = slots[column];
       if (slot === undefined) {
         const wanted = column < measured.length ? measured[column] === true : beyond;
-        slot = wanted ? { pixels: 0, factor: -1, shapes: [], largest: -1 } : null;
+        slot = wanted ? { pixels: 0, factor: -1, shapes: [], largest: [] } : null;
         slots[column] = slot;
       }
       if (slot === null || slot.pixels >= CEILING_PIXELS) return false;
@@ -372,15 +380,18 @@ export function createAutoWidths(
         const shape = shapeOf(cell.numberFormat ?? columnStyle?.numberFormat, dateDefault);
         measuredPixels = numberPixels(value, shape) * factorOf(cell, columnStyle);
       } else {
-        // Under one shape the width grows with the magnitude, a negative counting one digit more,
-        // so a value no larger than the largest measured cannot widen the column.
-        const magnitude = value < 0 ? -value * 10 : value;
-        if (magnitude <= slot.largest) return;
-        slot.largest = magnitude;
         let shape = slot.shapes[dateDefault];
         if (shape === undefined) {
           shape = shapeOf(columnStyle?.numberFormat, dateDefault);
           slot.shapes[dateDefault] = shape;
+        }
+        // Under one shape the width grows with the magnitude, a negative counting one digit more,
+        // so a value no larger than the largest measured cannot widen the column. Under General
+        // that holds for whole numbers only; a fraction is always measured.
+        if (shape !== GENERAL_SHAPE || Number.isInteger(value)) {
+          const magnitude = value < 0 ? -value * 10 : value;
+          if (magnitude <= (slot.largest[dateDefault] ?? -1)) return;
+          slot.largest[dateDefault] = magnitude;
         }
         measuredPixels = numberPixels(value, shape) * slotFactor(slot, columnStyle);
       }
