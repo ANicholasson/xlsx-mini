@@ -196,16 +196,7 @@ function renderRow(
     // A picture occupies its cell whether or not a cell element is written beneath it.
     if (records.rowImageColumn > maxColumn) maxColumn = records.rowImageColumn;
     // The caller's height wins; otherwise the row makes room for its tallest picture.
-    if (height === undefined) {
-      height = imageRowHeight(records.rowImagePixels);
-      if (height === undefined) {
-        throw new XlsxMiniError(
-          "INVALID_IMAGE",
-          cellPath(context, rowIndex, records.rowTallestColumn),
-          `A picture ${records.rowImagePixels} pixels tall does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_IMAGE_ROW_PIXELS} pixels); give it a height, or the row one`,
-        );
-      }
-    }
+    height ??= pictureRowHeight(records, rowIndex, context);
   }
   if (cells.length === 0) {
     if (height === undefined) return NOTHING;
@@ -234,9 +225,16 @@ function endSheetData(
   return { range, hasRows };
 }
 
-/** The points a row needs for a picture this many pixels tall, or undefined when no row can hold it. */
-function imageRowHeight(pixels: number): number | undefined {
-  if (pixels > MAX_IMAGE_ROW_PIXELS) return undefined;
+/** The points the row needs for its tallest picture, or the error when no row can hold it. */
+function pictureRowHeight(records: RowRecords, rowIndex: number, context: RowContext): number {
+  const pixels = records.rowImagePixels;
+  if (pixels > MAX_IMAGE_ROW_PIXELS) {
+    throw new XlsxMiniError(
+      "INVALID_IMAGE",
+      cellPath(context, rowIndex, records.rowTallestColumn),
+      `A picture ${pixels} pixels tall does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_IMAGE_ROW_PIXELS} pixels); give it a height, or the row one`,
+    );
+  }
   const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
   return points < DEFAULT_ROW_HEIGHT ? DEFAULT_ROW_HEIGHT : points;
 }
@@ -280,19 +278,16 @@ function renderCell(
   const reference = columnLetter(column) + (rowIndex + 1);
   if (isWrapper(value)) {
     cellStyle = value.style;
-    if ("image" in value) {
-      return renderImage(value, reference, cellStyle, columnStyle, column, rowIndex, context);
-    }
-    if ("formula" in value) {
-      if ("href" in value || "cell" in value || "sheet" in value) {
-        throw new XlsxMiniError(
-          "INVALID_FORMULA",
-          cellPath(context, rowIndex, column),
-          "A formula cell cannot also be a link",
-        );
-      }
-      records.hasFormulas = true;
-      return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+    if ("image" in value || "formula" in value) {
+      return renderImageOrFormula(
+        value,
+        reference,
+        cellStyle,
+        columnStyle,
+        column,
+        rowIndex,
+        context,
+      );
     }
     if ("href" in value || "cell" in value || "sheet" in value) {
       records.links.add(
@@ -613,6 +608,33 @@ function styleAttribute(
     throw error;
   }
   return index === 0 ? "" : ` s="${index}"`;
+}
+
+/**
+ * The two kinds of cell object that are not a value: kept out of `renderCell` so the function on
+ * the path of every ordinary cell stays small enough to be inlined into the row loop.
+ */
+function renderImageOrFormula(
+  value: ImageCell | FormulaCell,
+  reference: string,
+  cellStyle: CellStyle | undefined,
+  columnStyle: CellStyle | undefined,
+  column: number,
+  rowIndex: number,
+  context: RowContext,
+): string {
+  if ("image" in value) {
+    return renderImage(value, reference, cellStyle, columnStyle, column, rowIndex, context);
+  }
+  if ("href" in value || "cell" in value || "sheet" in value) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      cellPath(context, rowIndex, column),
+      "A formula cell cannot also be a link",
+    );
+  }
+  context.records.hasFormulas = true;
+  return renderFormula(value, reference, cellStyle, columnStyle, column, rowIndex, context);
 }
 
 /**
