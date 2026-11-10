@@ -279,6 +279,14 @@ describe("streamXlsx", () => {
         { compression: "none" },
       ),
     );
+    const filtered = await collect(
+      streamXlsx(
+        { sheets: [{ name: "S", autoFilter: true, rows: rows() }] },
+        { compression: "none" },
+      ),
+    );
+    expect(readPart(filtered, "xl/worksheets/sheet1.xml")).toContain('<autoFilter ref="A1:A2"/>');
+    expect(readPart(filtered, "xl/workbook.xml")).toContain("$A$1:$A$2</definedName>");
     expect(readPart(fitted, "xl/worksheets/sheet1.xml")).toContain(
       '<cols><col min="1" max="1" width="18.86"',
     );

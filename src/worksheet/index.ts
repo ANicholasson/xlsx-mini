@@ -143,6 +143,7 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     widths,
     drawing,
     rowImagePixels: 0,
+    rowImageColumn: -1,
     imagePixels: [],
   };
   const filterRange = (range: string): string | undefined =>

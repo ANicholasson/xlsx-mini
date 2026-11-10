@@ -22,6 +22,8 @@ import { serialFromCivil, serialFromEpochMillis } from "./serial.js";
 const MAX_TEXT_LENGTH = 32_767;
 const MAX_FORMULA_LENGTH = 8192;
 const MAX_ROW_HEIGHT = 409;
+/** The height of a row nobody sized, in points; a picture never makes a row smaller than that. */
+const DEFAULT_ROW_HEIGHT = 15;
 /** Excel's 96 dpi against 72 points per inch. */
 const POINTS_PER_PIXEL = 0.75;
 /** Built-in number formats a date-like value falls back to. */
@@ -63,6 +65,8 @@ export interface RowRecords {
   readonly drawing: SheetDrawing;
   /** The tallest picture in the row being written, in pixels, reset per row. */
   rowImagePixels: number;
+  /** The rightmost column holding a picture in the row being written, or -1, reset per row. */
+  rowImageColumn: number;
   /** The widest picture per column, in pixels, for the column widths. */
   readonly imagePixels: number[];
 }
@@ -174,6 +178,7 @@ function renderRow(
   let maxColumn = -1;
   const records = context.records;
   records.rowImagePixels = 0;
+  records.rowImageColumn = -1;
   for (let column = 0; column < row.length; column++) {
     const cell = row[column];
     if (cell === null || cell === undefined) continue;
@@ -182,13 +187,15 @@ function renderRow(
     cells += rendered;
     maxColumn = column;
   }
+  // A picture occupies its cell whether or not a cell element is written beneath it.
+  if (records.rowImageColumn > maxColumn) maxColumn = records.rowImageColumn;
   const rowNumber = rowIndex + 1;
   // The caller's height wins; otherwise a row makes room for its tallest picture.
   const height = rowHeights?.[rowNumber] ?? imageRowHeight(records.rowImagePixels);
   if (cells.length === 0) {
     if (height === undefined) return NOTHING;
     sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
-    return HEIGHT_ONLY;
+    return maxColumn === -1 ? HEIGHT_ONLY : maxColumn;
   }
   sink.write(
     `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
@@ -216,6 +223,7 @@ function endSheetData(
 function imageRowHeight(pixels: number): number | undefined {
   if (pixels === 0) return undefined;
   const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
+  if (points < DEFAULT_ROW_HEIGHT) return DEFAULT_ROW_HEIGHT;
   return points > MAX_ROW_HEIGHT ? MAX_ROW_HEIGHT : points;
 }
 
@@ -618,6 +626,8 @@ function renderImage(
   const media = context.media.add(cell.image, path);
   const size = records.drawing.add(column, rowIndex, media, cell.width, cell.height, path);
   if (size.height > records.rowImagePixels) records.rowImagePixels = size.height;
+  // Cells are visited left to right, so the latest picture is the rightmost.
+  records.rowImageColumn = column;
   if (size.width > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = size.width;
   if (cellStyle === undefined) return "";
   const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);

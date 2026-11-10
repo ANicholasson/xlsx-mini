@@ -66,6 +66,25 @@ describe("image cells", () => {
     expect(xml).toContain('<row r="1" ht="39" customHeight="1"><c r="A1" s="1"/></row>');
   });
 
+  it("never shrinks a row below the default height for a small picture", () => {
+    const { xml } = render({ name: "S", rows: [["Text", { image: stripes, width: 12 }]] });
+    expect(xml).toContain('<row r="1" ht="15" customHeight="1">');
+  });
+
+  it("counts picture cells in the used range, so the dimension and the filter reach them", () => {
+    const rendered = render({
+      name: "S",
+      autoFilter: true,
+      rows: [["Picture"], [{ image: stripes }], [null, { image: badge }]],
+    });
+    expect(rendered.xml).toContain('<dimension ref="A1:B3"/>');
+    expect(rendered.xml).toContain('<autoFilter ref="A1:B3"/>');
+    expect(rendered.xml).toContain(
+      '<row r="2" ht="33" customHeight="1"/><row r="3" ht="39" customHeight="1"/>',
+    );
+    expect(rendered.filterRange).toBe("A1:B3");
+  });
+
   it("takes the tallest picture in a row, and the caller's row height over its own", () => {
     const { xml } = render({
       name: "S",
