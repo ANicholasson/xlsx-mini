@@ -186,6 +186,14 @@ export function createSheetDrawing(): SheetDrawing {
               width: w ?? (h! * media.width) / media.height,
               height: h ?? (w! * media.height) / media.width,
             };
+      // A dimension scaled from the other by a long, thin image can pass what either was checked against.
+      if (size.width > MAX_IMAGE_PIXELS || size.height > MAX_IMAGE_PIXELS) {
+        throw new XlsxMiniError(
+          "INVALID_IMAGE",
+          `${path}.${w === undefined ? "height" : "width"}`,
+          `At this size the picture would be ${Math.ceil(size.width)} by ${Math.ceil(size.height)} pixels; the limit is ${MAX_IMAGE_PIXELS} each way`,
+        );
+      }
       let rId = relationships.get(media.id);
       if (rId === undefined) {
         rId = relationships.size + 1;

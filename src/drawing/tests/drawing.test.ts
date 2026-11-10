@@ -113,6 +113,22 @@ describe("sheet drawing", () => {
     );
   });
 
+  it("rejects a size whose other dimension, scaled by the aspect ratio, passes the limit", () => {
+    const drawing = createSheetDrawing();
+    const media = createMediaTable().add(stripes, "p");
+    expect(failure(() => drawing.add(0, 0, media, undefined, 50_000, "c"))).toMatchObject({
+      code: "INVALID_IMAGE",
+      path: "c.height",
+    });
+    expect(failure(() => drawing.add(0, 0, media, 100_000, undefined, "c")).code).toBe(
+      "INVALID_IMAGE",
+    );
+    expect(drawing.add(0, 0, media, undefined, 30_000, "c")).toEqual({
+      width: 90_000,
+      height: 30_000,
+    });
+  });
+
   it("rejects a width or height that is not a positive number of pixels, at the property", () => {
     const drawing = createSheetDrawing();
     const media = createMediaTable().add(badge, "p");
