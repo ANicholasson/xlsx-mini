@@ -154,7 +154,7 @@ if (measured !== undefined) {
 } else {
   const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.meta.url));
   const baseDist = argument("--base");
-  const rounds = Number(argument("--rounds") ?? 3);
+  const rounds = Number(argument("--rounds") ?? 4);
 
   // Per round, one process per benchmark and build. The two builds run one after the other, and
   // which goes first swaps from one benchmark and one round to the next, so that neither always
