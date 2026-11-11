@@ -30,10 +30,16 @@ function buildTables(): Uint32Array {
 export const CRC32_INITIAL = 0xffffffff;
 
 /**
- * Advances a running CRC-32 over one chunk. Slice-by-8: the tables are built on first use and
- * shared afterwards.
+ * The most bytes checksummed in one call of the inner loop. An engine compiles a function it sees
+ * called often; a loop over a whole part inside a function called once per part is instead
+ * replaced on the stack while it runs, on every call, and on V8 that ran at less than half the
+ * speed whenever the first part of a process was a large one. At 16 KiB the function is called
+ * often enough on every engine measured, and the slices cost nothing that shows.
  */
-export function crc32Update(state: number, bytes: Uint8Array): number {
+const BLOCK_BYTES = 16_384;
+
+/** Advances a running CRC-32 over at most one block, slice-by-8. */
+function updateBlock(state: number, bytes: Uint8Array): number {
   const t = (tables ??= buildTables());
   const length = bytes.length;
   // Read as an unsigned 32-bit value: a plain parameter leaves the loop's type open, and the byte
@@ -60,6 +66,20 @@ export function crc32Update(state: number, bytes: Uint8Array): number {
   }
   for (; i < length; i++) {
     crc = (t[(crc ^ bytes[i]!) & 0xff]! ^ (crc >>> 8)) >>> 0;
+  }
+  return crc;
+}
+
+/**
+ * Advances a running CRC-32 over one chunk of any size, a block at a time. The tables are built on
+ * first use and shared afterwards.
+ */
+export function crc32Update(state: number, bytes: Uint8Array): number {
+  const length = bytes.length;
+  if (length <= BLOCK_BYTES) return updateBlock(state, bytes);
+  let crc = state;
+  for (let start = 0; start < length; start += BLOCK_BYTES) {
+    crc = updateBlock(crc, bytes.subarray(start, Math.min(start + BLOCK_BYTES, length)));
   }
   return crc;
 }

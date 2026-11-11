@@ -1,7 +1,10 @@
 // Times the three suites against the built package on whichever runtime runs this file: Node, Bun
 // or Deno. With `--base <dist>` a second build is timed in the same process, call by call in turns
 // with the first, so both see the same machine and the same moment; the report compares the two.
-// `pnpm bench` prints a table; `--json <file>` also writes the results.
+// Nothing is written before the suites and nothing is done to one build that is not done to the
+// other: the first write each build makes is a large one, as a first export in a fresh process is,
+// and a small write that only one of them made first once showed as fifteen percent between two
+// copies of the same build. `pnpm bench` prints a table; `--json <file>` also writes the results.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -56,13 +59,10 @@ function summarize(samples: readonly number[]): Timing {
   return { minMs: sorted[0]!, p50Ms: sorted[Math.floor(sorted.length / 2)]! };
 }
 
-/** Whether a build knows auto widths: one from before them refuses the column rather than ignoring it. */
-async function supportsAutoWidth(api: typeof Api): Promise<boolean> {
+/** Whether a write completes: a base build from before a feature refuses or lacks its variant. */
+async function succeeds(write: Write): Promise<boolean> {
   try {
-    await api.writeXlsx(
-      { sheets: [{ name: "probe", columns: [{ width: "auto" }], rows: [["x"]] }] },
-      { compression: "none" },
-    );
+    await write();
     return true;
   } catch {
     return false;
@@ -73,7 +73,6 @@ const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.
 const baseDist = argument("--base");
 const head = await load(headDist);
 const base = baseDist === undefined ? undefined : await load(baseDist);
-const baseHasAutoWidth = base === undefined ? false : await supportsAutoWidth(base);
 const iterations = Number(argument("--iterations") ?? 7);
 
 const benchmarks: BenchmarkResult[] = [];
@@ -87,27 +86,21 @@ for (const [suite, build] of suites) {
     "auto",
   ] as const satisfies readonly Variant[]) {
     const store = { compression: "none" as const };
-    const writeWith = (api: typeof Api): Write | undefined => {
+    const writeWith = (api: typeof Api): Write => {
       if (variant === "deflate") return () => api.writeXlsx(workbook);
       if (variant === "store") return () => api.writeXlsx(workbook, store);
-      if (variant === "auto") {
-        // A base build without auto widths would write the suite with no widths at all, which
-        // is not the same work, so the row shows no base rather than a wrong one.
-        if (api === base && !baseHasAutoWidth) return undefined;
-        return () => api.writeXlsx(autoWorkbook, store);
-      }
-      // A build without streaming, such as a base from before it, skips the variant.
-      if (typeof api.streamXlsx !== "function") return undefined;
+      if (variant === "auto") return () => api.writeXlsx(autoWorkbook, store);
       return () => api.streamXlsx(workbook).pipeTo(new WritableStream());
     };
     const headWrite = writeWith(head);
-    if (headWrite === undefined) continue;
-    const baseWrite = base === undefined ? undefined : writeWith(base);
+    let baseWrite = base === undefined ? undefined : writeWith(base);
     // One warm-up each, then the two builds in turns, the order swapped every iteration so that
     // neither side always pays for the other's garbage or always gets the warmer cache; a
     // collection before each timed call, where the host exposes one, takes the rest of that bias.
     await headWrite();
-    await baseWrite?.();
+    // A base from before streaming or auto widths fails its warm-up, and the row then shows no
+    // base rather than a wrong one. The build under test must write every variant.
+    if (baseWrite !== undefined && !(await succeeds(baseWrite))) baseWrite = undefined;
     const headSamples: number[] = [];
     const baseSamples: number[] = [];
     for (let i = 0; i < iterations; i++) {

@@ -18,6 +18,19 @@ describe("crc32", () => {
     expect(crc32(data.subarray(13, 2999))).toBe(nodeCrc32(data.subarray(13, 2999)));
   });
 
+  it("agrees with Node's implementation at and around the block size it works in", () => {
+    const data = new Uint8Array(3 * 16_384 + 13);
+    for (let i = 0; i < data.length; i++) data[i] = (i * 2_654_435_761) >>> 24;
+    for (const length of [16_383, 16_384, 16_385, 16_392, 32_768, 32_775, data.length]) {
+      expect(crc32(data.subarray(0, length)), `${length} bytes`).toBe(
+        nodeCrc32(data.subarray(0, length)),
+      );
+    }
+    // A running checksum carried across chunks that are themselves several blocks long.
+    const state = crc32Update(CRC32_INITIAL, data.subarray(0, 20_001));
+    expect(crc32Finish(crc32Update(state, data.subarray(20_001)))).toBe(nodeCrc32(data));
+  });
+
   it("gives the same checksum fed in chunks as in one piece", () => {
     const data = new Uint8Array(1000);
     for (let i = 0; i < data.length; i++) data[i] = (i * 31) & 0xff;

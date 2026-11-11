@@ -699,7 +699,7 @@ Every pull request gets one comment: the pull request and `main` built and timed
 
 | Suite                                        | Deflate |  STORE | Streamed |
 | -------------------------------------------- | ------: | -----: | -------: |
-| Wide table, 100 000 rows by 10 mixed columns |  495 ms | 177 ms |   522 ms |
+| Wide table, 100 000 rows by 10 mixed columns |  472 ms | 148 ms |   522 ms |
 | Many sheets, 40 sheets of 2 500 rows by 6    |  238 ms |  74 ms |   248 ms |
 | String-heavy, 200 000 rows by 5 text columns |  367 ms |  90 ms |   913 ms |
 
