@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/`, deflate and STORE each, seven runs after one warm-up against the built package loaded by the host itself) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
+The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/` against the built package loaded by the host itself; seven runs after one warm-up in one process until 2026-11-11, since then every benchmark in processes of its own, four of them with four runs each after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
@@ -53,6 +53,59 @@ The `auto` variant is each suite with every column sized to its content (ADR 002
 
 Two `store` runs of the same build in one session differed by fifteen percent on Node, so differences inside ten percent here are noise. The wide table, the suite the issue budgeted at ten percent, measures within that noise on Node and Bun and fourteen percent above it on Deno; the many-sheets suite pays seven to thirteen percent, the string-heavy suite nothing. What remains per cell is the call that asks whether the column is measured: a shared string is scanned once per sheet by its table index, a text whose length cannot beat the column is not scanned, a number whose magnitude cannot beat the column is not counted, and a column at the ceiling is left alone. The three suites without auto width are unchanged, which the pull-request report against `main` confirms; on the report the `auto` row has no `main` side, since a build from before auto widths would write the suite without widths rather than measure it. No budget changes.
 
+## The checksum in blocks, and one process per benchmark, 2026-11-11
+
+Two pull-request reports flagged the wide-table STORE row on Node while the code under review had not touched that path, and two copies of one build, timed against each other in the harness, showed the same: 164 ms against 145 ms. Three faults lay behind it, one in the library and two in the harness, and the harness had been hiding the one in the library.
+
+### The library: a loop in a function called too rarely
+
+`crc32Update` held its loop in a function called once per part, a handful of calls per workbook. An engine compiles a function it sees called often; a long loop in a function called rarely is instead replaced on the stack while it runs. On V8, when the first part a process checksummed was a large one, that happened again on every call: each began in the slow tiers, and the function itself was never compiled. A CPU profile of ten STORE writes of the wide table showed the checksum at 430 ms in that state and 222 ms after a small write had come first, three quarters of the difference between the two. Which state a program got depended on what it happened to write first.
+
+The checksum now runs over blocks of 16 KiB, the same slice-by-8 loop called on one slice after another, so the function is called often and compiled on first use everywhere. Twelve mebibytes in one call, first call in the process and then the minimum of eleven more, in milliseconds:
+
+| Runtime      | Before, first / minimum | In blocks, first / minimum |
+| ------------ | ----------------------- | -------------------------- |
+| Node 24.22.1 | 15.8 / 13.0             | 7.5 / 5.5                  |
+| Bun 1.4.4    | 14.5 / 5.7              | 10.4 / 5.6                 |
+| Deno 2.9.6   | 17.2 / 12.3             | 7.7 / 5.3                  |
+
+Blocks of 64 KiB and more started slowly on V8 again, and 4 KiB gained nothing over 16. Handing the loop a start and an end within the whole array, in place of a slice, ran 2.4 times slower on Bun, which no longer saw that the indexes stay inside the array; hence the slices, which cost one small object per 16 KiB.
+
+What a program sees when its first workbook is the suite, one build per process with nothing written before, minimum of nine writes after the first, the lower of two such runs, in milliseconds:
+
+| Suite, variant      | Node, before / after | Bun, before / after | Deno, before / after |
+| ------------------- | -------------------- | ------------------- | -------------------- |
+| Wide table, STORE   | 166 / 142            | 127 / 109           | 109 / 110            |
+| Wide table, deflate | 493 / 465            | 359 / 330           | 338 / 339            |
+| Many sheets, STORE  | 71 / 71              | 55 / 57             | 52 / 53              |
+| String-heavy, STORE | 88 / 89              | 94 / 93             | 87 / 88              |
+
+The wide table as STORE is fourteen percent faster on Node and on Bun, six and eight percent with deflate. Deno reaches the fast state by itself after a few writes, so its minimum is unchanged, and its first write of the wide table falls from 178 ms to 146 ms. The many-sheets suite checksums forty small parts and was never affected. Output is byte for byte what it was.
+
+### The harness: a probe, and two builds in one process
+
+The harness loaded both builds into one process and timed them call by call in turns. Two things about that were wrong.
+
+Before timing, it wrote one tiny workbook with the base build alone, to learn whether that build knew auto widths. That write put the base build's checksum in the fast state and left the other in the slow one. Which build was loaded first, which was warmed first and how many warm-ups each got made no difference; moving that one write to the other build moved the fifteen percent with it.
+
+And two builds in one process are not independent. On the runner, Bun wrote the streamed wide table with `main`'s build at less than half the speed of the pull request's, on three reports in a row, whatever the pull request changed. With the two swapped the slow one was still `main`'s, at −56 % as the base and +139 % as the build under test; two copies of one build read within one percent of each other; and alone in a process the two builds took 761 ms and 762 ms. Neither the order nor the code: one build was slowed by sharing a process with a different one. On Deno the build under test read a few percent slow on every row of two reports.
+
+Every measurement now runs in a process of its own: it loads one build, builds one suite, writes it one way once to warm up and times four more writes. The two builds' processes for a benchmark run one after the other, the order swapping from one benchmark and one round to the next, for four rounds, and the minimum of the sixteen runs is compared. Nothing is written before the suite, so a build meets what a program whose first workbook is that suite meets. A base from before a feature fails its warm-up and has no row; the auto-width suite names its columns one by one for that reason, since such a base refuses `width: "auto"` where it would ignore a sheet's `autoWidth`. Every measuring process is given a collector to call, on Deno too. The three runtimes run as three jobs side by side, about six minutes each.
+
+A first version gave each build one process for all the suites. A row's two timings then lay minutes apart, and on the runner two copies of one build differed by more than the band on Node's stream rows and on several of Deno's: the minima of eight such processes spread by fourteen percent on Node's streamed wide table and by eighteen on Deno's STORE. One process per benchmark puts the two timings seconds apart.
+
+On the runner, two copies of one build, six rounds of six runs, the largest difference on any of the twelve rows, and how often a row lands outside the band at the default, taken over every choice of four of the six rounds:
+
+| Runtime      | Largest difference, 36 runs | Rows outside ±5 % at four rounds of four |
+| ------------ | --------------------------- | ---------------------------------------- |
+| Node 24.22.2 | 4.2 %                       | none, largest 4.9 %                      |
+| Bun 1.4.4    | 1.9 %                       | 0.6 %, one row, largest 7.7 %            |
+| Deno 2.9.6   | 2.3 %                       | none, largest 3.2 %                      |
+
+So a flag on a report is seldom noise, and now and then it is: one row in a few hundred. The same run with `main` as the base read the wide table as STORE at −9.2 % on Node and −12.3 % on Bun, the auto variant of it at −6.9 % and −9.5 %, Bun's deflate at −5.2 %, every row on Deno inside one and a half percent, and Bun's streamed wide table at +0.5 %.
+
+The numbers a run prints are not those of the sections above, which came from one long process: locally the streamed string-heavy suite reads a quarter lower. The wide-table budgets ratchet down, from 520 ms to 490 ms and, for STORE, from 180 ms to 160 ms. What the harness still cannot see is the cost of a first call: each benchmark is warmed once before it is timed and the minimum is compared, so a cost paid only once per process is outside the report.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.
@@ -65,7 +118,7 @@ The runner is about twice as slow as the machine above, and machines in the pool
 
 ## What the pull-request report measures
 
-Wall time of the pull request's build and of `main`'s build in the same process on the same runner, taken in turns, seven runs each, compared by their minimum. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
+Wall time of the pull request's build and of `main`'s build on the same runner, every benchmark of each build in a process of its own, the two builds one after the other and in turns, sixteen runs each over four processes, compared by their minimum. Neither build writes anything before the suite it is timed on. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
 
 ## What the profiling pass found
 

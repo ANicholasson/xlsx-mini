@@ -695,13 +695,13 @@ No runtime dependencies and no install scripts. The writer touches no file, netw
 
 ## Benchmarks
 
-Every pull request gets one comment: the pull request and `main` built and timed on the same runner, in turns, on Node, Bun and Deno, for three suites. `pnpm bench` runs them here. On an Apple M5 Pro with Node 24, the minimum of seven runs:
+Every pull request gets one comment: the pull request and `main` built and timed on the same runner, in turns, on Node, Bun and Deno, for three suites. `pnpm bench` runs them here. On an Apple M5 Pro with Node 24, the minimum of sixteen runs, each benchmark in processes of its own:
 
 | Suite                                        | Deflate |  STORE | Streamed |
 | -------------------------------------------- | ------: | -----: | -------: |
-| Wide table, 100 000 rows by 10 mixed columns |  495 ms | 177 ms |   522 ms |
-| Many sheets, 40 sheets of 2 500 rows by 6    |  238 ms |  74 ms |   248 ms |
-| String-heavy, 200 000 rows by 5 text columns |  367 ms |  90 ms |   913 ms |
+| Wide table, 100 000 rows by 10 mixed columns |  463 ms | 141 ms |   447 ms |
+| Many sheets, 40 sheets of 2 500 rows by 6    |  232 ms |  68 ms |   197 ms |
+| String-heavy, 200 000 rows by 5 text columns |  370 ms |  89 ms |   698 ms |
 
 STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
 

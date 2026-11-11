@@ -315,16 +315,24 @@ function stringHeavyWorkbook(): Workbook {
   return { sheets: [{ name: "Text", rows: [header(["A", "B", "C", "D", "E"]), ...rows] }] };
 }
 
-/** The same workbook with every column sized to its content instead of a fixed width. */
+/**
+ * The same workbook with every column sized to its content instead of a fixed width. The columns
+ * are named one by one: a build from before auto widths refuses `width: "auto"`, where it would
+ * ignore a sheet's `autoWidth` and write the suite unmeasured, which is not the same work.
+ */
 export function withAutoWidths(workbook: Workbook): Workbook {
   return {
-    sheets: workbook.sheets.map((sheet) => ({
-      ...sheet,
-      autoWidth: true,
-      columns: (sheet.columns ?? []).map((column) =>
-        column?.style === undefined ? undefined : { style: column.style },
-      ),
-    })),
+    sheets: workbook.sheets.map((sheet) => {
+      const [first] = sheet.rows;
+      const count = Math.max(sheet.columns?.length ?? 0, first?.length ?? 0);
+      return {
+        ...sheet,
+        columns: Array.from({ length: count }, (_, index) => {
+          const style = sheet.columns?.[index]?.style;
+          return style === undefined ? { width: "auto" } : { width: "auto", style };
+        }),
+      };
+    }),
   };
 }
 

@@ -20,9 +20,24 @@ concurrency:
 
 jobs:
   bench:
-    name: Node, Bun and Deno
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # One job per runtime, side by side: each compares the two builds on its own runner, and no
+    # runtime waits for another.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Node
+            runtime: node
+            command: node
+          - name: Bun
+            runtime: bun
+            command: ./node_modules/.bin/bun
+          - name: Deno
+            runtime: deno
+            command: ./node_modules/.bin/deno run --allow-all --no-lock
     # Read-only on purpose: this job runs the dependencies and the package, so no write scope and
     # no persisted credential is within their reach. Results leave as an artifact.
     permissions:
@@ -52,16 +67,15 @@ jobs:
           echo "BASE_SHA=$BASE_SHA" >> "$GITHUB_ENV"
           echo "COMMIT=$HEAD_SHA" >> "$GITHUB_ENV"
 
-      - name: Benchmark on Node
-        run: node --expose-gc bench/run.ts --base base-tree/dist --json bench/results/node.json --commit "$COMMIT" --base-commit "$BASE_SHA"
-      - name: Benchmark on Bun
-        run: ./node_modules/.bin/bun bench/run.ts --base base-tree/dist --json bench/results/bun.json --commit "$COMMIT" --base-commit "$BASE_SHA"
-      - name: Benchmark on Deno
-        run: ./node_modules/.bin/deno run --allow-all --no-lock bench/run.ts --base base-tree/dist --json bench/results/deno.json --commit "$COMMIT" --base-commit "$BASE_SHA"
+      - name: Benchmark
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+          RUNTIME_COMMAND: ${{ matrix.command }}
+        run: $RUNTIME_COMMAND bench/run.ts --base base-tree/dist --json "bench/results/$RUNTIME.json" --commit "$COMMIT" --base-commit "$BASE_SHA"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bench-results
+          name: bench-results-${{ matrix.runtime }}
           path: bench/results/*.json
           retention-days: 7
 
@@ -84,7 +98,8 @@ jobs:
           node-version: 24
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: bench-results
+          pattern: bench-results-*
+          merge-multiple: true
           path: bench/results
 
       - name: Post or update the comment
