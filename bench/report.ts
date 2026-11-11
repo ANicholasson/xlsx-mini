@@ -85,7 +85,7 @@ export function renderReport(runs: readonly RunResult[], options: ReportOptions)
     COMMENT_MARKER,
     "## Benchmarks",
     "",
-    `Write time per suite: ${options.headLabel} and \`${options.baseLabel}\` built and timed on the same runner, call by call in turns, the minimum of ${samples} runs each. ` +
+    `Write time per suite: ${options.headLabel} and \`${options.baseLabel}\` built and timed on the same runner, each in processes of its own that take turns, the minimum of ${samples} runs each. ` +
       `Changes inside ±${NOISE_BAND * 100} % are noise; ⚠️ marks more than ${NOISE_BAND * 100} % slower, 🔴 more than ${ALERT_BAND * 100} % slower, 🟢 more than ${NOISE_BAND * 100} % faster.`,
     "",
   ];
