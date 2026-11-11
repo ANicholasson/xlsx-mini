@@ -1,0 +1,90 @@
+name: bench experiment
+
+# Temporary, for issue 49: raw per-process timings on the runner, and the in-process harness in
+# both orders, to see what the runner's noise is and whether its biases follow the position.
+# Removed before the pull request merges.
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bench-experiment.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-experiment-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  experiment:
+    name: ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: node
+            command: node --expose-gc
+          - runtime: bun
+            command: ./node_modules/.bin/bun
+          - runtime: deno
+            command: ./node_modules/.bin/deno run --allow-all --no-lock
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+
+      - name: Build the base alongside, and fetch the in-process harness
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          IN_PROCESS_SHA: ec4cf3e8b949b3ef404880b5b8d68ccb2db70ba8
+        run: |
+          git fetch --depth=1 origin "$BASE_SHA" "$IN_PROCESS_SHA"
+          git worktree add base-tree "$BASE_SHA"
+          ./node_modules/.bin/tsc -p base-tree/tsconfig.build.json
+          cp -R dist dist-copy
+          git show "$IN_PROCESS_SHA:bench/run.ts" > bench/run-in-process.ts
+          mkdir -p experiment
+
+      - name: Raw timings, one process at a time, the two builds in turns
+        env:
+          RUNTIME_COMMAND: ${{ matrix.command }}
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
+            for build in $order; do
+              if [ "$build" = head ]; then dist=dist; else dist=base-tree/dist; fi
+              $RUNTIME_COMMAND bench/run.ts --measure "$dist" --iterations 6 > "experiment/raw-$build-$i.json"
+            done
+          done
+
+      - name: In-process harness, two copies of this build, both orders
+        env:
+          RUNTIME_COMMAND: ${{ matrix.command }}
+        run: |
+          $RUNTIME_COMMAND bench/run-in-process.ts --dist dist --base dist-copy --json experiment/in-process-copy-as-base.json
+          $RUNTIME_COMMAND bench/run-in-process.ts --dist dist-copy --base dist --json experiment/in-process-copy-as-head.json
+
+      - name: In-process harness, this build and the base, both orders
+        env:
+          RUNTIME_COMMAND: ${{ matrix.command }}
+        run: |
+          $RUNTIME_COMMAND bench/run-in-process.ts --dist dist --base base-tree/dist --json experiment/in-process-main-as-base.json
+          $RUNTIME_COMMAND bench/run-in-process.ts --dist base-tree/dist --base dist --json experiment/in-process-main-as-head.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: bench-experiment-${{ matrix.runtime }}
+          path: experiment/*.json
+          retention-days: 7
