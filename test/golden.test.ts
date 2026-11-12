@@ -9,6 +9,7 @@ import {
   cellTypesOptions,
   cellTypesWorkbook,
   formulasWorkbook,
+  futureFunctionsWorkbook,
   hyperlinksWorkbook,
   imagesWorkbook,
   minimalWorkbook,
@@ -389,6 +390,24 @@ describe("formulas workbook (golden)", () => {
     expect(readPart(await writeXlsx(minimalWorkbook, STORE), "xl/workbook.xml")).not.toContain(
       "calcPr",
     );
+  });
+});
+
+describe("future functions workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("future-functions.xlsx", futureFunctionsWorkbook);
+  });
+
+  it("stores each newer function under its prefix and nothing else differently", async () => {
+    const sheet = readPart(
+      await writeXlsx(futureFunctionsWorkbook, STORE),
+      "xl/worksheets/sheet1.xml",
+    );
+    expect(sheet).toContain("<f>ROUND(_xlfn.STDEV.S(D2:D9),4)</f>");
+    expect(sheet).toContain("<f>SUM(_xlfn._xlws.FILTER(D2:D9,D2:D9&gt;4))</f>");
+    expect(sheet).toContain("<f>_xlfn.XLOOKUP(7,D2:D9,D2:D9)</f>");
+    expect(sheet).toContain("<f>IF(D2=2,&quot;IFS(x) and XLOOKUP(&quot;,&quot;no&quot;)</f>");
+    expect(sheet).toContain("<f>SUM(D2:D9)</f>");
   });
 });
 

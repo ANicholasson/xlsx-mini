@@ -1,0 +1,11 @@
+Function,Result,,n,t
+STDEV.S,2.1381,,2,a
+IFS,mid,,4,b
+TEXTJOIN,a-b-c,,4,c
+CONCAT,abc,,4,
+XLOOKUP,4,,5,
+MAXIFS,5,,5,
+FILTER in a sum,26,,7,
+Already prefixed,7,,9,
+Name in a text,IFS(x) and XLOOKUP(,,,
+Older function,40,,,

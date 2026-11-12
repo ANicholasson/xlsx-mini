@@ -256,6 +256,38 @@ export const appearanceWorkbook: Workbook = {
 
 const money = { numberFormat: '#,##0.00 "kr"' } as const;
 
+/**
+ * The workbook behind future-functions.xlsx: functions newer than Excel 2007 as a caller types
+ * them, one already under its prefix, a function's name inside quoted text, and an older function.
+ */
+export const futureFunctionsWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Functions",
+      columns: [{ width: 18 }, { width: 22 }, { width: 4 }, { width: 6 }, { width: 6 }],
+      rows: [
+        [
+          { value: "Function", style: header },
+          { value: "Result", style: header },
+          null,
+          { value: "n", style: header },
+          { value: "t", style: header },
+        ],
+        ["STDEV.S", { formula: "ROUND(STDEV.S(D2:D9),4)" }, null, 2, "a"],
+        ["IFS", { formula: 'IFS(D2>5,"big",D2>1,"mid",TRUE,"small")' }, null, 4, "b"],
+        ["TEXTJOIN", { formula: 'TEXTJOIN("-",TRUE,E2:E4)' }, null, 4, "c"],
+        ["CONCAT", { formula: "CONCAT(E2:E4)" }, null, 4],
+        ["XLOOKUP", { formula: 'XLOOKUP("b",E2:E4,D2:D4)' }, null, 5],
+        ["MAXIFS", { formula: 'MAXIFS(D2:D9,D2:D9,"<6")' }, null, 5],
+        ["FILTER in a sum", { formula: "SUM(FILTER(D2:D9,D2:D9>4))" }, null, 7],
+        ["Already prefixed", { formula: "_xlfn.XLOOKUP(7,D2:D9,D2:D9)" }, null, 9],
+        ["Name in a text", { formula: 'IF(D2=2,"IFS(x) and XLOOKUP(","no")' }],
+        ["Older function", { formula: "SUM(D2:D9)" }],
+      ],
+    },
+  ],
+};
+
 /** The workbook behind formulas.xlsx: per-row products, a sum, cached results, and text that only looks like a formula. */
 export const formulasWorkbook: Workbook = {
   sheets: [

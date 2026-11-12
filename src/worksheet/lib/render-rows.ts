@@ -5,6 +5,7 @@ import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js
 import { IMAGE_INSET, type MediaTable, type SheetDrawing } from "../../drawing/index.js";
 import type { AutoWidths } from "./auto-width.js";
 import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
+import { storedFormula } from "./future-functions.js";
 import type { Hyperlinks } from "./hyperlinks.js";
 import type {
   Cell,
@@ -525,7 +526,7 @@ function renderFormula(
       ? ""
       : styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
   const open = `<c r="${reference}"${style}`;
-  const f = `<f>${escapeXml(formula)}</f>`;
+  const f = `<f>${escapeXml(storedFormula(formula))}</f>`;
   const value = cell.value;
   if (value === null || value === undefined) return `${open}>${f}</c>`;
   const widths = context.records.widths;
