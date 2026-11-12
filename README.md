@@ -689,6 +689,17 @@ Rows are read once: pass a generator or a database cursor and the writer streams
 
 Below 1.0.0 a minor version may change this API; 1.0.0 follows once it has survived real use unchanged, with no code change of its own.
 
+## What it does not do
+
+Four things are outside this library on purpose. Each is large against a writer of this size, and leaving them out is what keeps it small:
+
+- **Reading or editing a workbook.** It writes and never parses. To change an existing file, read it with another tool and write the result with this one.
+- **Charts.** A chart is a drawing format of its own, larger than everything here together. Write the data; the chart is made in the application.
+- **Pivot tables.** A pivot table needs a cache of its source data in a second format beside the sheet.
+- **Password encryption.** An encrypted workbook is a different container around the package, with cryptography of its own. Encrypt the bytes with a tool made for that.
+
+`docs/adr/0026-non-goals.md` records the reasons and what would reopen each.
+
 ## Security
 
 No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
@@ -723,6 +734,8 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Formulas, cached and not         |        clean         |    clean     |     clean     |      clean       |
 | Hyperlinks, external and within  |        clean         |    clean     |     clean     |      clean       |
 | Data validation                  |        clean         |    clean     |     clean     |      clean       |
+| Auto column widths               |        clean         |    clean     |     clean     |      clean       |
+| Image cells                      |        clean         |    clean     |     clean     |      clean       |
 | Print setup                      |        clean         |    clean     |     clean     |      clean       |
 
 LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
