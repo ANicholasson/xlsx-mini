@@ -1,5 +1,12 @@
 # xlsx-mini
 
+## 0.6.2
+
+### Patch Changes
+
+- 5ffe807: Formulas with functions newer than Excel 2007 work as typed. `XLOOKUP`, `IFS`, `TEXTJOIN`, `CONCAT`, `MAXIFS`, `STDEV.S` and the rest of Excel's later functions are now stored under the prefix the file format requires; before, such a formula showed `#NAME?` in Excel and LibreOffice until its cell was edited. A formula that calls `LET` or `LAMBDA` is written exactly as given, and a function that returns an array shows its first value rather than spilling. Google Sheets does not know the name Excel stores `FILTER` and `SORT` under, so those two show `#NAME?` there.
+- ab2219a: The package no longer carries source maps. They named TypeScript sources that are not in the package, so nothing could follow them, and they were two fifths of its size: unpacked it goes from 411 kB to 248 kB. The code is unchanged.
+
 ## 0.6.1
 
 ### Patch Changes
