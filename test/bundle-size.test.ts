@@ -17,7 +17,9 @@ describe("bundle size", () => {
     const dist = mkdtempSync(join(tmpdir(), "xlsx-mini-size-"));
     try {
       const tsc = binary(root, "tsc");
-      execFileSync(tsc.file, ["-p", "tsconfig.build.json", "--outDir", dist], {
+      // Through a shell, as on Windows, an unquoted folder with a space in it is split in two.
+      const outDir = tsc.shell ? `"${dist}"` : dist;
+      execFileSync(tsc.file, ["-p", "tsconfig.build.json", "--outDir", outDir], {
         cwd: root,
         stdio: "inherit",
         shell: tsc.shell,
