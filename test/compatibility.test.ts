@@ -21,6 +21,7 @@ const ROWS: Readonly<Record<string, string>> = {
   "appearance.xlsx": "Fonts, fills, borders, merges",
   "streamed.xlsx": "Streamed, descriptors, inline",
   "formulas.xlsx": "Formulas, cached and not",
+  "future-functions.xlsx": "Functions newer than Excel 2007",
   "hyperlinks.xlsx": "Hyperlinks, external and within",
   "validation.xlsx": "Data validation",
   "auto-width.xlsx": "Auto column widths",

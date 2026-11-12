@@ -392,7 +392,7 @@ Every distinct style is written once, however many cells share it, so styling co
 
 ## Formulas and hyperlinks
 
-A cell `{ formula: "SUM(B2:B4)" }` holds a formula, written without the leading `=`. The applications calculate it when the file opens; a cached `value` shows until then and is optional. Formulas are escaped and never evaluated, and text that starts with `=` stays text, so data never becomes code. A cell `{ value, href }` links its text to an absolute URL, `{ value, cell }` jumps to a cell or range on the same sheet, and `{ value, sheet, cell }` to another sheet. A link takes no look of its own: `underline` and a `fontColor` make it look like one.
+A cell `{ formula: "SUM(B2:B4)" }` holds a formula, written without the leading `=`. The applications calculate it when the file opens; a cached `value` shows until then and is optional. Formulas are escaped and never evaluated, and text that starts with `=` stays text, so data never becomes code. Functions newer than Excel 2007, such as `XLOOKUP`, `IFS` and `TEXTJOIN`, are stored under the prefix the file format wants, so a formula works as you type it; one that calls `LET` or `LAMBDA` is written exactly as given, and a function that returns an array shows its first value rather than spilling. Google Sheets does not know the name Excel stores `FILTER` and `SORT` under, so those two show `#NAME?` there. A cell `{ value, href }` links its text to an absolute URL, `{ value, cell }` jumps to a cell or range on the same sheet, and `{ value, sheet, cell }` to another sheet. A link takes no look of its own: `underline` and a `fontColor` make it look like one.
 
 <!-- snippet: formulas -->
 
@@ -646,7 +646,7 @@ export default async function safely(): Promise<string> {
 | `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                     |
 | `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
 | `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                                                                     |
-| `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters or starts with `=`; a cached value that is not text, a number or a boolean.                    |
+| `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters as stored or starts with `=`; a cached value that is not text, a number or a boolean.          |
 | `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.  |
 | `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
 | `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                  |
@@ -735,13 +735,14 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Fonts, fills, borders, merges    |        clean         |    clean     |     clean     |      clean       |
 | Streamed, descriptors, inline    |        clean         |    clean     |     clean     |      clean       |
 | Formulas, cached and not         |        clean         |    clean     |     clean     |      clean       |
+| Functions newer than Excel 2007  |        clean         |    clean     |    8 of 10    |      clean       |
 | Hyperlinks, external and within  |        clean         |    clean     |     clean     |      clean       |
 | Data validation                  |        clean         |    clean     |     clean     |      clean       |
 | Auto column widths               |        clean         |    clean     |     clean     |      clean       |
 | Image cells                      |        clean         |    clean     |     clean     |      clean       |
 | Print setup                      |        clean         |    clean     |     clean     |      clean       |
 
-LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
+Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 
 ## Contributing
 

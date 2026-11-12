@@ -5,6 +5,7 @@ import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js
 import { IMAGE_INSET, type MediaTable, type SheetDrawing } from "../../drawing/index.js";
 import type { AutoWidths } from "./auto-width.js";
 import { MAX_COLUMNS, MAX_ROWS, columnLetter } from "./cell-ref.js";
+import { storedFormula } from "./future-functions.js";
 import type { Hyperlinks } from "./hyperlinks.js";
 import type {
   Cell,
@@ -520,12 +521,21 @@ function renderFormula(
       "A formula is written without the leading =",
     );
   }
+  // Excel repairs a file whose formula is longer as stored, and a prefix adds six characters or more.
+  const stored = storedFormula(formula);
+  if (stored.length > MAX_FORMULA_LENGTH) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      `${path}.formula`,
+      `A formula is at most ${MAX_FORMULA_LENGTH} characters with the prefixes of its newer functions, and this one is ${stored.length} characters as stored`,
+    );
+  }
   const style =
     cellStyle === undefined && columnStyle === undefined
       ? ""
       : styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
   const open = `<c r="${reference}"${style}`;
-  const f = `<f>${escapeXml(formula)}</f>`;
+  const f = `<f>${escapeXml(stored)}</f>`;
   const value = cell.value;
   if (value === null || value === undefined) return `${open}>${f}</c>`;
   const widths = context.records.widths;

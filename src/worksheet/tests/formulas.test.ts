@@ -132,3 +132,78 @@ describe("formula cells", () => {
     );
   });
 });
+
+describe("functions newer than Excel 2007", () => {
+  /** The formula of a one-cell sheet as the file stores it, unescaped. */
+  const stored = (formula: string) =>
+    /<f>(.*)<\/f>/
+      .exec(xml({ name: "S", rows: [[{ formula }]] }))![1]!
+      .replaceAll("&quot;", '"')
+      .replaceAll("&gt;", ">")
+      .replaceAll("&lt;", "<")
+      .replaceAll("&apos;", "'")
+      .replaceAll("&amp;", "&");
+
+  it("holds a formula to its length as stored, prefixes included", () => {
+    // 481 calls take 8 176 characters once each has its prefix; Excel repairs a file at 8 193.
+    const calls = Array.from({ length: 481 }, () => "IFNA(A2,0)").join("+");
+    expect(stored(`${calls}${"+1".repeat(8)}`)).toHaveLength(8192);
+    expect(() => xml({ name: "S", rows: [[{ formula: `${calls}${"+1".repeat(7)}+11` }]] })).toThrow(
+      expect.objectContaining({
+        code: "INVALID_FORMULA",
+        path: "sheets[0].rows[0][0].formula",
+        message: expect.stringContaining("8193 characters as stored"),
+      }),
+    );
+  });
+
+  it("stores them under their prefixed names, so a formula works as typed", () => {
+    expect(stored("XLOOKUP(A1,B1:B9,C1:C9)")).toBe("_xlfn.XLOOKUP(A1,B1:B9,C1:C9)");
+    expect(stored("STDEV.S(A1:A9)")).toBe("_xlfn.STDEV.S(A1:A9)");
+    expect(stored('TEXTJOIN("-",TRUE,A1:A3)')).toBe('_xlfn.TEXTJOIN("-",TRUE,A1:A3)');
+    expect(stored("T.DIST.2T(A1,4)")).toBe("_xlfn.T.DIST.2T(A1,4)");
+  });
+
+  it("stores FILTER and SORT under their longer prefix", () => {
+    expect(stored("SUM(FILTER(A1:A9,A1:A9>4))")).toBe("SUM(_xlfn._xlws.FILTER(A1:A9,A1:A9>4))");
+    expect(stored("SORT(A1:A9)")).toBe("_xlfn._xlws.SORT(A1:A9)");
+  });
+
+  it("prefixes every call in a formula, nested ones included, in the name's own capitals", () => {
+    expect(stored('ifs(A1>5,"big",TRUE,concat(B1:B3))&maxifs(A1:A9,A1:A9,"<6")')).toBe(
+      '_xlfn.IFS(A1>5,"big",TRUE,_xlfn.CONCAT(B1:B3))&_xlfn.MAXIFS(A1:A9,A1:A9,"<6")',
+    );
+  });
+
+  it("leaves older functions, names without a call and formulas without one as they are", () => {
+    expect(stored("SUM(A1:A9)+LOG10(B1)")).toBe("SUM(A1:A9)+LOG10(B1)");
+    expect(stored("A1*B1")).toBe("A1*B1");
+    expect(stored("(A1+XOR)*2")).toBe("(A1+XOR)*2");
+    expect(stored("Sheet2!A1+SUM(Sheet2!B1:B2)")).toBe("Sheet2!A1+SUM(Sheet2!B1:B2)");
+  });
+
+  it("leaves a name that already carries its prefix alone", () => {
+    expect(stored("_xlfn.XLOOKUP(A1,B1:B9,C1:C9)")).toBe("_xlfn.XLOOKUP(A1,B1:B9,C1:C9)");
+    expect(stored("_xlfn._xlws.FILTER(A1:A9,A1:A9>4)")).toBe("_xlfn._xlws.FILTER(A1:A9,A1:A9>4)");
+  });
+
+  it("passes over text in quotes and sheet names in apostrophes", () => {
+    expect(stored('IF(A1="XLOOKUP(","IFS(""x"")",CONCAT(B1:B2))')).toBe(
+      'IF(A1="XLOOKUP(","IFS(""x"")",_xlfn.CONCAT(B1:B2))',
+    );
+    expect(stored("SUM('IFS(a''s)'!A1:A9)+DAYS(B1,C1)")).toBe(
+      "SUM('IFS(a''s)'!A1:A9)+_xlfn.DAYS(B1,C1)",
+    );
+    // A quote that never closes takes the rest of the formula with it.
+    expect(stored('SUM(A1)&"IFS(')).toBe('SUM(A1)&"IFS(');
+  });
+
+  it("writes a formula that calls LET or LAMBDA exactly as given", () => {
+    // Their parameters are stored under a prefix as well, which only the caller can write.
+    expect(stored("LET(x,XLOOKUP(A1,B1:B9,C1:C9),x*2)")).toBe("LET(x,XLOOKUP(A1,B1:B9,C1:C9),x*2)");
+    expect(stored("_xlfn.LET(_xlpm.x,CONCAT(A1:A2),_xlpm.x)")).toBe(
+      "_xlfn.LET(_xlpm.x,CONCAT(A1:A2),_xlpm.x)",
+    );
+    expect(stored("MAP(A1:A3,LAMBDA(v,v*2))")).toBe("MAP(A1:A3,LAMBDA(v,v*2))");
+  });
+});
