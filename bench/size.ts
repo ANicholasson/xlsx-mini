@@ -27,7 +27,10 @@ export interface SizeResult {
   readonly base?: PackageSize;
 }
 
-/** The most gzipped bytes each bundle may take (ADR 0021). A budget only ratchets down. */
+/**
+ * The most gzipped bytes each bundle may take. Only a feature that needs the bytes raises it, in its
+ * own pull request and in ADR 0021.
+ */
 export const SIZE_BUDGET = { writeXlsx: 18_000, everything: 20_000 } as const;
 
 const ENTRY = "\0entry";

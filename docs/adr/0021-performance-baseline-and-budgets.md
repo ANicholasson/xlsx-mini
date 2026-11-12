@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/` against the built package loaded by the host itself; seven runs after one warm-up in one process until 2026-11-11, since then every benchmark in processes of its own, four of them with four runs each after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
+The first measured baseline is the budget, and a time or memory budget only ratchets down; the bundle-size budget has its own rule, in its section below. Numbers come from `pnpm bench` (the three suites in `bench/` against the built package loaded by the host itself; seven runs after one warm-up in one process until 2026-11-11, since then every benchmark in processes of its own, four of them with four runs each after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
@@ -115,7 +115,7 @@ What the built package adds to an application's bundle is a cost its users pay o
 | `writeXlsx` alone | 45 747 B | 16 423 B |         18 000 B |
 | Every export      | 52 741 B | 18 648 B |         20 000 B |
 
-The budgets are what the README states, under 18 kB and under 20 kB, with a kilobyte as a thousand bytes; a test fails when a bundle passes its budget and when the README states another figure. They sit a tenth above the measurement, which is room for the small features planned and no more: a change that needs a higher budget raises it here and says why. The two bundles differ by little because the writer is one path through every slice; what `writeXlsx` alone leaves out is streaming and `sheetFromObjects`.
+The budgets are what the README states, under 18 kB and under 20 kB, with a kilobyte as a thousand bytes; a test fails when a bundle passes its budget and when the README states another figure. They sit a tenth above the measurement, which is room for the small features planned and no more. A feature need not cost time or memory, so those budgets only ratchet down; bytes are what a feature is made of, so this budget is a ceiling and not a ratchet. A pull request whose feature needs a higher one raises it in that same pull request, here, with the bytes and what they buy. Nothing else raises it. The two bundles differ by little because the writer is one path through every slice; what `writeXlsx` alone leaves out is streaming and `sheetFromObjects`.
 
 The badge in the README is the same measurement of the version on npm by bundlejs, which minifies with another tool and read 17.1 kB for `writeXlsx` alone on 0.6.1, four percent above the figure here. The README's sentence therefore states the budget, which both are under, and not either reading.
 
