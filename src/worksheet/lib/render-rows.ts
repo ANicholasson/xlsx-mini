@@ -521,12 +521,21 @@ function renderFormula(
       "A formula is written without the leading =",
     );
   }
+  // Excel repairs a file whose formula is longer as stored, and a prefix adds six characters or more.
+  const stored = storedFormula(formula);
+  if (stored.length > MAX_FORMULA_LENGTH) {
+    throw new XlsxMiniError(
+      "INVALID_FORMULA",
+      `${path}.formula`,
+      `A formula is at most ${MAX_FORMULA_LENGTH} characters with the prefixes of its newer functions, and this one is ${stored.length} characters as stored`,
+    );
+  }
   const style =
     cellStyle === undefined && columnStyle === undefined
       ? ""
       : styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
   const open = `<c r="${reference}"${style}`;
-  const f = `<f>${escapeXml(storedFormula(formula))}</f>`;
+  const f = `<f>${escapeXml(stored)}</f>`;
   const value = cell.value;
   if (value === null || value === undefined) return `${open}>${f}</c>`;
   const widths = context.records.widths;

@@ -144,6 +144,19 @@ describe("functions newer than Excel 2007", () => {
       .replaceAll("&apos;", "'")
       .replaceAll("&amp;", "&");
 
+  it("holds a formula to its length as stored, prefixes included", () => {
+    // 481 calls take 8 176 characters once each has its prefix; Excel repairs a file at 8 193.
+    const calls = Array.from({ length: 481 }, () => "IFNA(A2,0)").join("+");
+    expect(stored(`${calls}${"+1".repeat(8)}`)).toHaveLength(8192);
+    expect(() => xml({ name: "S", rows: [[{ formula: `${calls}${"+1".repeat(7)}+11` }]] })).toThrow(
+      expect.objectContaining({
+        code: "INVALID_FORMULA",
+        path: "sheets[0].rows[0][0].formula",
+        message: expect.stringContaining("8193 characters as stored"),
+      }),
+    );
+  });
+
   it("stores them under their prefixed names, so a formula works as typed", () => {
     expect(stored("XLOOKUP(A1,B1:B9,C1:C9)")).toBe("_xlfn.XLOOKUP(A1,B1:B9,C1:C9)");
     expect(stored("STDEV.S(A1:A9)")).toBe("_xlfn.STDEV.S(A1:A9)");

@@ -46,6 +46,7 @@ So a formula with any of these was wrong in two of the three applications until 
 - `_xlfn.LET(x,A2,x*2)`, the function prefixed and its parameter not, is a file Excel repairs: `LET` and `LAMBDA` name their own parameters, and each is stored as `_xlpm.x`. Telling a parameter from a name takes a formula parser, which the writer does not have. A formula that calls `LET` or `LAMBDA` is therefore written exactly as given, every other call in it included, so the writer never prefixes by halves; the caller writes those two in their stored form.
 - A function that returns an array, `UNIQUE`, `SEQUENCE`, `FILTER`, as a cell's whole formula shows its first value and fills no cell below. Spilling needs the cell marked as an array formula with metadata beside it. That is not written: such a function works inside one that takes an array, as `SUM(FILTER(…))` does.
 - A name already prefixed, in either case, is left alone, and so is anything inside double quotes or a sheet name in apostrophes.
+- The limit of 8 192 characters is on the formula as stored: Excel 16.115 opens a file whose stored formula has 8 192 and repairs one with 8 193, where the formula as typed had 5 307. The writer therefore measures a formula with its prefixes, and refuses one that the prefixes carry over the limit.
 
 Google Sheets, given the golden fixture, drops `_xlfn.` and computes `STDEV.S`, `IFS`, `TEXTJOIN`, `XLOOKUP` and `MAXIFS`. Two rows differ there:
 
