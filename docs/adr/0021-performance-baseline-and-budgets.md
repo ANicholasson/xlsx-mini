@@ -1,6 +1,6 @@
 # Performance baseline and budgets
 
-The first measured baseline is the budget, and a budget only ratchets down. Numbers come from `pnpm bench` (the three suites in `bench/` against the built package loaded by the host itself; seven runs after one warm-up in one process until 2026-11-11, since then every benchmark in processes of its own, four of them with four runs each after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
+The first measured baseline is the budget, and a time or memory budget only ratchets down; the bundle-size budget has its own rule, in its section below. Numbers come from `pnpm bench` (the three suites in `bench/` against the built package loaded by the host itself; seven runs after one warm-up in one process until 2026-11-11, since then every benchmark in processes of its own, four of them with four runs each after one warm-up) and `pnpm bench:memory` (one write per suite in a fresh process). On pull requests the same script runs on GitHub's runners in Node, Bun and Deno with `main` built alongside, and the report compares the two on that one machine.
 
 ## Baseline, 2026-11-05, Apple M5 Pro, 48 GiB, Node 24.22.1
 
@@ -106,6 +106,21 @@ So a flag on a report is seldom noise, and now and then it is: one row in a few 
 
 The numbers a run prints are not those of the sections above, which came from one long process: locally the streamed string-heavy suite reads a quarter lower. The wide-table budgets ratchet down, from 520 ms to 490 ms and, for STORE, from 180 ms to 160 ms. What the harness still cannot see is the cost of a first call: each benchmark is warmed once before it is timed and the minimum is compared, so a cost paid only once per process is outside the report.
 
+## Bundle size, 2026-11-12
+
+What the built package adds to an application's bundle is a cost its users pay on every page load and every cold start, and it is the plainest difference between this library and the ones that also read: so it is measured and held like the time. `bench/size.ts` bundles the package from its `dist/` folder with the bundler the runtime matrix already uses, for the browser platform, minified, and gzips the one file that comes out at the highest level. It does so twice: for an application that imports only `writeXlsx`, and for every export.
+
+| Bundle            | Minified |  Gzipped | Budget (gzipped) |
+| ----------------- | -------: | -------: | ---------------: |
+| `writeXlsx` alone | 45 747 B | 16 423 B |         18 000 B |
+| Every export      | 52 741 B | 18 648 B |         20 000 B |
+
+The budgets are what the README states, under 18 kB and under 20 kB, with a kilobyte as a thousand bytes; a test fails when a bundle passes its budget and when the README states another figure. They sit a tenth above the measurement, which is room for the small features planned and no more. A feature need not cost time or memory, so those budgets only ratchet down; bytes are what a feature is made of, so this budget is a ceiling and not a ratchet. A pull request whose feature needs a higher one raises it in that same pull request, here, with the bytes and what they buy. Nothing else raises it. The two bundles differ by little because the writer is one path through every slice; what `writeXlsx` alone leaves out is streaming and `sheetFromObjects`.
+
+The badge in the README is the same measurement of the version on npm by bundlejs, which minifies with another tool and read 17.1 kB for `writeXlsx` alone on 0.6.1, four percent above the figure here. The README's sentence therefore states the budget, which both are under, and not either reading.
+
+The benchmark report carries the gzipped size of both bundles for the pull request and for `main`, with the difference in bytes. Bytes do not vary between runs, so every byte shows and there is no noise band.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.
@@ -118,7 +133,7 @@ The runner is about twice as slow as the machine above, and machines in the pool
 
 ## What the pull-request report measures
 
-Wall time of the pull request's build and of `main`'s build on the same runner, every benchmark of each build in a process of its own, the two builds one after the other and in turns, sixteen runs each over four processes, compared by their minimum. Neither build writes anything before the suite it is timed on. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged.
+Wall time of the pull request's build and of `main`'s build on the same runner, every benchmark of each build in a process of its own, the two builds one after the other and in turns, sixteen runs each over four processes, compared by their minimum. Neither build writes anything before the suite it is timed on. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged. Below the tables the report states the bundle size of the two builds, measured once, on the Node job.
 
 ## What the profiling pass found
 

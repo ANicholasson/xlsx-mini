@@ -52,6 +52,7 @@
     "bench:all": "pnpm run build && node bench/run.ts --json bench/results/node.json && bun bench/run.ts --json bench/results/bun.json && deno run --allow-all --no-lock bench/run.ts --json bench/results/deno.json",
     "bench:report": "node bench/report.ts --head bench/results --out bench/results/report.md",
     "bench:memory": "pnpm run build && node bench/memory.ts",
+    "bench:size": "pnpm run build && node bench/size.ts",
     "check:package": "pnpm run build && publint --strict && attw --pack . --profile esm-only",
     "verify": "vp check && pnpm run typecheck && pnpm run lint:boundaries && pnpm run knip && pnpm run test:coverage && pnpm run check:package",
     "fixtures:update": "UPDATE_FIXTURES=1 vp test run test/golden.test.ts",

@@ -73,6 +73,11 @@ jobs:
           RUNTIME_COMMAND: ${{ matrix.command }}
         run: $RUNTIME_COMMAND bench/run.ts --base base-tree/dist --json "bench/results/$RUNTIME.json" --commit "$COMMIT" --base-commit "$BASE_SHA"
 
+      # The size of the two builds in a bundle is the same on every runtime: one job measures it.
+      - name: Bundle size
+        if: matrix.runtime == 'node'
+        run: node bench/size.ts --dist dist --base base-tree/dist --json bench/results/size.json
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-results-${{ matrix.runtime }}

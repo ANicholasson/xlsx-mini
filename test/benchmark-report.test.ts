@@ -4,8 +4,11 @@ import {
   COMMENT_MARKER,
   type RunResult,
   describeChange,
+  describeSizeChange,
+  readSize,
   renderReport,
 } from "../bench/report.ts";
+import type { SizeResult } from "../bench/size.ts";
 
 function run(runtime: string, headScale = 1, withBase = true): RunResult {
   const benchmark = (suite: string, variant: "deflate" | "store", ms: number): BenchmarkResult => ({
@@ -66,5 +69,63 @@ describe("renderReport", () => {
     expect(report).toContain("| wide table | deflate | — | 500.0 ms | — |");
     expect(report).toContain("this pull request `head123`; 7 runs each, minimum.");
     expect(report).not.toContain("against main");
+  });
+
+  it("adds the size of both builds in a bundle, gzipped, when it is given one", () => {
+    const size: SizeResult = {
+      head: {
+        writeXlsx: { minified: 45_900, gzip: 16_490 },
+        everything: { minified: 52_741, gzip: 18_648 },
+      },
+      base: {
+        writeXlsx: { minified: 45_747, gzip: 16_423 },
+        everything: { minified: 52_741, gzip: 18_648 },
+      },
+    };
+    const report = renderReport([run("node")], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+      size,
+    });
+    expect(report.indexOf("### Bundle size")).toBeGreaterThan(report.indexOf("### Node"));
+    expect(report).toContain("| Import | main | this pull request | Change |");
+    expect(report).toContain("| `writeXlsx` alone | 16.42 kB | 16.49 kB | +67 B (+0.4 %) |");
+    expect(report).toContain("| Every export | 18.65 kB | 18.65 kB | same |");
+  });
+
+  it("shows the size without a change when there is no base build", () => {
+    const report = renderReport([run("node", 1, false)], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+      size: {
+        head: {
+          writeXlsx: { minified: 45_747, gzip: 16_423 },
+          everything: { minified: 52_741, gzip: 18_648 },
+        },
+      },
+    });
+    expect(report).toContain("| `writeXlsx` alone | — | 16.42 kB | — |");
+  });
+
+  it("has no size table without sizes", () => {
+    const report = renderReport([run("node")], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+    });
+    expect(report).not.toContain("Bundle size");
+  });
+});
+
+describe("describeSizeChange", () => {
+  it("shows every byte, with its sign", () => {
+    expect(describeSizeChange(16_000, 16_000)).toBe("same");
+    expect(describeSizeChange(16_000, 16_160)).toBe("+160 B (+1.0 %)");
+    expect(describeSizeChange(16_000, 15_200)).toBe("-800 B (-5.0 %)");
+  });
+});
+
+describe("readSize", () => {
+  it("is nothing for a directory without a size file", () => {
+    expect(readSize("bench/no-such-results")).toBeUndefined();
   });
 });

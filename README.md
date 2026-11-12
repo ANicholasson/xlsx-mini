@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/xlsx-mini)](https://www.npmjs.com/package/xlsx-mini)
 [![ci](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml)
+[![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
 Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
@@ -13,6 +14,8 @@ pnpm add xlsx-mini
 ```
 
 ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs, and the runtime matrix in CI proves each host on every change.
+
+In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 18 kB, and every export together under 20 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
 
 ## Quick start
 
@@ -689,6 +692,17 @@ Rows are read once: pass a generator or a database cursor and the writer streams
 
 Below 1.0.0 a minor version may change this API; 1.0.0 follows once it has survived real use unchanged, with no code change of its own.
 
+## What it does not do
+
+Four things are outside this library on purpose. Each is large against a writer of this size, and leaving them out is what keeps it small:
+
+- **Reading or editing a workbook.** It writes and never parses. To change an existing file, read it with another tool and write the result with this one.
+- **Charts.** A chart is a drawing format of its own, larger than everything here together. Write the data; the chart is made in the application.
+- **Pivot tables.** A pivot table needs a cache of its source data in a second format beside the sheet.
+- **Password encryption.** An encrypted workbook is a different container around the package, with cryptography of its own. Encrypt the bytes with a tool made for that.
+
+`docs/adr/0026-non-goals.md` records the reasons and what would reopen each.
+
 ## Security
 
 No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
@@ -703,7 +717,7 @@ Every pull request gets one comment: the pull request and `main` built and timed
 | Many sheets, 40 sheets of 2 500 rows by 6    |  232 ms |  68 ms |   197 ms |
 | String-heavy, 200 000 rows by 5 text columns |  370 ms |  89 ms |   698 ms |
 
-STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
+STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. The comment also shows what the pull request does to the size of the package in a bundle. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
 
 ## Compatibility
 
@@ -724,6 +738,8 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Functions newer than Excel 2007  |        clean         |    clean     |    8 of 10    |      clean       |
 | Hyperlinks, external and within  |        clean         |    clean     |     clean     |      clean       |
 | Data validation                  |        clean         |    clean     |     clean     |      clean       |
+| Auto column widths               |        clean         |    clean     |     clean     |      clean       |
+| Image cells                      |        clean         |    clean     |     clean     |      clean       |
 | Print setup                      |        clean         |    clean     |     clean     |      clean       |
 
 Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
