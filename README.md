@@ -2,6 +2,7 @@
 
 [![npm](https://img.shields.io/npm/v/xlsx-mini)](https://www.npmjs.com/package/xlsx-mini)
 [![ci](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml/badge.svg)](https://github.com/ANicholasson/xlsx-mini/actions/workflows/ci.yml)
+[![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
 Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
@@ -13,6 +14,8 @@ pnpm add xlsx-mini
 ```
 
 ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs, and the runtime matrix in CI proves each host on every change.
+
+In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 18 kB, and every export together under 20 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
 
 ## Quick start
 
@@ -703,7 +706,7 @@ Every pull request gets one comment: the pull request and `main` built and timed
 | Many sheets, 40 sheets of 2 500 rows by 6    |  232 ms |  68 ms |   197 ms |
 | String-heavy, 200 000 rows by 5 text columns |  370 ms |  89 ms |   698 ms |
 
-STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
+STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. The comment also shows what the pull request does to the size of the package in a bundle. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
 
 ## Compatibility
 

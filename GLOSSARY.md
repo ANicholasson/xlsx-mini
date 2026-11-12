@@ -126,7 +126,11 @@ The hosts the built package must write a workbook on at every test run: Node (ES
 One of the three workbooks in `bench/` the writer is timed on: the wide table, the many-sheets workbook and the string-heavy workbook. Each is generated from a fixed seed.
 
 **Budget**:
-The time and peak-memory ceiling for a benchmark suite, recorded in the baseline ADR. A budget only ratchets down.
+A ceiling a measurement must stay under, recorded in the baseline ADR: time and peak memory for a benchmark suite, gzipped bytes for the package in a bundle. A budget only ratchets down.
+
+**Bundle size**:
+What the built package adds to an application's bundle, minified and gzipped: measured for an application that imports only `writeXlsx`, and for every export.
+_Avoid_: package size (the tarball on npm), install size
 
 **Benchmark report**:
-The one comment on a pull request with a table per runtime of the pull request against `main`, both timed on the same runner in turns. Updated on every push.
+The one comment on a pull request with a table per runtime of the pull request against `main`, both timed on the same runner in turns, and the bundle size of the two. Updated on every push.
