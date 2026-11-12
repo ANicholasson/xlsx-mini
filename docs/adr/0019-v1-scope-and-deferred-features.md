@@ -7,3 +7,5 @@ Update: merged cells, borders, fills, font colour and size, italic, alignment, w
 Update: hyperlinks and formulas shipped in 0.4.0 as explicit cell types, with data validation and print setup at sheet level (ADR 0023). Still deferred: images.
 
 Update: images shipped in 0.6.0 as a cell type anchored to its cell (ADR 0025). Nothing from this list remains deferred.
+
+Update: what the library will not do at all, as opposed to not yet, is recorded in ADR 0026.
