@@ -10,7 +10,7 @@ A sheet-level `rowStyles` by row number, beside `rowHeights`, was the alternativ
 
 ## Where the style reaches
 
-Every position in `cells`, the empty ones included, and nothing past the last. `{ cells: ["Total", null, 15196], style }` writes three styled cells, the middle one empty, so a fill or a border runs across the blank; a fourth column is untouched. The caller sets how far a band reaches by how long the row is.
+Every position in `cells`, the empty ones included, and nothing past the last. `{ cells: ["Total", null, 15196], style }` writes three styled cells, the middle one empty, so a fill or a border runs across the blank; a fourth column is untouched. The caller sets how far a band reaches by how long the row is. A position counts as empty when nothing would be written for it: a `null`, a cell object without a value or a style, the cell beneath a picture that has no style of its own, a value the coerce hook turned into nothing.
 
 Excel's own row format, `<row s="…" customFormat="1">`, reaches to the last column of the sheet. A header band that runs past its table into sixteen thousand empty columns is rarely what a table wants, and what the other applications do with a row format on cells that are absent is theirs to decide. Cells that are written are read the same everywhere: the golden fixture opens alike in the four applications.
 

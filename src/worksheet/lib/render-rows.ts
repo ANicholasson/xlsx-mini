@@ -258,16 +258,15 @@ function renderRowObject(
     const cell = list[column];
     let style = columnStyles[column];
     if (styles !== undefined) style = styles[column] ??= over(rowStyle!, style);
-    let rendered: string;
-    if (cell === null || cell === undefined) {
-      // The row's style runs across its empty cells, as a fill or a border must.
+    let rendered =
+      cell === null || cell === undefined ? "" : renderCell(cell, column, style, rowIndex, context);
+    if (rendered.length === 0) {
+      // The row's style runs across every position that wrote nothing, as a fill or a border
+      // must: a blank, an empty cell object, the cell beneath a picture, a value coerced away.
       if (styles === undefined) continue;
       const attribute = styleAttribute(undefined, style, GENERAL, column, rowIndex, context);
       if (attribute.length === 0) continue;
       rendered = `<c r="${columnLetter(column)}${rowIndex + 1}"${attribute}/>`;
-    } else {
-      rendered = renderCell(cell, column, style, rowIndex, context);
-      if (rendered.length === 0) continue;
     }
     cells += rendered;
     maxColumn = column;

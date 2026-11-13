@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
 import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
@@ -25,6 +28,8 @@ const data = (rows: Row[], sheet: Partial<Sheet> = {}, overrides?: Partial<Works
   /<sheetData>(.*)<\/sheetData>/.exec(xml({ name: "S", rows, ...sheet }, overrides))![1]!;
 
 const bold: CellStyle = { bold: true };
+const images = join(dirname(fileURLToPath(import.meta.url)), "../../../test/fixtures/images");
+const stripes = new Uint8Array(readFileSync(join(images, "stripes.png")));
 
 describe("a row given as an object", () => {
   it("writes what the same cells write as an array when it carries nothing else", () => {
@@ -37,6 +42,20 @@ describe("a row given as an object", () => {
       '<row r="1"><c r="A1" s="1" t="inlineStr"><is><t>a</t></is></c><c r="B1" s="1"/>' +
         '<c r="C1" s="1"><v>1</v></c><c r="D1" s="1"/></row>' +
         '<row r="2"><c r="A2" t="inlineStr"><is><t>b</t></is></c></row>',
+    );
+  });
+
+  it("styles a position that holds no value: an empty cell object, a picture, a value coerced away", () => {
+    const fill: CellStyle = { fill: "#FF0000" };
+    const cells = [{ value: null }, { image: stripes }, new Date(0), { value: null, style: bold }];
+    const sheet = data([{ cells, style: fill }], {}, { coerce: () => null });
+    expect(sheet).toBe(
+      '<row r="1" ht="33" customHeight="1"><c r="A1" s="1"/><c r="B1" s="1"/><c r="C1" s="1"/>' +
+        '<c r="D1" s="2"/></row>',
+    );
+    // Without a row style those positions stay nothing, as in an array row.
+    expect(data([{ cells: cells.slice(0, 3) }], {}, { coerce: () => null })).toBe(
+      '<row r="1" ht="33" customHeight="1"/>',
     );
   });
 
