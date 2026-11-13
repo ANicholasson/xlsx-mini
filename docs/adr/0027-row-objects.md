@@ -22,6 +22,8 @@ A cell's own style wins over its row's, and its row's over its column's, propert
 
 The style table merges two styles, a cell's and a column's, and caches the result by the identity of the two objects. A third level did not need a third argument: for a styled row, the row's style merged over each column's stands in for the column styles. That merge happens once per distinct row style object and column, kept per sheet in a `WeakMap`, and the cells of the row then take the path every cell takes. A row style is validated when it is first met, so a wrong one is reported at the row, `sheets[0].rows[3].style.fill`.
 
+A column that sizes itself keeps what it learns from its own style, its font and its number format, for the cells that follow. Under a styled row the style it is given is the row's over its own, so it measures that row's cells under it and keeps nothing: a header in a large font does not widen the rows beneath it, and a plain row before it does not narrow it.
+
 So a row given as an array pays one `Array.isArray`, and the loop it runs is the one it ran. A row object runs a loop of its own, which is why the two are apart in the code. As with a cell style, a style object made anew for every row is merged anew for every row: rows that share a style should share the object.
 
 ## Height

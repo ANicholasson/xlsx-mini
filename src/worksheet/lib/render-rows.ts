@@ -252,6 +252,8 @@ function renderRowObject(
     }
   }
   records.inRowObject = true;
+  // A column's width is measured under the row's style for this row, and learns nothing from it.
+  if (styles !== undefined) records.widths?.rowStyled(true);
   let cells = "";
   let maxColumn = -1;
   for (let column = 0; column < list.length; column++) {
@@ -272,6 +274,7 @@ function renderRowObject(
     maxColumn = column;
   }
   records.inRowObject = false;
+  if (styles !== undefined) records.widths?.rowStyled(false);
   return closeRow(cells, maxColumn, rowIndex, height ?? rowHeights?.[rowIndex + 1], context, sink);
 }
 

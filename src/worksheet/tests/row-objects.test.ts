@@ -140,6 +140,48 @@ describe("a row given as an object", () => {
     expect(widthOf([{ cells: [text], style: bold }])).not.toBe(widthOf([[text]]));
   });
 
+  it("measures each row of an auto width with its own style, whatever the rows before it had", () => {
+    const widthsOf = (rows: Row[]) =>
+      [...xml({ name: "S", autoWidth: true, rows }).matchAll(/<col [^>]*width="([\d.]+)"/g)].map(
+        (match) => match[1],
+      );
+    const large: CellStyle = { bold: true, fontSize: 20 };
+    const money: CellStyle = { numberFormat: '#,##0.00 "kr"' };
+    const text = "Some text of a fair length";
+    // The same sheet with the style on every cell is measured cell by cell.
+    const perCell = (rows: [cells: (string | number)[], style: CellStyle | undefined][]): Row[] =>
+      rows.map(([cells, style]) =>
+        style === undefined ? cells : cells.map((value) => ({ value, style })),
+      );
+    const perRow = (rows: [cells: (string | number)[], style: CellStyle | undefined][]): Row[] =>
+      rows.map(([cells, style]) => (style === undefined ? cells : { cells, style }));
+    const cases: [cells: (string | number)[], style: CellStyle | undefined][][] = [
+      // A plain row, then a row in a larger font: the later row is the wide one.
+      [
+        [[text, 1234.5], undefined],
+        [[text, 1234.5], large],
+      ],
+      // A header in a large font, then plain rows: they are not measured in the header's font.
+      [
+        [["Head", 1], large],
+        [[text, 1234.5], undefined],
+        [[`${text}, and then some`, 99], undefined],
+      ],
+      // A number format on a row, before and after rows without one.
+      [
+        [[text, 5], undefined],
+        [[text, 1234.5], money],
+        [[text, 123456.789], undefined],
+      ],
+      [
+        [[text, 1234.5], money],
+        [[text, 123456.789], undefined],
+        [[text, 99999.5], money],
+      ],
+    ];
+    for (const rows of cases) expect(widthsOf(perRow(rows))).toEqual(widthsOf(perCell(rows)));
+  });
+
   it("refuses a row that is neither an array nor an object with cells, at the row", () => {
     for (const row of ["abc", 42, null, {}, { cells: "abc" }, { style: bold }]) {
       expect(() => data([[1], row as unknown as Row])).toThrow(

@@ -125,8 +125,8 @@ The benchmark report carries the gzipped size of both bundles for the pull reque
 
 | Bundle            | Before row objects | With them | Budget, before | Budget, now |
 | ----------------- | -----------------: | --------: | -------------: | ----------: |
-| `writeXlsx` alone |           17 608 B |  18 003 B |       18 000 B |    19 000 B |
-| Every export      |           19 871 B |  20 290 B |       20 000 B |    21 000 B |
+| `writeXlsx` alone |           17 608 B |  18 036 B |       18 000 B |    19 000 B |
+| Every export      |           19 871 B |  20 325 B |       20 000 B |    21 000 B |
 
 Row objects (ADR 0027) cost about 400 bytes: the second row loop, the merge of a row style over a column's, and three error messages. They buy a style and a height on the row, the most asked-for thing this writer lacked. The functions newer than Excel 2007 (ADR 0023) had taken 1 185 bytes of the first budget's room before them. The new budgets are again round figures the README can state, a kilobyte apart from the old, with room for the hidden rows and the sheet view that are planned and for the four percent by which the badge's minifier reads above this one.
 

@@ -320,6 +320,12 @@ export interface AutoWidths {
     cell: CellStyle | undefined,
     columnStyle: CellStyle | undefined,
   ): void;
+  /**
+   * Says whether the column style given from here on is a row's style over the column's. What a
+   * column learns from its own style, its font and its number format, is kept for the cells that
+   * follow; a row's style holds for that row, so nothing is kept from it.
+   */
+  rowStyled(styled: boolean): void;
   /** Ends measuring: the widths stay as they are, whatever rows follow. */
   stop(): void;
   /** The width per column, in characters, or undefined where nothing was measured. */
@@ -358,6 +364,8 @@ export function createAutoWidths(
   /** Pixels by shared-string index, 0 until measured; grown as the table grows, never sparse. */
   let sharedPixels = new Float64Array(1024);
   let active = true;
+  /** False inside a styled row: the column style given there is not the column's own. */
+  let ownStyle = true;
 
   const shapeOf = (format: string | number | undefined, dateDefault: number): FormatShape => {
     const key = format ?? dateDefault;
@@ -399,7 +407,9 @@ export function createAutoWidths(
     text(column, text, cell, columnStyle) {
       const slot = slots[column]!;
       const factor =
-        cell === undefined ? slotFactor(slot, columnStyle) : factorOf(cell, columnStyle);
+        cell === undefined && ownStyle
+          ? slotFactor(slot, columnStyle)
+          : factorOf(cell, columnStyle);
       if (text.length * WIDEST_PIXELS * factor <= slot.pixels) return;
       const measuredPixels = textPixels(text) * factor;
       if (measuredPixels > slot.pixels) slot.pixels = measuredPixels;
@@ -407,7 +417,9 @@ export function createAutoWidths(
     sharedText(column, index, text, cell, columnStyle) {
       const slot = slots[column]!;
       const factor =
-        cell === undefined ? slotFactor(slot, columnStyle) : factorOf(cell, columnStyle);
+        cell === undefined && ownStyle
+          ? slotFactor(slot, columnStyle)
+          : factorOf(cell, columnStyle);
       if (text.length * WIDEST_PIXELS * factor <= slot.pixels) return;
       if (index >= sharedPixels.length) {
         const grown = new Float64Array(Math.max(index + 1, sharedPixels.length * 2));
@@ -425,8 +437,8 @@ export function createAutoWidths(
     number(column, value, dateDefault, cell, columnStyle) {
       const slot = slots[column]!;
       let measuredPixels: number;
-      if (cell !== undefined) {
-        const shape = shapeOf(cell.numberFormat ?? columnStyle?.numberFormat, dateDefault);
+      if (cell !== undefined || !ownStyle) {
+        const shape = shapeOf(cell?.numberFormat ?? columnStyle?.numberFormat, dateDefault);
         measuredPixels = numberPixels(value, shape) * factorOf(cell, columnStyle);
       } else {
         let shape = slot.shapes[dateDefault];
@@ -449,6 +461,9 @@ export function createAutoWidths(
         measuredPixels = numberPixels(value, shape) * slotFactor(slot, columnStyle);
       }
       if (measuredPixels > slot.pixels) slot.pixels = measuredPixels;
+    },
+    rowStyled(styled) {
+      ownStyle = !styled;
     },
     stop() {
       active = false;
