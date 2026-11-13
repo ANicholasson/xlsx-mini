@@ -288,6 +288,35 @@ export const futureFunctionsWorkbook: Workbook = {
   ],
 };
 
+const reportHeader = { bold: true, fill: "#1f2937", fontColor: "#ffffff" } as const;
+const band = { fill: "#f3f4f6" } as const;
+const totalRow = { bold: true, border: { top: "thin" } } as const;
+
+/**
+ * The workbook behind row-styles.xlsx: a header styled by its row, with a height; banded rows
+ * between rows given as arrays; a cell overriding one property of its row; a styled row with an
+ * empty cell; a total row with a border; and row styles over a column's number format.
+ */
+export const rowStylesWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Report",
+      columns: [{ width: 14 }, { width: 16 }, { width: 10 }, { width: 16, style: money }],
+      rows: [
+        { cells: ["Order", "Customer", "Items", "Total"], style: reportHeader, height: 24 },
+        ["A-1001", "Kari", 3, 1234.5],
+        { cells: ["A-1002", "Ola", 1, 99], style: band },
+        ["A-1003", "Liv", 12, 560.25],
+        { cells: ["A-1004", null, 2, { value: 75, style: { fill: "#fde68a" } }], style: band },
+        {
+          cells: ["Total", null, { formula: "SUM(C2:C5)" }, { formula: "SUM(D2:D5)" }],
+          style: totalRow,
+        },
+      ],
+    },
+  ],
+};
+
 /** The workbook behind formulas.xlsx: per-row products, a sum, cached results, and text that only looks like a formula. */
 export const formulasWorkbook: Workbook = {
   sheets: [

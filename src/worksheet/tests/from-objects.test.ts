@@ -212,4 +212,39 @@ describe("sheetFromObjects", () => {
     });
     expectTypeOf(sheetFromObjects(orders, { name: "S" })).toEqualTypeOf<Sheet>();
   });
+
+  it("styles the row of an object from the object and its position, and leaves the others as arrays", () => {
+    const band = { fill: "#F3F4F6" };
+    const vip = { bold: true };
+    const seen: [string, number][] = [];
+    const rowStyle = (order: Order, index: number) => {
+      seen.push([order.id, index]);
+      if (order.tags.includes("vip")) return vip;
+      return index % 2 === 1 ? band : undefined;
+    };
+    const third: Order = { ...orders[0]!, id: "A-1003", tags: [] };
+    const columns = [{ key: "id" as const }, { key: "total" as const }];
+
+    const explicit = rowsOf(sheetFromObjects([...orders, third], { name: "O", columns, rowStyle }));
+    expect(explicit[1]).toEqual({ cells: ["A-1001", 1234.5], style: vip });
+    expect(explicit[2]).toEqual({ cells: ["A-1002", 99], style: band });
+    expect(explicit[3]).toEqual(["A-1003", 1234.5]);
+    expect(seen).toEqual([
+      ["A-1001", 0],
+      ["A-1002", 1],
+      ["A-1003", 2],
+    ]);
+
+    const inferred = rowsOf(
+      sheetFromObjects([{ a: 1 }, { a: 2 }], {
+        name: "O",
+        rowStyle: (_, index) => [vip, band][index],
+      }),
+    );
+    expect(inferred).toEqual([
+      [{ value: "a", style: { bold: true } }],
+      { cells: [1], style: vip },
+      { cells: [2], style: band },
+    ]);
+  });
 });

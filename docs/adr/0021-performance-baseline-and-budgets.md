@@ -115,11 +115,20 @@ What the built package adds to an application's bundle is a cost its users pay o
 | `writeXlsx` alone | 45 747 B | 16 423 B |         18 000 B |
 | Every export      | 52 741 B | 18 648 B |         20 000 B |
 
-The budgets are what the README states, under 18 kB and under 20 kB, with a kilobyte as a thousand bytes; a test fails when a bundle passes its budget and when the README states another figure. They sit a tenth above the measurement, which is room for the small features planned and no more. A feature need not cost time or memory, so those budgets only ratchet down; bytes are what a feature is made of, so this budget is a ceiling and not a ratchet. A pull request whose feature needs a higher one raises it in that same pull request, here, with the bytes and what they buy. Nothing else raises it. The two bundles differ by little because the writer is one path through every slice; what `writeXlsx` alone leaves out is streaming and `sheetFromObjects`.
+The budgets are what the README states, at first under 18 kB and under 20 kB, with a kilobyte as a thousand bytes; a test fails when a bundle passes its budget and when the README states another figure. They sit a tenth above the measurement, which is room for the small features planned and no more. A feature need not cost time or memory, so those budgets only ratchet down; bytes are what a feature is made of, so this budget is a ceiling and not a ratchet. A pull request whose feature needs a higher one raises it in that same pull request, here, with the bytes and what they buy. Nothing else raises it. The two bundles differ by little because the writer is one path through every slice; what `writeXlsx` alone leaves out is streaming and `sheetFromObjects`.
 
 The badge in the README is the same measurement of the version on npm by bundlejs, which minifies with another tool and read 17.1 kB for `writeXlsx` alone on 0.6.1, four percent above the figure here. The README's sentence therefore states the budget, which both are under, and not either reading.
 
 The benchmark report carries the gzipped size of both bundles for the pull request and for `main`, with the difference in bytes. Bytes do not vary between runs, so every byte shows and there is no noise band.
+
+### Raised for row objects, 2026-11-13
+
+| Bundle            | Before row objects | With them | Budget, before | Budget, now |
+| ----------------- | -----------------: | --------: | -------------: | ----------: |
+| `writeXlsx` alone |           17 608 B |  18 009 B |       18 000 B |    19 000 B |
+| Every export      |           19 871 B |  20 296 B |       20 000 B |    21 000 B |
+
+Row objects (ADR 0027) cost about 400 bytes: the second row loop, the merge of a row style over a column's, and three error messages. They buy a style and a height on the row, the most asked-for thing this writer lacked. The functions newer than Excel 2007 (ADR 0023) had taken 1 185 bytes of the first budget's room before them. The new budgets are again round figures the README can state, a kilobyte apart from the old, with room for the hidden rows and the sheet view that are planned and for the four percent by which the badge's minifier reads above this one.
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 

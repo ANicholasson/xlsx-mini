@@ -27,6 +27,7 @@ const ROWS: Readonly<Record<string, string>> = {
   "auto-width.xlsx": "Auto column widths",
   "images.xlsx": "Image cells",
   "print.xlsx": "Print setup",
+  "row-styles.xlsx": "Row styles",
 };
 
 describe("the README's compatibility table", () => {

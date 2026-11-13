@@ -15,7 +15,7 @@ pnpm add xlsx-mini
 
 ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs, and the runtime matrix in CI proves each host on every change.
 
-In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 18 kB, and every export together under 20 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
+In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 19 kB, and every export together under 21 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
 
 ## Quick start
 
@@ -322,7 +322,7 @@ export default function formats(): Promise<Uint8Array> {
 
 ## Fonts, fills, borders and alignment
 
-A style also sets the font (`italic`, `fontSize` in points, `fontColor`), a solid `fill`, a `border` for all four sides or per side (`thin`, `medium`, `thick`), `align`, `verticalAlign`, `wrap` and `indent`. An indent aligns left unless `align` is `right`. Colours are `#rrggbb`. A sheet merges ranges with `merges` and sets `rowHeights` in points by row number. A cell object with a style and a `null` value writes an empty styled cell, which is how a border or a fill runs across a blank.
+A style also sets the font (`italic`, `fontSize` in points, `fontColor`), a solid `fill`, a `border` for all four sides or per side (`thin`, `medium`, `thick`), `align`, `verticalAlign`, `wrap` and `indent`. An indent aligns left unless `align` is `right`. Colours are `#rrggbb`. A sheet merges ranges with `merges` and sets `rowHeights` in points by row number; a row can also carry its own height and a style, as the next section shows. A cell object with a style and a `null` value writes an empty styled cell, which is how a border or a fill runs across a blank.
 
 <!-- snippet: appearance -->
 
@@ -389,6 +389,43 @@ export default function appearance(): Promise<Uint8Array> {
 ```
 
 Every distinct style is written once, however many cells share it, so styling costs nothing per cell beyond a lookup.
+
+## Row styles
+
+A row is an array of cells, or an object `{ cells, style, height }` when the row itself carries something. The style reaches every position in `cells`, the empty ones included, so a fill or a border runs across a blank, and it stops where the row stops. A cell's own style wins over its row's, and the row's over its column's, property by property: a bold total row keeps its column's number format. The height is in points and wins over `rowHeights`, which a row from a generator or a cursor cannot use, since it does not know its number. Give the rows that share a style the same style object.
+
+<!-- snippet: row-styles -->
+
+```ts
+import { type CellStyle, type Row, writeXlsx } from "xlsx-mini";
+
+const header: CellStyle = { bold: true, fill: "#1f2937", fontColor: "#ffffff" };
+const band: CellStyle = { fill: "#f3f4f6" };
+const total: CellStyle = { bold: true, border: { top: "thin" } };
+
+type Order = [id: string, customer: string, amount: number];
+
+export default function report(orders: Order[]): Promise<Uint8Array> {
+  const rows: Row[] = [
+    { cells: ["Order", "Customer", "Amount"], style: header, height: 24 },
+    // Every second order on a band; the others stay plain arrays.
+    ...orders.map((order, index): Row => (index % 2 === 1 ? { cells: order, style: band } : order)),
+    // The rule above the total runs across the empty cell.
+    { cells: ["Total", null, { formula: `SUM(C2:C${orders.length + 1})` }], style: total },
+  ];
+  return writeXlsx({
+    sheets: [
+      {
+        name: "Report",
+        columns: [{ width: 12 }, { width: 24 }, { width: 14, style: { numberFormat: "#,##0.00" } }],
+        rows,
+      },
+    ],
+  });
+}
+```
+
+`sheetFromObjects` takes `rowStyle`, a function from an object and its position to a style or `undefined`, for a band or for the rows that need attention.
 
 ## Formulas and hyperlinks
 
@@ -645,7 +682,8 @@ export default async function safely(): Promise<string> {
 | `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.                                                  |
 | `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                     |
 | `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
-| `INVALID_ROW_HEIGHT`    | A row number below 1 or a height outside 0 to 409 points.                                                                                     |
+| `INVALID_ROW`           | A row that is neither an array of cells nor an object with `cells`.                                                                           |
+| `INVALID_ROW_HEIGHT`    | A row number below 1, or a height in `rowHeights` or on a row outside 0 to 409 points.                                                        |
 | `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters as stored or starts with `=`; a cached value that is not text, a number or a boolean.          |
 | `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.  |
 | `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
@@ -671,7 +709,8 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 | `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                                             |
 | `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                                         |
 | `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; autoWidth?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
-| `Row`, `Cell`                       | `readonly Cell[]`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell \| ImageCell`                                                                                                                                      |
+| `Row`, `Cell`                       | `readonly Cell[] \| RowObject`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell \| ImageCell`                                                                                                                         |
+| `RowObject`                         | `{ cells: readonly Cell[]; style?: CellStyle; height?: number }`; the style reaches every position in `cells`, the height is in points                                                                                                     |
 | `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                           |
 | `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                       |
 | `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; style? }`; a PNG anchored to the cell, sizes in pixels                                                                                                                              |
@@ -683,7 +722,7 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 | `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                                           |
 | `Column`, `Freeze`                  | `{ width?: number \| "auto"; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                                                                                   |
 | `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                                         |
-| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; freeze?: boolean; autoFilter?: boolean; autoWidth?: boolean }`                                                                                         |
+| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; rowStyle?: (item: T, index: number) => CellStyle \| undefined; freeze?: boolean; autoFilter?: boolean; autoWidth?: boolean }`                          |
 | `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                                               |
 | `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                                        |
 | `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                                              |
@@ -741,6 +780,7 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Auto column widths               |        clean         |    clean     |     clean     |      clean       |
 | Image cells                      |        clean         |    clean     |     clean     |      clean       |
 | Print setup                      |        clean         |    clean     |     clean     |      clean       |
+| Row styles                       |        clean         |    clean     |     clean     |      clean       |
 
 Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 

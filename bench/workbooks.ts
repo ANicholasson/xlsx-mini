@@ -324,7 +324,9 @@ export function withAutoWidths(workbook: Workbook): Workbook {
   return {
     sheets: workbook.sheets.map((sheet) => {
       const [first] = sheet.rows;
-      const count = Math.max(sheet.columns?.length ?? 0, first?.length ?? 0);
+      // The suites give every row as an array.
+      const width = Array.isArray(first) ? first.length : 0;
+      const count = Math.max(sheet.columns?.length ?? 0, width);
       return {
         ...sheet,
         columns: Array.from({ length: count }, (_, index) => {

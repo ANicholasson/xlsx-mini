@@ -143,8 +143,22 @@ export interface ImageCell {
 /** One cell of a row: a bare value, or a plain object carrying a value, a formula, a link or an image. */
 export type Cell = CellValue | CellObject | FormulaCell | LinkCell | SheetLinkCell | ImageCell;
 
-/** One row, left to right from column A. */
-export type Row = readonly Cell[];
+/**
+ * A row that carries more than its cells. The style reaches every position in `cells`, the empty
+ * ones included, and nothing past the last; a cell's own style properties win over it, and it wins
+ * over the column's. The height is in points, and wins over the sheet's `rowHeights`.
+ *
+ * @example
+ * const total: RowObject = { cells: ["Total", null, 1234.5], style: { bold: true }, height: 20 };
+ */
+export interface RowObject {
+  readonly cells: readonly Cell[];
+  readonly style?: CellStyle;
+  readonly height?: number;
+}
+
+/** One row, left to right from column A: its cells, or an object carrying them with a style or a height. */
+export type Row = readonly Cell[] | RowObject;
 
 /** What a column carries for every cell in it. Positions match the row arrays: index 0 is column A. */
 export interface Column {

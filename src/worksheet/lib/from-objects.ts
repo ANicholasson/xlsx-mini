@@ -33,6 +33,11 @@ export interface SheetFromObjectsOptions<T> {
   readonly columns?: readonly ObjectColumn<T>[];
   /** Style of the header row, or `false` for no header row. Default: bold. */
   readonly header?: CellStyle | false;
+  /**
+   * A style for the whole row of an object, or undefined for none; `index` counts the objects from
+   * 0. Return the same style object for the rows that share a style.
+   */
+  readonly rowStyle?: (item: T, index: number) => CellStyle | undefined;
   /** Keep the header row visible while scrolling. Default: on when there is a header row. */
   readonly freeze?: boolean;
   /** Filter dropdowns on the header row. Default: on when there is a header row. */
@@ -55,6 +60,7 @@ const BOLD_HEADER: CellStyle = { bold: true };
  *     { key: "total", header: "Total", style: { numberFormat: '#,##0.00 "kr"' } },
  *     { key: "tags", header: "Tags", value: (order) => order.tags.join(", ") },
  *   ],
+ *   rowStyle: (order) => (order.overdue ? overdue : undefined),
  * });
  */
 export function sheetFromObjects<T extends object>(
@@ -69,8 +75,8 @@ export function sheetFromObjects<T extends object>(
   const rows: Iterable<Row> = {
     [Symbol.iterator]: () =>
       columns === undefined
-        ? inferredRows(data, headerStyle)
-        : explicitRows(data, columns, headerStyle),
+        ? inferredRows(data, headerStyle, options.rowStyle)
+        : explicitRows(data, columns, headerStyle, options.rowStyle),
   };
   let sheet: Sheet = freeze
     ? { name: options.name, rows, freeze: { rows: 1 }, autoFilter }
@@ -90,30 +96,46 @@ function* explicitRows<T extends object>(
   data: Iterable<T>,
   columns: readonly ObjectColumn<T>[],
   headerStyle: CellStyle | false,
+  rowStyle: RowStyle<T> | undefined,
 ): Generator<Row> {
   if (headerStyle !== false)
     yield columns.map((column) => ({ value: column.header ?? column.key, style: headerStyle }));
+  let index = 0;
   for (const item of data) {
     const row: Cell[] = [];
     for (const column of columns) {
       row.push(column.value === undefined ? (item[column.key] as CellValue) : column.value(item));
     }
-    yield row;
+    yield styled(row, item, index++, rowStyle);
   }
+}
+
+type RowStyle<T> = (item: T, index: number) => CellStyle | undefined;
+
+/** The cells as they are, or with the style their object asks for. */
+function styled<T>(cells: Cell[], item: T, index: number, rowStyle: RowStyle<T> | undefined): Row {
+  const style = rowStyle?.(item, index);
+  return style === undefined ? cells : { cells, style };
 }
 
 function* inferredRows<T extends object>(
   data: Iterable<T>,
   headerStyle: CellStyle | false,
+  rowStyle: RowStyle<T> | undefined,
 ): Generator<Row> {
   const iterator = data[Symbol.iterator]();
   const first = iterator.next();
   if (first.done === true) return;
   const keys = Object.keys(first.value) as (keyof T & string)[];
   if (headerStyle !== false) yield keys.map((key) => ({ value: key, style: headerStyle }));
-  yield keys.map((key) => first.value[key] as CellValue);
-  for (let next = iterator.next(); next.done !== true; next = iterator.next()) {
+  let index = 0;
+  for (let next: IteratorResult<T> = first; next.done !== true; next = iterator.next()) {
     const item = next.value;
-    yield keys.map((key) => item[key] as CellValue);
+    yield styled(
+      keys.map((key) => item[key] as CellValue),
+      item,
+      index++,
+      rowStyle,
+    );
   }
 }
