@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, posix } from "node:path";
+import { delimiter, dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import { binary } from "./helpers/bin.js";
@@ -63,5 +63,39 @@ describe("the built package", () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+});
+
+describe("the build script", () => {
+  it("empties dist first, so a pack never carries the files of an earlier build", () => {
+    // A project of its own under the real script: the runtime tests build into this one's dist.
+    const project = mkdtempSync(join(tmpdir(), "xlsx-mini-build-"));
+    try {
+      mkdirSync(join(project, "src"));
+      mkdirSync(join(project, "dist", "old"), { recursive: true });
+      writeFileSync(join(project, "src", "index.ts"), "export const built = true;\n");
+      writeFileSync(join(project, "dist", "old", "stale.js.map"), "{}");
+      writeFileSync(
+        join(project, "tsconfig.build.json"),
+        JSON.stringify({
+          compilerOptions: { rootDir: "src", outDir: "dist", module: "nodenext", types: [] },
+          include: ["src"],
+        }),
+      );
+      const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+        scripts: { build: string };
+      };
+      // The script finds the compiler as a package script does: on the path.
+      const path = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+      const bin = join(root, "node_modules", ".bin");
+      execSync(manifest.scripts.build, {
+        cwd: project,
+        stdio: "inherit",
+        env: { ...process.env, [path]: `${bin}${delimiter}${process.env[path] ?? ""}` },
+      });
+      expect(readdirSync(join(project, "dist"))).toEqual(["index.js"]);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 });
