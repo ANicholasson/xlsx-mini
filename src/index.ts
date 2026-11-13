@@ -33,6 +33,7 @@ export type {
   Register,
   Registered,
   Row,
+  RowObject,
   Sheet,
   SheetLinkCell,
   StreamedSheet,

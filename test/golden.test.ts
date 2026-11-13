@@ -10,6 +10,7 @@ import {
   cellTypesWorkbook,
   formulasWorkbook,
   futureFunctionsWorkbook,
+  rowStylesWorkbook,
   hyperlinksWorkbook,
   imagesWorkbook,
   minimalWorkbook,
@@ -408,6 +409,30 @@ describe("future functions workbook (golden)", () => {
     expect(sheet).toContain("<f>_xlfn.XLOOKUP(7,D2:D9,D2:D9)</f>");
     expect(sheet).toContain("<f>IF(D2=2,&quot;IFS(x) and XLOOKUP(&quot;,&quot;no&quot;)</f>");
     expect(sheet).toContain("<f>SUM(D2:D9)</f>");
+  });
+});
+
+describe("row styles workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("row-styles.xlsx", rowStylesWorkbook);
+  });
+
+  it("styles each row's cells, the empty ones included, and keeps the column's number format", async () => {
+    const sheet = readPart(await writeXlsx(rowStylesWorkbook, STORE), "xl/worksheets/sheet1.xml");
+    // The header: four cells of one format, in a row of its own height.
+    expect(sheet).toMatch(
+      /<row r="1" ht="24" customHeight="1"><c r="A1" s="1" [^>]*>.*<c r="D1" s="2" [^/]*>.*?<\/row>/,
+    );
+    // An array row between the styled ones carries the column's format only.
+    expect(sheet).toMatch(
+      /<row r="2">.*<c r="C2"><v>3<\/v><\/c><c r="D2" s="3"><v>1234.5<\/v><\/c><\/row>/,
+    );
+    // The band reaches the empty cell, and the cell with a fill of its own differs from its row.
+    expect(sheet).toMatch(
+      /<c r="B5" s="(\d+)"\/><c r="C5" s="\1"><v>2<\/v><\/c><c r="D5" s="(?!\1")\d+">/,
+    );
+    // The total row's border runs across its empty cell.
+    expect(sheet).toMatch(/<c r="A6" s="(\d+)" [^>]*>.*?<\/c><c r="B6" s="\1"\/>/);
   });
 });
 

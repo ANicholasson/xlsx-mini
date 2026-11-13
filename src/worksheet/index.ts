@@ -43,6 +43,7 @@ export type {
   Register,
   Registered,
   Row,
+  RowObject,
   Sheet,
   SheetLinkCell,
   StreamedSheet,
@@ -159,6 +160,8 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     rowTallestColumn: -1,
     rowImageColumn: -1,
     imagePixels: [],
+    rowStyles: new WeakMap(),
+    inRowObject: false,
   };
   const filterRange = (range: string): string | undefined =>
     sheet.autoFilter === true && range.length > 0 ? range : undefined;

@@ -15,7 +15,10 @@ One tab of a workbook, with a name and rows.
 _Avoid_: worksheet (reserved for the package part), tab, table
 
 **Row**:
-One horizontal line of cells, left to right from column A.
+One horizontal line of cells, left to right from column A: an array of cells, or a row object.
+
+**Row object**:
+A row given as `{ cells }` with a style, a height or both for the row itself. Its style reaches every position in its cells and nothing past the last.
 
 **Cell**:
 One position in a row, holding a value and optionally a style.
@@ -40,7 +43,7 @@ A column width estimated from the column's widest cell, character by character a
 _Avoid_: autofit
 
 **Style**:
-How a cell looks: font (bold, italic, size, colour), fill, border, alignment, wrap, indent and number format. A cell's own style wins over its column's, property by property.
+How a cell looks: font (bold, italic, size, colour), fill, border, alignment, wrap, indent and number format. A cell's own style wins over its row's, and its row's over its column's, property by property.
 _Avoid_: formatting, format (reserved for number format)
 
 **Number format**:
@@ -52,7 +55,7 @@ A range of cells shown as one; the top-left cell's value and style show.
 _Avoid_: span, merged region
 
 **Row height**:
-The height of a row in points, set by row number; rows without one take Excel's default.
+The height of a row in points, set on a row object or by row number, the row object's winning; rows without one take Excel's default.
 
 **Streamed workbook**:
 A workbook as `streamXlsx` takes it: the same sheets, whose rows may arrive asynchronously, so a cursor can feed a sheet page by page.

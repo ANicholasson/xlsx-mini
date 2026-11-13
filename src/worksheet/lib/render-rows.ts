@@ -15,6 +15,7 @@ import type {
   ImageCell,
   LinkCell,
   Row,
+  RowObject,
   SheetLinkCell,
   TemporalLike,
 } from "./model.js";
@@ -75,6 +76,10 @@ export interface RowRecords {
   rowImageColumn: number;
   /** The widest picture per column, in pixels, for the column widths. */
   readonly imagePixels: number[];
+  /** Per row style, that style over each column's: what a styled row uses in place of the column styles. */
+  readonly rowStyles: WeakMap<CellStyle, (CellStyle | undefined)[]>;
+  /** True while a row object is rendered, so an error names the cell inside `cells`. */
+  inRowObject: boolean;
 }
 
 /** The worksheet context with the sheet's records, so the per-cell calls carry one argument for both. */
@@ -173,13 +178,10 @@ function renderRow(
       `Excel allows at most ${MAX_ROWS} rows`,
     );
   }
-  if (row.length > MAX_COLUMNS) {
-    throw new XlsxMiniError(
-      "TOO_MANY_COLUMNS",
-      rowPath(context, rowIndex),
-      `Excel allows at most ${MAX_COLUMNS} columns`,
-    );
+  if (!Array.isArray(row)) {
+    return renderRowObject(row as RowObject, rowIndex, columnStyles, context, sink, rowHeights);
   }
+  if (row.length > MAX_COLUMNS) throw tooManyColumns(context, rowIndex);
   let cells = "";
   let maxColumn = -1;
   for (let column = 0; column < row.length; column++) {
@@ -190,8 +192,112 @@ function renderRow(
     cells += rendered;
     maxColumn = column;
   }
+  return closeRow(cells, maxColumn, rowIndex, rowHeights?.[rowIndex + 1], context, sink);
+}
+
+function tooManyColumns(context: RowContext, rowIndex: number): XlsxMiniError {
+  return new XlsxMiniError(
+    "TOO_MANY_COLUMNS",
+    rowPath(context, rowIndex),
+    `Excel allows at most ${MAX_COLUMNS} columns`,
+  );
+}
+
+/**
+ * A row given as an object: its cells with a style, a height or both. Kept apart from `renderRow`
+ * so that a row given as an array runs the loop it always ran.
+ */
+function renderRowObject(
+  row: RowObject,
+  rowIndex: number,
+  columnStyles: readonly (CellStyle | undefined)[],
+  context: RowContext,
+  sink: TextSink,
+  rowHeights: Readonly<Record<number, number>> | undefined,
+): number {
+  const path = rowPath(context, rowIndex);
+  if (typeof row !== "object" || row === null || !Array.isArray(row.cells)) {
+    throw new XlsxMiniError(
+      "INVALID_ROW",
+      path,
+      `A row is an array of cells or an object with cells, not ${describeValue(row)}`,
+    );
+  }
+  const list: readonly Cell[] = row.cells;
+  if (list.length > MAX_COLUMNS) throw tooManyColumns(context, rowIndex);
+  const height = row.height;
+  if (
+    height !== undefined &&
+    (typeof height !== "number" || !(height > 0) || height > MAX_ROW_HEIGHT)
+  ) {
+    throw new XlsxMiniError(
+      "INVALID_ROW_HEIGHT",
+      `${path}.height`,
+      `Row heights run from above 0 to ${MAX_ROW_HEIGHT} points, not ${describeValue(height)}`,
+    );
+  }
+  const records = context.records;
+  const rowStyle = row.style;
+  let styles: (CellStyle | undefined)[] | undefined;
+  if (rowStyle !== undefined) {
+    styles = records.rowStyles.get(rowStyle);
+    if (styles === undefined) {
+      try {
+        context.styles.validate(rowStyle);
+      } catch (error) {
+        if (error instanceof XlsxMiniError) throw atPath(error, `${path}.style`);
+        throw error;
+      }
+      records.rowStyles.set(rowStyle, (styles = []));
+    }
+  }
+  records.inRowObject = true;
+  // A column's width is measured under the row's style for this row, and learns nothing from it.
+  if (styles !== undefined) records.widths?.rowStyled(true);
+  let cells = "";
+  let maxColumn = -1;
+  for (let column = 0; column < list.length; column++) {
+    const cell = list[column];
+    let style = columnStyles[column];
+    if (styles !== undefined) style = styles[column] ??= over(rowStyle!, style);
+    let rendered =
+      cell === null || cell === undefined ? "" : renderCell(cell, column, style, rowIndex, context);
+    if (rendered.length === 0) {
+      // The row's style runs across every position that wrote nothing, as a fill or a border
+      // must: a blank, an empty cell object, the cell beneath a picture, a value coerced away.
+      if (styles === undefined) continue;
+      const attribute = styleAttribute(undefined, style, GENERAL, column, rowIndex, context);
+      if (attribute.length === 0) continue;
+      rendered = `<c r="${columnLetter(column)}${rowIndex + 1}"${attribute}/>`;
+    }
+    cells += rendered;
+    maxColumn = column;
+  }
+  records.inRowObject = false;
+  if (styles !== undefined) records.widths?.rowStyled(false);
+  return closeRow(cells, maxColumn, rowIndex, height ?? rowHeights?.[rowIndex + 1], context, sink);
+}
+
+/** A row's style over a column's, property by property; a property left undefined does not count. */
+function over(rowStyle: CellStyle, columnStyle: CellStyle | undefined): CellStyle {
+  if (columnStyle === undefined) return rowStyle;
+  const merged: Record<string, unknown> = { ...columnStyle };
+  for (const [property, value] of Object.entries(rowStyle)) {
+    if (value !== undefined && value !== null) merged[property] = value;
+  }
+  return merged;
+}
+
+/** Writes the row element around its cells, with the height the caller or a picture gives it. */
+function closeRow(
+  cells: string,
+  maxColumn: number,
+  rowIndex: number,
+  height: number | undefined,
+  context: RowContext,
+  sink: TextSink,
+): number {
   const rowNumber = rowIndex + 1;
-  let height = rowHeights?.[rowNumber];
   const records = context.records;
   if (records.imageRow === rowIndex) {
     // A picture occupies its cell whether or not a cell element is written beneath it.
@@ -606,7 +712,7 @@ function styleAttribute(
   dateDefault: number,
   column: number,
   rowIndex: number,
-  context: WorksheetContext,
+  context: RowContext,
 ): string {
   let index: number;
   try {
@@ -710,8 +816,9 @@ function describe(value: unknown): string {
 }
 
 /** The error path of a cell. */
-function cellPath(context: WorksheetContext, rowIndex: number, column: number): string {
-  return `sheets[${context.sheetIndex}].rows[${rowIndex}][${column}]`;
+function cellPath(context: RowContext, rowIndex: number, column: number): string {
+  const cells = context.records.inRowObject ? ".cells" : "";
+  return `sheets[${context.sheetIndex}].rows[${rowIndex}]${cells}[${column}]`;
 }
 
 /** The error path of a row. */

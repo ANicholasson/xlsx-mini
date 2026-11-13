@@ -218,6 +218,19 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     );
     expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain('<mergeCell ref="A1:D1"/>');
   },
+  "row-styles": async (snippet) => {
+    const orders = [
+      ["A-1", "Kari", 10.5],
+      ["A-2", "Ola", 20],
+    ];
+    const bytes = await (snippet["default"] as (orders: unknown[]) => Promise<Uint8Array>)(orders);
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<row r="1" ht="24" customHeight="1"><c r="A1" s="1"');
+    // The band on the second order, the rule across the total row's empty cell.
+    expect(sheet).toMatch(/<c r="A3" s="(\d+)" t="s"><v>\d+<\/v><\/c><c r="B3" s="\1"/);
+    expect(sheet).toMatch(/<c r="B4" s="\d+"\/><c r="C4" s="\d+"><v>30.5<\/v><\/c>/);
+  },
   dates: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);
