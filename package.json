@@ -42,7 +42,7 @@
   },
   "scripts": {
     "prepare": "vp config --hooks --no-agent",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint:boundaries": "depcruise src test bench",
     "knip": "knip",
