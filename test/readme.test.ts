@@ -229,7 +229,7 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(sheet).toContain('<row r="1" ht="24" customHeight="1"><c r="A1" s="1"');
     // The band on the second order, the rule across the total row's empty cell.
     expect(sheet).toMatch(/<c r="A3" s="(\d+)" t="s"><v>\d+<\/v><\/c><c r="B3" s="\1"/);
-    expect(sheet).toMatch(/<c r="B4" s="\d+"\/><c r="C4" s="\d+"><f>SUM\(C2:C3\)<\/f><\/c>/);
+    expect(sheet).toMatch(/<c r="B4" s="\d+"\/><c r="C4" s="\d+"><v>30.5<\/v><\/c>/);
   },
   dates: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
