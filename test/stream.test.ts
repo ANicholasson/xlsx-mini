@@ -18,6 +18,7 @@ import {
   formulasWorkbook,
   futureFunctionsWorkbook,
   rowStylesWorkbook,
+  hiddenWorkbook,
   hyperlinksWorkbook,
   imagesWorkbook,
   layoutWorkbook,
@@ -56,6 +57,7 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["formulas", formulasWorkbook, {}],
   ["future functions", futureFunctionsWorkbook, {}],
   ["row styles", rowStylesWorkbook, {}],
+  ["hidden", hiddenWorkbook, {}],
   ["hyperlinks", hyperlinksWorkbook, {}],
   ["validation", validationWorkbook, {}],
   ["print", printWorkbook, {}],
@@ -125,6 +127,9 @@ describe("streamXlsx", () => {
   it("throws before the stream exists when the workbook itself is invalid", () => {
     expect(() => streamXlsx({ sheets: [] })).toThrow(
       expect.objectContaining({ code: "NO_SHEETS" }),
+    );
+    expect(() => streamXlsx({ sheets: [{ name: "a", rows: [], hidden: true }] })).toThrow(
+      expect.objectContaining({ code: "NO_VISIBLE_SHEET", path: "sheets" }),
     );
     expect(() =>
       streamXlsx({

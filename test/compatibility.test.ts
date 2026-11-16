@@ -28,6 +28,7 @@ const ROWS: Readonly<Record<string, string>> = {
   "images.xlsx": "Image cells",
   "print.xlsx": "Print setup",
   "row-styles.xlsx": "Row styles",
+  "hidden.xlsx": "Hidden rows, columns and sheets",
 };
 
 describe("the README's compatibility table", () => {

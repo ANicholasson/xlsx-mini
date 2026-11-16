@@ -89,6 +89,7 @@ export async function writeXlsx(
     sheetParts.push(...media.takeParts());
     entries.push({
       name: sheet.name,
+      hidden: sheet.hidden === true,
       filterRange: rendered.filterRange,
       printTitles: rendered.printTitles,
       hasFormulas: rendered.hasFormulas,
@@ -186,7 +187,7 @@ export function streamXlsx(
         yield bytesPart(drawingRelationshipsPath(i + 1), drawing.relationships);
       }
       for (const image of media.takeParts()) yield rawPart(image.path, image.data);
-      entries.push({ name: sheet.name, ...streamed.facts() });
+      entries.push({ name: sheet.name, hidden: sheet.hidden === true, ...streamed.facts() });
     }
     yield bytesPart("xl/workbook.xml", renderWorkbook(entries));
     yield bytesPart("xl/styles.xml", styles.render());

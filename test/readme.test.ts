@@ -231,6 +231,23 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(sheet).toMatch(/<c r="A3" s="(\d+)" t="s"><v>\d+<\/v><\/c><c r="B3" s="\1"/);
     expect(sheet).toMatch(/<c r="B4" s="\d+"\/><c r="C4" s="\d+"><v>30.5<\/v><\/c>/);
   },
+  hidden: async (snippet) => {
+    const orders = [
+      { id: 1, number: "A-1", status: "Open", amount: 10.5, cancelled: false },
+      { id: 2, number: "A-2", status: "Closed", amount: 20, cancelled: true },
+    ];
+    const bytes = await (snippet["default"] as (orders: unknown[]) => Promise<Uint8Array>)(orders);
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    expect(sheet).toContain('<cols><col min="1" max="1" hidden="1"/>');
+    expect(sheet).toContain('<row r="3" hidden="1"><c r="A3"><v>2</v></c>');
+    expect(sheet).toContain("<formula1>&apos;Lists&apos;!$A$1:$A$3</formula1>");
+    // The first sheet is shown, so the workbook opens on it without being told to.
+    expect(readPart(bytes, "xl/workbook.xml")).toContain(
+      '<sheets><sheet name="Orders" sheetId="1" r:id="rId1"/>' +
+        '<sheet name="Lists" sheetId="2" state="hidden" r:id="rId2"/></sheets>',
+    );
+  },
   dates: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);

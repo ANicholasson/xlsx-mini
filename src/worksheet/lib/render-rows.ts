@@ -80,6 +80,9 @@ export interface RowRecords {
   readonly rowStyles: WeakMap<CellStyle, (CellStyle | undefined)[]>;
   /** True while a row object is rendered, so an error names the cell inside `cells`. */
   inRowObject: boolean;
+  /** True while a hidden row is rendered, and the columns that are hidden: a picture there folds away. */
+  inHiddenRow: boolean;
+  readonly hiddenColumns: readonly boolean[];
 }
 
 /** The worksheet context with the sheet's records, so the per-cell calls carry one argument for both. */
@@ -103,7 +106,7 @@ export interface SheetDataWriter {
 
 /** `renderRow` wrote no row element. */
 const NOTHING = -2;
-/** `renderRow` wrote a row with a height and no cells. */
+/** `renderRow` wrote a row element without cells: one that carries a height, or is hidden. */
 const HEIGHT_ONLY = -1;
 
 /**
@@ -192,7 +195,7 @@ function renderRow(
     cells += rendered;
     maxColumn = column;
   }
-  return closeRow(cells, maxColumn, rowIndex, rowHeights?.[rowIndex + 1], context, sink);
+  return closeRow(cells, maxColumn, rowIndex, rowHeights?.[rowIndex + 1], false, context, sink);
 }
 
 function tooManyColumns(context: RowContext, rowIndex: number): XlsxMiniError {
@@ -204,8 +207,8 @@ function tooManyColumns(context: RowContext, rowIndex: number): XlsxMiniError {
 }
 
 /**
- * A row given as an object: its cells with a style, a height or both. Kept apart from `renderRow`
- * so that a row given as an array runs the loop it always ran.
+ * A row given as an object: its cells with a style or a height, hidden or not. Kept apart from
+ * `renderRow` so that a row given as an array runs the loop it always ran.
  */
 function renderRowObject(
   row: RowObject,
@@ -251,7 +254,9 @@ function renderRowObject(
       records.rowStyles.set(rowStyle, (styles = []));
     }
   }
+  const hidden = row.hidden === true;
   records.inRowObject = true;
+  records.inHiddenRow = hidden;
   // A column's width is measured under the row's style for this row, and learns nothing from it.
   if (styles !== undefined) records.widths?.rowStyled(true);
   let cells = "";
@@ -274,8 +279,17 @@ function renderRowObject(
     maxColumn = column;
   }
   records.inRowObject = false;
+  records.inHiddenRow = false;
   if (styles !== undefined) records.widths?.rowStyled(false);
-  return closeRow(cells, maxColumn, rowIndex, height ?? rowHeights?.[rowIndex + 1], context, sink);
+  return closeRow(
+    cells,
+    maxColumn,
+    rowIndex,
+    height ?? rowHeights?.[rowIndex + 1],
+    hidden,
+    context,
+    sink,
+  );
 }
 
 /** A row's style over a column's, property by property; a property left undefined does not count. */
@@ -288,12 +302,16 @@ function over(rowStyle: CellStyle, columnStyle: CellStyle | undefined): CellStyl
   return merged;
 }
 
-/** Writes the row element around its cells, with the height the caller or a picture gives it. */
+/**
+ * Writes the row element around its cells, with the height the caller or a picture gives it. A
+ * hidden row is written also without cells, since the row itself is what is hidden.
+ */
 function closeRow(
   cells: string,
   maxColumn: number,
   rowIndex: number,
   height: number | undefined,
+  hidden: boolean,
   context: RowContext,
   sink: TextSink,
 ): number {
@@ -305,14 +323,14 @@ function closeRow(
     // The caller's height wins; otherwise the row makes room for its tallest picture.
     height ??= pictureRowHeight(records, rowIndex, context);
   }
+  let attributes = height === undefined ? "" : heightAttributes(height);
+  if (hidden) attributes += ' hidden="1"';
   if (cells.length === 0) {
-    if (height === undefined) return NOTHING;
-    sink.write(`<row r="${rowNumber}"${heightAttributes(height)}/>`);
+    if (attributes.length === 0) return NOTHING;
+    sink.write(`<row r="${rowNumber}"${attributes}/>`);
     return maxColumn === -1 ? HEIGHT_ONLY : maxColumn;
   }
-  sink.write(
-    `<row r="${rowNumber}"${height === undefined ? "" : heightAttributes(height)}>${cells}</row>`,
-  );
+  sink.write(`<row r="${rowNumber}"${attributes}>${cells}</row>`);
   return maxColumn;
 }
 
@@ -776,7 +794,15 @@ function renderImage(
   }
   const records = context.records;
   const media = context.media.add(cell.image, path);
-  const size = records.drawing.add(column, rowIndex, media, cell.width, cell.height, path);
+  const size = records.drawing.add(
+    column,
+    rowIndex,
+    media,
+    cell.width,
+    cell.height,
+    path,
+    records.inHiddenRow || records.hiddenColumns[column] === true,
+  );
   if (records.imageRow !== rowIndex) {
     records.imageRow = rowIndex;
     records.rowImagePixels = 0;

@@ -428,6 +428,46 @@ export default function report(orders: Order[]): Promise<Uint8Array> {
 
 `sheetFromObjects` takes `rowStyle`, a function from an object and its position to a style or `undefined`, for a band or for the rows that need attention.
 
+## Hidden rows, columns and sheets
+
+`hidden: true` on a column, on a row object or on a sheet takes it out of sight. The reader can show it again from the application's menus, so it tidies a workbook and keeps nothing secret. What is hidden stays in the file as it was: formulas and dropdowns read it, a hidden column keeps its width and a hidden row its height, and a picture there folds away with its row or column. A workbook needs one sheet that is not hidden, and opens on the first of them.
+
+<!-- snippet: hidden -->
+
+```ts
+import { type Row, writeXlsx } from "xlsx-mini";
+
+type Order = { id: number; number: string; status: string; amount: number; cancelled: boolean };
+
+const statuses = ["Open", "Shipped", "Closed"];
+
+export default function orderSheet(orders: Order[]): Promise<Uint8Array> {
+  const rows: Row[] = [
+    ["Id", "Order", "Status", "Amount"],
+    ...orders.map((order): Row => {
+      const cells = [order.id, order.number, order.status, order.amount];
+      // A cancelled order stays in the file and in the sums, out of sight.
+      return order.cancelled ? { cells, hidden: true } : cells;
+    }),
+  ];
+  return writeXlsx({
+    sheets: [
+      {
+        name: "Orders",
+        // The id is kept for a later import, not for the reader.
+        columns: [{ hidden: true }, { width: 12 }, { width: 12 }, { width: 14 }],
+        rows,
+        validations: [{ range: "C2:C1000", list: `Lists!A1:A${statuses.length}` }],
+      },
+      // The dropdown reads its values from a sheet nobody needs to see.
+      { name: "Lists", hidden: true, rows: statuses.map((status) => [status]) },
+    ],
+  });
+}
+```
+
+`sheetFromObjects` takes `hidden` on a column, which hides its header with it.
+
 ## Formulas and hyperlinks
 
 A cell `{ formula: "SUM(B2:B4)" }` holds a formula, written without the leading `=`. The applications calculate it when the file opens; a cached `value` shows until then and is optional. Formulas are escaped and never evaluated, and text that starts with `=` stays text, so data never becomes code. Functions newer than Excel 2007, such as `XLOOKUP`, `IFS` and `TEXTJOIN`, are stored under the prefix the file format wants, so a formula works as you type it; one that calls `LET` or `LAMBDA` is written exactly as given, and a function that returns an array shows its first value rather than spilling. Google Sheets does not know the name Excel stores `FILTER` and `SORT` under, so those two show `#NAME?` there. A cell `{ value, href }` links its text to an absolute URL, `{ value, cell }` jumps to a cell or range on the same sheet, and `{ value, sheet, cell }` to another sheet. A link takes no look of its own: `underline` and a `fontColor` make it look like one.
@@ -672,6 +712,7 @@ export default async function safely(): Promise<string> {
 | Code                    | When                                                                                                                                          |
 | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NO_SHEETS`             | The workbook has no sheet.                                                                                                                    |
+| `NO_VISIBLE_SHEET`      | Every sheet of the workbook is hidden.                                                                                                        |
 | `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.                                                |
 | `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                                                                       |
 | `INVALID_NUMBER`        | `NaN` or an infinity.                                                                                                                         |
@@ -701,32 +742,32 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## API
 
-| Export                              | Shape                                                                                                                                                                                                                                      |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                                                                                         |
-| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                                                                                                  |
-| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                                                                                                     |
-| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                                                                                          |
-| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                                             |
-| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                                         |
-| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; autoWidth?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup }` |
-| `Row`, `Cell`                       | `readonly Cell[] \| RowObject`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell \| ImageCell`                                                                                                                         |
-| `RowObject`                         | `{ cells: readonly Cell[]; style?: CellStyle; height?: number }`; the style reaches every position in `cells`, the height is in points                                                                                                     |
-| `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                           |
-| `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                       |
-| `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; style? }`; a PNG anchored to the cell, sizes in pixels                                                                                                                              |
-| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                                                   |
-| `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                                          |
-| `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                                                    |
-| `PrintSetup`                        | `{ orientation?; paperSize?: PaperSize; fitTo?: { width?; height? }; margins?: PrintMargins; header?; footer?; repeatRows? }`                                                                                                              |
-| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                                                                                               |
-| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                                           |
-| `Column`, `Freeze`                  | `{ width?: number \| "auto"; style?: CellStyle }`; `{ rows?: number; columns?: number }`                                                                                                                                                   |
-| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                                         |
-| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; rowStyle?: (item: T, index: number) => CellStyle \| undefined; freeze?: boolean; autoFilter?: boolean; autoWidth?: boolean }`                          |
-| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                                               |
-| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                                        |
-| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                                              |
+| Export                              | Shape                                                                                                                                                                                                                                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `writeXlsx(workbook, options?)`     | `Promise<Uint8Array<ArrayBuffer>>`                                                                                                                                                                                                                           |
+| `WriteOptions`                      | `{ coerce?: Coerce; compression?: "deflate" \| "none" }`; `"none"` writes STORE entries, byte-identical on every platform                                                                                                                                    |
+| `streamXlsx(workbook, options?)`    | `ReadableStream<Uint8Array>`; the workbook may be a `StreamedWorkbook`                                                                                                                                                                                       |
+| `StreamOptions`                     | `WriteOptions` plus `strings?: "inline" \| "shared"`; inline is the default and keeps memory flat                                                                                                                                                            |
+| `Workbook`                          | `{ sheets: readonly Sheet[] }`                                                                                                                                                                                                                               |
+| `StreamedWorkbook`, `StreamedSheet` | `{ sheets: readonly StreamedSheet[] }`; a `Sheet` whose `rows` may also be an `AsyncIterable<Row>`                                                                                                                                                           |
+| `Sheet`                             | `{ name; rows: Iterable<Row>; columns?: (Column \| undefined)[]; freeze?: Freeze; autoFilter?: boolean; autoWidth?: boolean; merges?: string[]; rowHeights?: Record<number, number>; validations?: DataValidation[]; print?: PrintSetup; hidden?: boolean }` |
+| `Row`, `Cell`                       | `readonly Cell[] \| RowObject`; `CellValue \| CellObject \| FormulaCell \| LinkCell \| SheetLinkCell \| ImageCell`                                                                                                                                           |
+| `RowObject`                         | `{ cells: readonly Cell[]; style?: CellStyle; height?: number; hidden?: boolean }`; the style reaches every position in `cells`, the height is in points                                                                                                     |
+| `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                                             |
+| `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                                         |
+| `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; style? }`; a PNG anchored to the cell, sizes in pixels                                                                                                                                                |
+| `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                                                                     |
+| `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                                                            |
+| `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                                                                      |
+| `PrintSetup`                        | `{ orientation?; paperSize?: PaperSize; fitTo?: { width?; height? }; margins?: PrintMargins; header?; footer?; repeatRows? }`                                                                                                                                |
+| `BorderStyle`, `Borders`            | `"thin" \| "medium" \| "thick"`; `{ top?; right?; bottom?; left? }` of those                                                                                                                                                                                 |
+| `HorizontalAlign`, `VerticalAlign`  | `"left" \| "center" \| "right"`; `"top" \| "middle" \| "bottom"`                                                                                                                                                                                             |
+| `Column`, `Freeze`                  | `{ width?: number \| "auto"; style?: CellStyle; hidden?: boolean }`; `{ rows?: number; columns?: number }`                                                                                                                                                   |
+| `Coerce`, `Register`, `Registered`  | `(value: Date \| TemporalLike \| Registered, path: string) => CellValue`; the augmentation point and what it holds                                                                                                                                           |
+| `sheetFromObjects(data, options)`   | `Sheet`; options `{ name; columns?: ObjectColumn<T>[]; header?: CellStyle \| false; rowStyle?: (item: T, index: number) => CellStyle \| undefined; freeze?: boolean; autoFilter?: boolean; autoWidth?: boolean }`                                            |
+| `XlsxMiniError`, `ErrorCode`        | `{ code: ErrorCode; path: string; message }`                                                                                                                                                                                                                 |
+| `XLSX_MIME_TYPE`                    | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`                                                                                                                                                                                          |
+| `downloadXlsx(bytes, filename)`     | from `xlsx-mini/browser`; adds `.xlsx` when the name lacks it                                                                                                                                                                                                |
 
 Rows are read once: pass a generator or a database cursor and the writer streams through it, encoding each row as it comes.
 
@@ -782,8 +823,9 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Image cells                      |        clean         |    clean     |     clean     |      clean       |
 | Print setup                      |        clean         |    clean     |     clean     |      clean       |
 | Row styles                       |        clean         |    clean     |     clean     |      clean       |
+| Hidden rows, columns and sheets  |        clean         | sheet shown  |     clean     |      clean       |
 
-Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
+Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. Numbers has no hidden sheets: it shows a hidden sheet as an ordinary one and opens on the first sheet, and it keeps a picture in a hidden row or column in view. Hidden rows and columns it hides. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 
 ## Contributing
 

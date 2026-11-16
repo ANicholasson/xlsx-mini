@@ -162,6 +162,8 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
     imagePixels: [],
     rowStyles: new WeakMap(),
     inRowObject: false,
+    inHiddenRow: false,
+    hiddenColumns: columns.hidden,
   };
   const filterRange = (range: string): string | undefined =>
     sheet.autoFilter === true && range.length > 0 ? range : undefined;

@@ -146,7 +146,8 @@ export type Cell = CellValue | CellObject | FormulaCell | LinkCell | SheetLinkCe
 /**
  * A row that carries more than its cells. The style reaches every position in `cells`, the empty
  * ones included, and nothing past the last; a cell's own style properties win over it, and it wins
- * over the column's. The height is in points, and wins over the sheet's `rowHeights`.
+ * over the column's. The height is in points, and wins over the sheet's `rowHeights`. A hidden row
+ * keeps its cells: formulas read them, and an auto width counts them.
  *
  * @example
  * const total: RowObject = { cells: ["Total", null, 1234.5], style: { bold: true }, height: 20 };
@@ -155,6 +156,8 @@ export interface RowObject {
   readonly cells: readonly Cell[];
   readonly style?: CellStyle;
   readonly height?: number;
+  /** Hide the row; the reader can unhide it. */
+  readonly hidden?: boolean;
 }
 
 /** One row, left to right from column A: its cells, or an object carrying them with a style or a height. */
@@ -170,6 +173,8 @@ export interface Column {
   readonly width?: number | "auto";
   /** Default style for the column's cells; a cell's own style properties win. */
   readonly style?: CellStyle;
+  /** Hide the column; the reader can unhide it, at the width it would have had. */
+  readonly hidden?: boolean;
 }
 
 /** Rows from the top and columns from the left that stay in place while the sheet scrolls. */
@@ -305,6 +310,11 @@ export interface StreamedSheet {
   readonly validations?: readonly DataValidation[];
   /** How the sheet prints: orientation, paper, fit, margins, header and footer, repeated rows. */
   readonly print?: PrintSetup;
+  /**
+   * Hide the sheet's tab; the reader can unhide it. A workbook needs one sheet that is not hidden,
+   * and opens on the first of them.
+   */
+  readonly hidden?: boolean;
 }
 
 /**

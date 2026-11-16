@@ -56,9 +56,10 @@ export function renderRootRelationships(): string {
   );
 }
 
-/** What the workbook part needs per sheet: its name, its autofilter range, its print titles and whether it has formulas. */
+/** What the workbook part needs per sheet: its name, whether it is hidden, its autofilter range, its print titles and whether it has formulas. */
 export interface SheetEntry {
   readonly name: string;
+  readonly hidden: boolean;
   readonly filterRange: string | undefined;
   /** The repeated print rows as `$1:$N`. */
   readonly printTitles: string | undefined;
@@ -67,6 +68,7 @@ export interface SheetEntry {
 
 /**
  * Renders `xl/workbook.xml`: the sheet list in tab order, each pointing at its relationship, the
+ * first sheet that is not hidden as the one shown on open when a hidden one precedes it, the
  * hidden `_xlnm._FilterDatabase` name Excel keeps for every autofilter, the `_xlnm.Print_Titles`
  * name for repeated print rows, and, once any cell holds a formula, the request that Excel
  * calculate on open. A workbook without formulas carries no `calcPr`, so it does not ask to be saved.
@@ -75,9 +77,14 @@ export function renderWorkbook(entries: readonly SheetEntry[]): string {
   let sheets = "";
   let definedNames = "";
   let hasFormulas = false;
+  let firstVisible = -1;
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]!;
-    sheets += `<sheet name="${escapeXml(entry.name)}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`;
+    sheets +=
+      `<sheet name="${escapeXml(entry.name)}" sheetId="${i + 1}"` +
+      (entry.hidden ? ' state="hidden"' : "") +
+      ` r:id="rId${i + 1}"/>`;
+    if (firstVisible < 0 && !entry.hidden) firstVisible = i;
     const sheetName = escapeXml(quoteSheetName(entry.name));
     if (entry.filterRange !== undefined) {
       definedNames += `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${sheetName}!${absolute(entry.filterRange)}</definedName>`;
@@ -89,6 +96,8 @@ export function renderWorkbook(entries: readonly SheetEntry[]): string {
   }
   return (
     `${XML_DECLARATION}<workbook xmlns="${SPREADSHEET_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">` +
+    // Excel opens on the first tab unless told otherwise, and a hidden sheet cannot be the one shown.
+    (firstVisible > 0 ? `<bookViews><workbookView activeTab="${firstVisible}"/></bookViews>` : "") +
     `<sheets>${sheets}</sheets>` +
     (definedNames.length === 0 ? "" : `<definedNames>${definedNames}</definedNames>`) +
     (hasFormulas ? '<calcPr fullCalcOnLoad="1"/>' : "") +

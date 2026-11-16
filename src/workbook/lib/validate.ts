@@ -9,7 +9,7 @@ const MAX_SHEETS = 0xffff - 6;
 
 /**
  * Throws the first problem Excel would refuse: no sheets, more sheets than the package can hold,
- * a bad sheet name, a duplicate name.
+ * a bad sheet name, a duplicate name, every sheet hidden.
  */
 export function validateWorkbook(workbook: StreamedWorkbook): void {
   const sheets = workbook.sheets;
@@ -24,7 +24,9 @@ export function validateWorkbook(workbook: StreamedWorkbook): void {
     );
   }
   const seen = new Set<string>();
+  let anyVisible = false;
   for (let i = 0; i < sheets.length; i++) {
+    if (sheets[i]!.hidden !== true) anyVisible = true;
     const path = `sheets[${i}].name`;
     const name = sheets[i]!.name;
     const problem = sheetNameProblem(name);
@@ -38,6 +40,13 @@ export function validateWorkbook(workbook: StreamedWorkbook): void {
       );
     }
     seen.add(key);
+  }
+  if (!anyVisible) {
+    throw new XlsxMiniError(
+      "NO_VISIBLE_SHEET",
+      "sheets",
+      "A workbook needs at least one sheet that is not hidden",
+    );
   }
 }
 

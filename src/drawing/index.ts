@@ -127,6 +127,8 @@ interface Anchor {
   /** The one-based relationship number in the drawing's relationships part. */
   readonly rId: number;
   readonly size: PictureSize;
+  /** True for a picture in a hidden row or column, which is anchored so that it folds away with it. */
+  readonly folds: boolean;
 }
 
 /**
@@ -137,7 +139,7 @@ export interface SheetDrawing {
   /**
    * Anchors the registered image at a zero-based column and row, at the size requested or the
    * image's own, one given dimension scaling the other. Returns the size drawn, so the row and the
-   * column can make room for it.
+   * column can make room for it. `folds` says the cell's row or column is hidden.
    */
   add(
     column: number,
@@ -146,6 +148,7 @@ export interface SheetDrawing {
     width: number | undefined,
     height: number | undefined,
     path: string,
+    folds: boolean,
   ): PictureSize;
   /** True once any image has been anchored, so the sheet knows to carry a drawing. */
   readonly hasImages: boolean;
@@ -180,7 +183,7 @@ export function createSheetDrawing(): SheetDrawing {
   const relationships = new Map<number, number>();
   const self: SheetDrawing = {
     /** Resolves the drawn size from the request and the image, then records the anchor. */
-    add(column, rowIndex, media, width, height, path) {
+    add(column, rowIndex, media, width, height, path, folds) {
       const w = dimension(width, path, "width");
       const h = dimension(height, path, "height");
       const size: PictureSize =
@@ -203,13 +206,18 @@ export function createSheetDrawing(): SheetDrawing {
         rId = relationships.size + 1;
         relationships.set(media.id, rId);
       }
-      anchors.push({ column, rowIndex, rId, size });
+      anchors.push({ column, rowIndex, rId, size, folds });
       return size;
     },
     get hasImages() {
       return anchors.length > 0;
     },
-    /** One `oneCellAnchor` per picture, each with a unique shape id and its media relationship. */
+    /**
+     * One anchor per picture, each with a unique shape id and its media relationship. A picture
+     * keeps its size whatever happens to its cell, which a `oneCellAnchor` says; one in a hidden
+     * row or column would then lie across the cells that follow, so it takes a `twoCellAnchor`
+     * that ends in its own cell and is sized with it: nothing while hidden, itself when shown.
+     */
     render() {
       const inset = IMAGE_INSET * EMU_PER_PIXEL;
       let xml = `${XML_DECLARATION}<xdr:wsDr xmlns:xdr="${DRAWING_NAMESPACE}" xmlns:a="${DRAWING_MAIN_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">`;
@@ -217,17 +225,21 @@ export function createSheetDrawing(): SheetDrawing {
         const anchor = anchors[i]!;
         const cx = Math.round(anchor.size.width * EMU_PER_PIXEL);
         const cy = Math.round(anchor.size.height * EMU_PER_PIXEL);
+        const cell = (x: number, y: number): string =>
+          `<xdr:col>${anchor.column}</xdr:col><xdr:colOff>${x}</xdr:colOff><xdr:row>${anchor.rowIndex}</xdr:row><xdr:rowOff>${y}</xdr:rowOff>`;
+        const tag = anchor.folds ? "twoCellAnchor" : "oneCellAnchor";
         xml +=
-          "<xdr:oneCellAnchor>" +
-          `<xdr:from><xdr:col>${anchor.column}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${anchor.rowIndex}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from>` +
-          `<xdr:ext cx="${cx}" cy="${cy}"/>` +
+          (anchor.folds ? '<xdr:twoCellAnchor editAs="twoCell">' : "<xdr:oneCellAnchor>") +
+          `<xdr:from>${cell(inset, inset)}</xdr:from>` +
+          (anchor.folds
+            ? `<xdr:to>${cell(inset + cx, inset + cy)}</xdr:to>`
+            : `<xdr:ext cx="${cx}" cy="${cy}"/>`) +
           "<xdr:pic>" +
           `<xdr:nvPicPr><xdr:cNvPr id="${i + 2}" name="Picture ${i + 1}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr>` +
           `<xdr:blipFill><a:blip r:embed="rId${anchor.rId}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill>` +
           `<xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr>` +
           "</xdr:pic>" +
-          "<xdr:clientData/>" +
-          "</xdr:oneCellAnchor>";
+          `<xdr:clientData/></xdr:${tag}>`;
       }
       return `${xml}</xdr:wsDr>`;
     },
