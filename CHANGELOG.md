@@ -1,5 +1,12 @@
 # xlsx-mini
 
+## 0.8.0
+
+### Minor Changes
+
+- 32cdac5: A column, a row and a sheet can be hidden: `hidden: true` on a column, on a row object or on a sheet, and on a column of `sheetFromObjects`. What is hidden stays in the file, so formulas and dropdowns read it, and the reader can show it again. A workbook opens on its first sheet that is not hidden; one whose sheets are all hidden fails with `NO_VISIBLE_SHEET`. A picture in a hidden row or column folds away with it.
+- 4bfb022: A sheet can say how it is shown when it opens: `view: { gridlines: false, zoom: 150, rightToLeft: true }` hides the lines between cells, sets the zoom in percent and lays the sheet out from the right. It combines with `freeze`. A zoom outside 10 to 400 or a setting of the wrong type fails with `INVALID_VIEW`.
+
 ## 0.7.0
 
 ### Minor Changes
