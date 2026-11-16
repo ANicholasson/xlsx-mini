@@ -317,6 +317,50 @@ export const rowStylesWorkbook: Workbook = {
   ],
 };
 
+const badge = { image: badgePng, height: 24 };
+const stamp = { image: stripesPng, height: 20 };
+
+/**
+ * The workbook behind hidden.xlsx: a hidden first sheet that feeds a dropdown, so the file opens
+ * on the second; a hidden column without a width and one with; a hidden row that the total still
+ * sums; a picture in the hidden row and two in a hidden column, beside two that are shown; and a
+ * third sheet, shown, after the one the file opens on.
+ */
+export const hiddenWorkbook: Workbook = {
+  sheets: [
+    { name: "Lists", hidden: true, rows: [["Status"], ["Open"], ["Shipped"], ["Closed"]] },
+    {
+      name: "Orders",
+      columns: [
+        { hidden: true },
+        { width: 12 },
+        { width: 14 },
+        { width: 12 },
+        { width: 14, style: kroner },
+        { width: 24, hidden: true },
+        { width: 8 },
+        { width: 12, hidden: true },
+      ],
+      rows: [
+        {
+          cells: ["Id", "Order", "Customer", "Status", "Total", "Import key", "Badge", "Stamp"],
+          style: header,
+        },
+        [101, "A-1001", "Kari", "Open", 1234.5, "ord_7f3a", badge, stamp],
+        [102, "A-1002", "Ola", "Shipped", 99, "ord_81bc", null, stamp],
+        { cells: [103, "A-1003", "Liv", "Closed", 560.25, "ord_9d02", badge], hidden: true },
+        [104, "A-1004", "Nils", "Open", 75, "ord_a410", badge],
+        { cells: [null, "Total", null, null, { formula: "SUM(E2:E5)" }], style: totalRow },
+      ],
+      validations: [{ range: "D2:D5", list: "Lists!A2:A4" }],
+    },
+    {
+      name: "Notes",
+      rows: [["Hidden: the Lists sheet, and on Orders columns A, F and H and row 4."]],
+    },
+  ],
+};
+
 /** The workbook behind formulas.xlsx: per-row products, a sum, cached results, and text that only looks like a formula. */
 export const formulasWorkbook: Workbook = {
   sheets: [

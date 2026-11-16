@@ -43,3 +43,5 @@ A `drawing` feature slice, which the dependency rules have reserved since ADR 00
 - Excel's in-cell pictures (rich values): Excel-only, a second metadata part and a rich-value store, invisible to the other three applications.
 - Decoding image data for a size the header already states.
 - Declaring the `png` default and drawing overrides in every streamed package up front: an override for a part that does not exist is a malformed package, and a default nobody uses is a lie about every file.
+
+Update: a picture in a hidden row or column takes a two-cell anchor inside its own cell, so that it folds away with it (ADR 0028). Every other picture keeps the one-cell anchor.

@@ -3,6 +3,7 @@ import { type SheetEntry, renderWorkbook } from "../index.js";
 
 const plain = (name: string): SheetEntry => ({
   name,
+  hidden: false,
   filterRange: undefined,
   printTitles: undefined,
   hasFormulas: false,
@@ -13,6 +14,21 @@ describe("renderWorkbook", () => {
     const xml = renderWorkbook([plain("A"), plain("B")]);
     expect(xml).toContain(
       '<sheets><sheet name="A" sheetId="1" r:id="rId1"/><sheet name="B" sheetId="2" r:id="rId2"/></sheets></workbook>',
+    );
+  });
+
+  it("marks a hidden sheet, and names the first sheet that is shown when a hidden one precedes it", () => {
+    const hidden = (name: string): SheetEntry => ({ ...plain(name), hidden: true });
+    expect(renderWorkbook([hidden("A"), hidden("B"), plain("C"), plain("D")])).toContain(
+      'relationships"><bookViews><workbookView activeTab="2"/></bookViews>' +
+        '<sheets><sheet name="A" sheetId="1" state="hidden" r:id="rId1"/>' +
+        '<sheet name="B" sheetId="2" state="hidden" r:id="rId2"/>' +
+        '<sheet name="C" sheetId="3" r:id="rId3"/><sheet name="D" sheetId="4" r:id="rId4"/></sheets>',
+    );
+    // The first sheet is shown: the workbook opens on it as it always did.
+    expect(renderWorkbook([plain("A"), hidden("B")])).toContain(
+      'relationships"><sheets><sheet name="A" sheetId="1" r:id="rId1"/>' +
+        '<sheet name="B" sheetId="2" state="hidden" r:id="rId2"/></sheets>',
     );
   });
 

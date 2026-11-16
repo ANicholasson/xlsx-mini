@@ -49,3 +49,5 @@ A row that is neither form, a string, a number, `null`, an object without `cells
 - Extending a row's style to the sheet's column count: the reach would depend on something outside the row.
 - A helper, `row(cells, { style })`: a second way to say what a plain object says.
 - Sharing one loop between the two forms: the array path is the byte path, and stays as it was measured.
+
+Update: a row object also carries `hidden` (ADR 0028).

@@ -20,9 +20,12 @@ export interface CollectedColumns {
   readonly measured: readonly boolean[] | undefined;
   /** Whether columns past the list fit themselves: the sheet's `autoWidth`. */
   readonly beyond: boolean;
+  /** Whether each listed column is hidden. */
+  readonly hidden: readonly boolean[];
   /**
    * The `<cols>` element from the numeric widths, the measured ones and the widest picture per
    * column in pixels, or an empty string. A numeric width wins; a picture widens any other column.
+   * A hidden column is written also without a width, and keeps the width it has.
    */
   readonly cols: (
     measuredWidths: readonly (number | undefined)[] | undefined,
@@ -41,9 +44,11 @@ export function collectColumns(
   const styles: (CellStyle | undefined)[] = [];
   const fixed: (number | undefined)[] = [];
   const measured: boolean[] = [];
+  const hidden: boolean[] = [];
   let anyMeasured = beyond;
   for (let i = 0; i < columns.length; i++) {
     const column = columns[i];
+    hidden.push(column?.hidden === true);
     const style = column?.style;
     if (style !== undefined) {
       try {
@@ -84,6 +89,7 @@ export function collectColumns(
     styles,
     measured: anyMeasured ? measured : undefined,
     beyond,
+    hidden,
     cols: (measuredWidths, imagePixels) => {
       let cols = "";
       const count = Math.max(fixed.length, measuredWidths?.length ?? 0, imagePixels.length);
@@ -94,8 +100,12 @@ export function collectColumns(
           const forImage = Math.min(MAX_COLUMN_WIDTH, Math.round(((pixels + 12) / 7) * 100) / 100);
           if (width === undefined || forImage > width) width = forImage;
         }
-        if (width === undefined) continue;
-        cols += `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`;
+        const isHidden = hidden[i] === true;
+        if (width === undefined && !isHidden) continue;
+        cols +=
+          `<col min="${i + 1}" max="${i + 1}"` +
+          (width === undefined ? "" : ` width="${width}" customWidth="1"`) +
+          (isHidden ? ' hidden="1"/>' : "/>");
       }
       return cols.length === 0 ? "" : `<cols>${cols}</cols>`;
     },

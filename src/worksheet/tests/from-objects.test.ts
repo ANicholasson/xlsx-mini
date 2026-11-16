@@ -129,6 +129,18 @@ describe("sheetFromObjects", () => {
     expect(some.columns).toEqual([{ width: "auto" }, { width: 20 }, {}]);
   });
 
+  it("passes a hidden column through, header and all", () => {
+    const sheet = sheetFromObjects(orders, {
+      name: "S",
+      columns: [{ key: "id", hidden: true }, { key: "customer" }],
+    });
+    expect(sheet.columns).toEqual([{ hidden: true }, {}]);
+    expect([...sheet.rows][0]).toEqual([
+      { value: "id", style: { bold: true } },
+      { value: "customer", style: { bold: true } },
+    ]);
+  });
+
   it("drops the header row, and with it the freeze and filter defaults, for header: false", () => {
     const sheet = sheetFromObjects(orders, { name: "S", columns: [{ key: "id" }], header: false });
     expect(rowsOf(sheet)).toEqual([["A-1001"], ["A-1002"]]);

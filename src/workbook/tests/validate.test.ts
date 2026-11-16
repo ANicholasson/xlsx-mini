@@ -16,6 +16,15 @@ describe("validateWorkbook", () => {
     );
   });
 
+  it("requires a sheet that is not hidden", () => {
+    const hidden = (name: string) => ({ ...sheet(name), hidden: true });
+    expect(() => validateWorkbook({ sheets: [hidden("A"), hidden("B")] })).toThrow(
+      expect.objectContaining({ code: "NO_VISIBLE_SHEET", path: "sheets" }),
+    );
+    expect(() => validateWorkbook({ sheets: [hidden("A"), sheet("B")] })).not.toThrow();
+    expect(() => validateWorkbook({ sheets: [{ ...sheet("A"), hidden: false }] })).not.toThrow();
+  });
+
   it("rejects names Excel refuses, with the path of the offending sheet", () => {
     const bad = [
       "",

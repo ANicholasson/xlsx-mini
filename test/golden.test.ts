@@ -11,6 +11,7 @@ import {
   formulasWorkbook,
   futureFunctionsWorkbook,
   rowStylesWorkbook,
+  hiddenWorkbook,
   hyperlinksWorkbook,
   imagesWorkbook,
   minimalWorkbook,
@@ -433,6 +434,39 @@ describe("row styles workbook (golden)", () => {
     );
     // The total row's border runs across its empty cell.
     expect(sheet).toMatch(/<c r="A6" s="(\d+)" [^>]*>.*?<\/c><c r="B6" s="\1"\/>/);
+  });
+});
+
+describe("hidden workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("hidden.xlsx", hiddenWorkbook);
+  });
+
+  it("hides the sheet, the columns and the row, and opens on the first sheet that is shown", async () => {
+    const bytes = await writeXlsx(hiddenWorkbook, STORE);
+    expect(readPart(bytes, "xl/workbook.xml")).toContain(
+      '<bookViews><workbookView activeTab="1"/></bookViews>' +
+        '<sheets><sheet name="Lists" sheetId="1" state="hidden" r:id="rId1"/>' +
+        '<sheet name="Orders" sheetId="2" r:id="rId2"/><sheet name="Notes" sheetId="3" r:id="rId3"/></sheets>',
+    );
+    const sheet = readPart(bytes, "xl/worksheets/sheet2.xml");
+    // A hidden column without a width, and one that keeps its width for when it is shown again.
+    expect(sheet).toContain('<cols><col min="1" max="1" hidden="1"/>');
+    expect(sheet).toContain('<col min="6" max="6" width="24" customWidth="1" hidden="1"/>');
+    // The hidden row keeps its cells: the total sums it.
+    expect(sheet).toMatch(/<row r="4" ht="[\d.]+" customHeight="1" hidden="1"><c r="A4"><v>103</);
+    expect(sheet).toContain("<f>SUM(E2:E5)</f>");
+    // The pictures in the hidden column and the hidden row fold away with them; the others keep their size.
+    const anchors = readPart(bytes, "xl/drawings/drawing2.xml").match(/<xdr:\w+CellAnchor/g);
+    expect(anchors).toEqual([
+      "<xdr:oneCellAnchor",
+      "<xdr:twoCellAnchor",
+      "<xdr:twoCellAnchor",
+      "<xdr:twoCellAnchor",
+      "<xdr:oneCellAnchor",
+    ]);
+    // The dropdown reads the hidden sheet.
+    expect(sheet).toContain("<formula1>&apos;Lists&apos;!$A$2:$A$4</formula1>");
   });
 });
 

@@ -1,6 +1,7 @@
 /** Every failure the writer reports, as a string literal so callers can switch on it. */
 export type ErrorCode =
   | "NO_SHEETS"
+  | "NO_VISIBLE_SHEET"
   | "INVALID_SHEET_NAME"
   | "DUPLICATE_SHEET_NAME"
   | "INVALID_NUMBER"

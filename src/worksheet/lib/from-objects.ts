@@ -11,6 +11,8 @@ interface ColumnBase {
   readonly width?: number | "auto";
   /** Default style for the column's data cells. */
   readonly style?: CellStyle;
+  /** Hide the column, header included; the reader can unhide it. */
+  readonly hidden?: boolean;
 }
 
 /** A column read straight from a property whose type a cell can hold. */
@@ -86,9 +88,10 @@ export function sheetFromObjects<T extends object>(
 }
 
 function toColumn(column: ColumnBase): Column {
-  const result: { width?: number | "auto"; style?: CellStyle } = {};
+  const result: { width?: number | "auto"; style?: CellStyle; hidden?: boolean } = {};
   if (column.width !== undefined) result.width = column.width;
   if (column.style !== undefined) result.style = column.style;
+  if (column.hidden !== undefined) result.hidden = column.hidden;
   return result;
 }
 

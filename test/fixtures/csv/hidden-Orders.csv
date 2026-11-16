@@ -1,0 +1,6 @@
+Id,Order,Customer,Status,Total,Import key,Badge,Stamp
+101,A-1001,Kari,Open,1234.5,ord_7f3a,,
+102,A-1002,Ola,Shipped,99,ord_81bc,,
+103,A-1003,Liv,Closed,560.25,ord_9d02,,
+104,A-1004,Nils,Open,75,ord_a410,,
+,Total,,,1968.75,,,

@@ -18,7 +18,7 @@ _Avoid_: worksheet (reserved for the package part), tab, table
 One horizontal line of cells, left to right from column A: an array of cells, or a row object.
 
 **Row object**:
-A row given as `{ cells }` with a style, a height or both for the row itself. Its style reaches every position in its cells and nothing past the last.
+A row given as `{ cells }` with what belongs to the row itself: a style, a height, whether it is hidden. Its style reaches every position in its cells and nothing past the last.
 
 **Cell**:
 One position in a row, holding a value and optionally a style.
@@ -35,7 +35,7 @@ _Avoid_: blank, null cell
 A vertical position across every row, named by letters, carrying a width and a default style for its cells.
 
 **Image cell**:
-A cell holding a PNG, anchored to the cell at its pixel size and moving with it; the row grows to it, and so does a column without a numeric width.
+A cell holding a PNG, anchored to the cell at its pixel size and moving with it; the row grows to it, and so does a column without a numeric width. In a hidden row or column it folds away with it.
 _Avoid_: picture, drawing, embedded image
 
 **Auto width**:
@@ -56,6 +56,10 @@ _Avoid_: span, merged region
 
 **Row height**:
 The height of a row in points, set on a row object or by row number, the row object's winning; rows without one take Excel's default.
+
+**Hidden**:
+A column, a row or a sheet that is in the file and out of sight until the reader shows it again. It keeps its cells, its width or height and its place in formulas; a workbook has at least one sheet that is not hidden and opens on the first of them.
+_Avoid_: invisible, collapsed (reserved for outline groups), very hidden (a sheet state the library does not write)
 
 **Streamed workbook**:
 A workbook as `streamXlsx` takes it: the same sheets, whose rows may arrive asynchronously, so a cursor can feed a sheet page by page.
