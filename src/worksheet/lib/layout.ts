@@ -12,6 +12,8 @@ import type { StreamedSheet } from "./model.js";
 
 const MAX_COLUMN_WIDTH = 255;
 const MAX_ROW_HEIGHT = 409;
+const MIN_ZOOM = 10;
+const MAX_ZOOM = 400;
 
 /** What the sheet's columns contribute: a style per position, which columns size themselves, and the `<cols>` element. */
 export interface CollectedColumns {
@@ -112,8 +114,62 @@ export function collectColumns(
   };
 }
 
-/** The `<sheetViews>` element with a frozen pane, or an empty string when nothing is frozen. */
-export function renderFreeze(sheet: StreamedSheet, sheetIndex: number): string {
+/** The attributes of the sheet view for how the sheet is shown: gridlines, direction and zoom. */
+function viewAttributes(sheet: StreamedSheet, sheetIndex: number): string {
+  const view: unknown = sheet.view;
+  if (view === undefined) return "";
+  const path = `sheets[${sheetIndex}].view`;
+  if (typeof view !== "object" || view === null) {
+    throw new XlsxMiniError(
+      "INVALID_VIEW",
+      path,
+      `A view is an object, not ${describeValue(view)}`,
+    );
+  }
+  const { gridlines, zoom, rightToLeft } = view as Record<string, unknown>;
+  for (const [name, value] of [
+    ["gridlines", gridlines],
+    ["rightToLeft", rightToLeft],
+  ] as const) {
+    if (value !== undefined && typeof value !== "boolean") {
+      throw new XlsxMiniError(
+        "INVALID_VIEW",
+        `${path}.${name}`,
+        `${name} is true or false, not ${describeValue(value)}`,
+      );
+    }
+  }
+  if (
+    zoom !== undefined &&
+    (!Number.isInteger(zoom) || (zoom as number) < MIN_ZOOM || (zoom as number) > MAX_ZOOM)
+  ) {
+    throw new XlsxMiniError(
+      "INVALID_VIEW",
+      `${path}.zoom`,
+      `A zoom is a whole number from ${MIN_ZOOM} to ${MAX_ZOOM} percent, not ${describeValue(zoom)}`,
+    );
+  }
+  return (
+    (gridlines === false ? ' showGridLines="0"' : "") +
+    (rightToLeft === true ? ' rightToLeft="1"' : "") +
+    (zoom === undefined || zoom === 100 ? "" : ` zoomScale="${zoom as number}"`)
+  );
+}
+
+/**
+ * The `<sheetViews>` element: how the sheet is shown and its frozen pane, or an empty string when
+ * the sheet asks for neither.
+ */
+export function renderView(sheet: StreamedSheet, sheetIndex: number): string {
+  const attributes = viewAttributes(sheet, sheetIndex);
+  const pane = renderPane(sheet, sheetIndex);
+  if (attributes.length === 0 && pane.length === 0) return "";
+  const open = `<sheetViews><sheetView${attributes} workbookViewId="0"`;
+  return pane.length === 0 ? `${open}/></sheetViews>` : `${open}>${pane}</sheetView></sheetViews>`;
+}
+
+/** The `<pane>` element of a frozen pane, or an empty string when nothing is frozen. */
+function renderPane(sheet: StreamedSheet, sheetIndex: number): string {
   const freeze = sheet.freeze;
   if (freeze === undefined) return "";
   const rows = freeze.rows ?? 0;
@@ -137,7 +193,7 @@ export function renderFreeze(sheet: StreamedSheet, sheetIndex: number): string {
   const activePane = rows === 0 ? "topRight" : columns === 0 ? "bottomLeft" : "bottomRight";
   const splits =
     (columns === 0 ? "" : ` xSplit="${columns}"`) + (rows === 0 ? "" : ` ySplit="${rows}"`);
-  return `<sheetViews><sheetView workbookViewId="0"><pane${splits} topLeftCell="${topLeft}" activePane="${activePane}" state="frozen"/></sheetView></sheetViews>`;
+  return `<pane${splits} topLeftCell="${topLeft}" activePane="${activePane}" state="frozen"/>`;
 }
 
 /**

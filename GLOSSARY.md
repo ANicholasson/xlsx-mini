@@ -84,6 +84,10 @@ _Avoid_: page layout, page setup (reserved for the element)
 **Freeze panes**:
 The rows and columns that stay visible while the sheet scrolls.
 
+**Sheet view**:
+How a sheet is shown when it opens: with or without gridlines, at a zoom in percent, left to right or right to left. The reader changes it freely.
+_Avoid_: display options, window settings
+
 **Autofilter**:
 Filter dropdowns on the header row across the used range.
 

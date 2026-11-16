@@ -361,6 +361,43 @@ export const hiddenWorkbook: Workbook = {
   ],
 };
 
+/**
+ * The workbook behind sheet-view.xlsx: a report without gridlines, a sheet at 150 %, and a
+ * right-to-left sheet in Arabic with a frozen header row.
+ */
+export const sheetViewWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "No gridlines",
+      view: { gridlines: false },
+      columns: [{ width: 14 }, { width: 16, style: kroner }],
+      rows: [
+        { cells: ["Quarter", "Revenue"], style: reportHeader },
+        ["Q1", 120000],
+        ["Q2", 135500],
+        { cells: ["Total", { formula: "SUM(B2:B3)" }], style: totalRow },
+      ],
+    },
+    {
+      name: "Zoom 150",
+      view: { zoom: 150 },
+      rows: [["Shown at 150 %"], [1, 2, 3]],
+    },
+    {
+      name: "Right to left",
+      view: { rightToLeft: true },
+      freeze: { rows: 1 },
+      columns: [{ width: 14 }, { width: 18 }, { width: 14, style: kroner }],
+      rows: [
+        { cells: ["الطلب", "العميل", "المبلغ"], style: header },
+        ["A-1001", "كاري", 1234.5],
+        ["A-1002", "أولا", 99],
+        ["A-1003", "ليف", 560.25],
+      ],
+    },
+  ],
+};
+
 /** The workbook behind formulas.xlsx: per-row products, a sum, cached results, and text that only looks like a formula. */
 export const formulasWorkbook: Workbook = {
   sheets: [

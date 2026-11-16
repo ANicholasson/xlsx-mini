@@ -248,6 +248,16 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
         '<sheet name="Lists" sheetId="2" state="hidden" r:id="rId2"/></sheets>',
     );
   },
+  "sheet-view": async (snippet) => {
+    const bytes = await (snippet["default"] as Fn<Uint8Array>)();
+    isWorkbook(bytes);
+    expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain(
+      '<sheetView showGridLines="0" zoomScale="120" workbookViewId="0"/>',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet2.xml")).toContain(
+      '<sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1"',
+    );
+  },
   dates: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);
