@@ -36,6 +36,7 @@ export type {
   RowObject,
   Sheet,
   SheetLinkCell,
+  SheetView,
   StreamedSheet,
   TemporalInstantLike,
   TemporalLike,

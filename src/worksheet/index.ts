@@ -8,7 +8,7 @@ import {
   collectMerges,
   collectRowHeights,
   mergeStarts,
-  renderFreeze,
+  renderView,
   renderMerges,
 } from "./lib/layout.js";
 import type { CellStyle } from "../styles/index.js";
@@ -46,6 +46,7 @@ export type {
   RowObject,
   Sheet,
   SheetLinkCell,
+  SheetView,
   StreamedSheet,
   TemporalInstantLike,
   TemporalLike,
@@ -138,7 +139,7 @@ function frame(sheet: StreamedSheet, context: WorksheetContext): Frame {
   const columns = collectColumns(sheet, context.sheetIndex, (style) =>
     context.styles.validate(style),
   );
-  const views = renderFreeze(sheet, context.sheetIndex);
+  const views = renderView(sheet, context.sheetIndex);
   const boxes = collectMerges(sheet, context.sheetIndex);
   const merges = renderMerges(boxes);
   const rowHeights = collectRowHeights(sheet, context.sheetIndex);

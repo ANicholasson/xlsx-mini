@@ -12,6 +12,7 @@ import {
   futureFunctionsWorkbook,
   rowStylesWorkbook,
   hiddenWorkbook,
+  sheetViewWorkbook,
   hyperlinksWorkbook,
   imagesWorkbook,
   minimalWorkbook,
@@ -467,6 +468,25 @@ describe("hidden workbook (golden)", () => {
     ]);
     // The dropdown reads the hidden sheet.
     expect(sheet).toContain("<formula1>&apos;Lists&apos;!$A$2:$A$4</formula1>");
+  });
+});
+
+describe("sheet view workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("sheet-view.xlsx", sheetViewWorkbook);
+  });
+
+  it("writes each sheet's view, with the frozen pane inside it", async () => {
+    const bytes = await writeXlsx(sheetViewWorkbook, STORE);
+    expect(readPart(bytes, "xl/worksheets/sheet1.xml")).toContain(
+      '<sheetViews><sheetView showGridLines="0" workbookViewId="0"/></sheetViews><cols>',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet2.xml")).toContain(
+      '<sheetViews><sheetView zoomScale="150" workbookViewId="0"/></sheetViews><sheetData>',
+    );
+    expect(readPart(bytes, "xl/worksheets/sheet3.xml")).toContain(
+      '<sheetViews><sheetView rightToLeft="1" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
+    );
   });
 });
 

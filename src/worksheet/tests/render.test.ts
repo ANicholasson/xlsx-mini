@@ -338,6 +338,45 @@ describe("renderWorksheet", () => {
       );
     });
 
+    it("shows a sheet without gridlines, right to left and at a zoom, in the view its frozen pane is in", () => {
+      const view = { gridlines: false, rightToLeft: true, zoom: 150 };
+      expect(render({ name: "S", view, rows: [[1]] })).toContain(
+        '<sheetViews><sheetView showGridLines="0" rightToLeft="1" zoomScale="150" workbookViewId="0"/></sheetViews>',
+      );
+      expect(render({ name: "S", view: { zoom: 10 }, freeze: { rows: 1 }, rows: [[1]] })).toContain(
+        '<sheetViews><sheetView zoomScale="10" workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>',
+      );
+      expect(render({ name: "S", view: { zoom: 400 }, rows: [[1]] })).toContain('zoomScale="400"');
+    });
+
+    it("writes no view for the settings every application starts from", () => {
+      for (const view of [{}, { gridlines: true, rightToLeft: false, zoom: 100 }]) {
+        expect(render({ name: "S", view, rows: [[1]] })).not.toContain("<sheetViews>");
+      }
+    });
+
+    it("rejects a view that is not an object, a zoom outside 10 to 400 and a setting of the wrong type, at their path", () => {
+      for (const view of [null, "rtl", 150]) {
+        expect(failure({ name: "S", view: view as never, rows: [] })).toMatchObject({
+          code: "INVALID_VIEW",
+          path: "sheets[0].view",
+        });
+      }
+      for (const zoom of [9, 401, 150.5, Number.NaN, "150"]) {
+        expect(
+          failure({ name: "S", view: { zoom: zoom as number }, rows: [] }, { sheetIndex: 2 }),
+        ).toMatchObject({ code: "INVALID_VIEW", path: "sheets[2].view.zoom" });
+      }
+      expect(failure({ name: "S", view: { gridlines: "no" as never }, rows: [] })).toMatchObject({
+        code: "INVALID_VIEW",
+        path: "sheets[0].view.gridlines",
+      });
+      expect(failure({ name: "S", view: { rightToLeft: 1 as never }, rows: [] })).toMatchObject({
+        code: "INVALID_VIEW",
+        path: "sheets[0].view.rightToLeft",
+      });
+    });
+
     it("puts the autofilter over the used range, after the data, and skips it on an empty sheet", () => {
       const xml = render({
         name: "S",

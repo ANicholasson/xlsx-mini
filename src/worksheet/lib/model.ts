@@ -183,6 +183,21 @@ export interface Freeze {
   readonly columns?: number;
 }
 
+/**
+ * How a sheet is shown when it opens. Each application keeps the settings it knows.
+ *
+ * @example
+ * const view: SheetView = { gridlines: false, zoom: 150 };
+ */
+export interface SheetView {
+  /** Show the lines between cells; true unless set to false. */
+  readonly gridlines?: boolean;
+  /** The zoom in percent, a whole number from 10 to 400; 100 when left out. */
+  readonly zoom?: number;
+  /** Lay the sheet out from the right, column A at the right edge, as Arabic and Hebrew read. */
+  readonly rightToLeft?: boolean;
+}
+
 /** A message shown while a validated cell is selected. */
 export interface ValidationMessage {
   /** At most 32 characters. */
@@ -298,6 +313,8 @@ export interface StreamedSheet {
   readonly columns?: readonly (Column | undefined)[];
   /** Freeze panes: the header rows and the leading columns that stay visible. */
   readonly freeze?: Freeze;
+  /** How the sheet is shown when it opens: gridlines, zoom, direction. */
+  readonly view?: SheetView;
   /** Filter dropdowns on row 1 across the used range. */
   readonly autoFilter?: boolean;
   /** Fit every column without a numeric width to its widest cell, as `width: "auto"` does for one. */
