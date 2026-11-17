@@ -15,7 +15,7 @@ pnpm add xlsx-mini
 
 ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs, and the runtime matrix in CI proves each host on every change.
 
-In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 19 kB, and every export together under 21 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
+In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 19 kB, and every export together under 22 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
 
 ## Quick start
 
@@ -573,6 +573,37 @@ export default function catalogue(products: Product[]): Promise<Uint8Array> {
 }
 ```
 
+`padding` is the space between the picture and each edge of its cell, in pixels. The row grows to the picture and its padding, so the picture sits in the middle of its row, and with `padding: 10` one picture is 20 pixels from the next down a column. A column without a numeric width is at least as wide as the picture and its padding, and the picture starts its padding in from the left. Without `padding` the picture sits two pixels inside the top-left corner of its cell. A row height or a column width the caller sets stays as set; the padding then only moves the picture in from the corner.
+
+<!-- snippet: image-padding -->
+
+```ts
+import { sheetFromObjects, writeXlsx } from "xlsx-mini";
+
+interface Item {
+  name: string;
+  /** The bytes of a PNG the application produced, such as a code to scan. */
+  label: Uint8Array;
+}
+
+export default function labels(items: Item[]): Promise<Uint8Array> {
+  const sheet = sheetFromObjects(items, {
+    name: "Labels",
+    autoWidth: true,
+    columns: [
+      { key: "name", header: "Item" },
+      {
+        key: "label",
+        header: "Label",
+        // 10 pixels on every side: each row is 60 pixels tall, and one label is 20 from the next.
+        value: (item) => ({ image: item.label, height: 40, padding: 10 }),
+      },
+    ],
+  });
+  return writeXlsx({ sheets: [sheet] });
+}
+```
+
 When streaming, the images of a sheet are held until the sheet ends, since the parts that carry them follow it; set the image column's width or use `autoWidth`, because column widths go out before the rows.
 
 ## Data validation
@@ -746,35 +777,35 @@ export default async function safely(): Promise<string> {
 }
 ```
 
-| Code                    | When                                                                                                                                          |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NO_SHEETS`             | The workbook has no sheet.                                                                                                                    |
-| `NO_VISIBLE_SHEET`      | Every sheet of the workbook is hidden.                                                                                                        |
-| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.                                                |
-| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                                                                       |
-| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                                                                         |
-| `INVALID_DATE`          | An invalid `Date`.                                                                                                                            |
-| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                                                                        |
-| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                                                                        |
-| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                                                                |
-| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255, or a string other than `"auto"`.                                                                                    |
-| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.                                                  |
-| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                     |
-| `INVALID_VIEW`          | A view that is not an object, a zoom that is not a whole number from 10 to 400, `gridlines` or `rightToLeft` that is not a boolean.           |
-| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                       |
-| `INVALID_ROW`           | A row that is neither an array of cells nor an object with `cells`.                                                                           |
-| `INVALID_ROW_HEIGHT`    | A row number below 1, or a height in `rowHeights` or on a row outside 0 to 409 points.                                                        |
-| `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters as stored or starts with `=`; a cached value that is not text, a number or a boolean.          |
-| `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.  |
-| `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths. |
-| `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                  |
-| `INVALID_IMAGE`         | Bytes that are not a PNG, a width or height that is not positive pixels, or an image cell that also holds a value, formula or link.           |
-| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                                                                  |
-| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                                                              |
-| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                                                                     |
-| `PACKAGE_TOO_LARGE`     | The file, or when streaming one part before compression, would pass 4 GiB; or over 65 529 sheets.                                             |
-| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                                                                     |
-| `NO_DOM`                | `downloadXlsx` called where there is no document.                                                                                             |
+| Code                    | When                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `NO_SHEETS`             | The workbook has no sheet.                                                                                                                                               |
+| `NO_VISIBLE_SHEET`      | Every sheet of the workbook is hidden.                                                                                                                                   |
+| `INVALID_SHEET_NAME`    | Empty, over 31 characters, contains `[ ] : * ? / \`, starts or ends with `'`, or is `History`.                                                                           |
+| `DUPLICATE_SHEET_NAME`  | Two sheets share a name, ignoring case.                                                                                                                                  |
+| `INVALID_NUMBER`        | `NaN` or an infinity.                                                                                                                                                    |
+| `INVALID_DATE`          | An invalid `Date`.                                                                                                                                                       |
+| `DATE_OUT_OF_RANGE`     | Before 1900-01-01 or after 9999-12-31.                                                                                                                                   |
+| `UNSUPPORTED_VALUE`     | A value no cell can hold and `coerce` did not convert.                                                                                                                   |
+| `INVALID_NUMBER_FORMAT` | A format string outside 1 to 255 characters, or a built-in id outside 0 to 49.                                                                                           |
+| `INVALID_COLUMN_WIDTH`  | A width outside 0 to 255, or a string other than `"auto"`.                                                                                                               |
+| `INVALID_STYLE`         | A colour not `#rrggbb`, a border, alignment, font size or indent outside what Excel accepts.                                                                             |
+| `INVALID_FREEZE`        | Frozen rows or columns outside the sheet.                                                                                                                                |
+| `INVALID_VIEW`          | A view that is not an object, a zoom that is not a whole number from 10 to 400, `gridlines` or `rightToLeft` that is not a boolean.                                      |
+| `INVALID_MERGE`         | A merge not in A1 form, a single cell, outside the sheet, or overlapping another merge.                                                                                  |
+| `INVALID_ROW`           | A row that is neither an array of cells nor an object with `cells`.                                                                                                      |
+| `INVALID_ROW_HEIGHT`    | A row number below 1, or a height in `rowHeights` or on a row outside 0 to 409 points.                                                                                   |
+| `INVALID_FORMULA`       | A formula that is empty, over 8 192 characters as stored or starts with `=`; a cached value that is not text, a number or a boolean.                                     |
+| `INVALID_HYPERLINK`     | An `href` that is not an absolute URL or whose scheme runs code, a `cell` not in A1 form or outside the sheet, a `sheet` the workbook lacks.                             |
+| `INVALID_VALIDATION`    | A rule without exactly one of `list`, `number` and `date`, a bad range or source, bounds the wrong way round, a message over Excel's lengths.                            |
+| `INVALID_PRINT_SETUP`   | An unknown orientation or paper size, a fit, margin or repeat count out of range, header or footer text over 255 characters.                                             |
+| `INVALID_IMAGE`         | Bytes that are not a PNG, a width or height that is not positive pixels, a padding that is not pixels from 0, or an image cell that also holds a value, formula or link. |
+| `CELL_TEXT_TOO_LONG`    | Text over 32 767 characters.                                                                                                                                             |
+| `TOO_MANY_COLUMNS`      | More than 16 384 cells in a row.                                                                                                                                         |
+| `TOO_MANY_ROWS`         | More than 1 048 576 rows.                                                                                                                                                |
+| `PACKAGE_TOO_LARGE`     | The file, or when streaming one part before compression, would pass 4 GiB; or over 65 529 sheets.                                                                        |
+| `ASYNC_ROWS`            | An async iterable of rows given to `writeXlsx`; `streamXlsx` takes those.                                                                                                |
+| `NO_DOM`                | `downloadXlsx` called where there is no document.                                                                                                                        |
 
 Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped, and positions stay where you put them.
 
@@ -793,7 +824,7 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 | `RowObject`                         | `{ cells: readonly Cell[]; style?: CellStyle; height?: number; hidden?: boolean }`; the style reaches every position in `cells`, the height is in points                                                                                                                       |
 | `CellObject`, `FormulaCell`         | `{ value: CellValue; style? }`; `{ formula: string; value?: CellValue; style? }`                                                                                                                                                                                               |
 | `LinkCell`, `SheetLinkCell`         | `{ value; href: string; style? }`; `{ value; sheet?: string; cell: string; style? }`                                                                                                                                                                                           |
-| `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; style? }`; a PNG anchored to the cell, sizes in pixels                                                                                                                                                                  |
+| `ImageCell`                         | `{ image: Uint8Array; width?: number; height?: number; padding?: number; style? }`; a PNG anchored to the cell, sizes and the space around it in pixels                                                                                                                        |
 | `CellValue`                         | `string \| number \| boolean \| Date \| TemporalLike \| null \| undefined \| Registered`                                                                                                                                                                                       |
 | `CellStyle`                         | `{ bold?; italic?; underline?; fontSize?; fontColor?; fill?; border?; align?; verticalAlign?; wrap?; indent?; numberFormat? }`; colours `#rrggbb`                                                                                                                              |
 | `DataValidation`                    | `{ range; allowBlank?; input?; error? }` with one of `list: string[] \| string`, `number: { min?; max?; integer? }`, `date: { min?: Date; max?: Date }`                                                                                                                        |
@@ -864,6 +895,7 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Row styles                       |        clean         |    clean     |     clean     |      clean       |
 | Hidden rows, columns and sheets  |        clean         | sheet shown  |     clean     |      clean       |
 | Gridlines, zoom, right-to-left   |        clean         |   no zoom    |    no zoom    |      clean       |
+| Image padding                    |        clean         |    clean     |     clean     |      clean       |
 
 Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. Numbers has no hidden sheets: it shows a hidden sheet as an ordinary one and opens on the first sheet, and it keeps a picture in a hidden row or column in view. Hidden rows and columns it hides. Neither Numbers nor Google Sheets takes a sheet's zoom from the file: both open at their own. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 

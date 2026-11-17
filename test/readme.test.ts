@@ -203,6 +203,20 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     expect(sheet).toContain('<drawing r:id="rId1"/>');
     expect(sheet).toContain('ht="33" customHeight="1"');
   },
+  "image-padding": async (snippet) => {
+    const items = [
+      { name: "Desk", label: stripesPng },
+      { name: "Chair", label: stripesPng },
+    ];
+    const bytes = await (snippet["default"] as (items: unknown[]) => Promise<Uint8Array>)(items);
+    isWorkbook(bytes);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    // 40 pixels of picture and 10 above and below: 60 pixels, 45 points.
+    expect(sheet.match(/ht="45" customHeight="1"/g)).toHaveLength(2);
+    expect(readPart(bytes, "xl/drawings/drawing1.xml")).toContain(
+      "<xdr:colOff>95250</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>95250</xdr:rowOff>",
+    );
+  },
   formats: async (snippet) => {
     const bytes = await (snippet["default"] as Fn<Uint8Array>)();
     isWorkbook(bytes);

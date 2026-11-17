@@ -88,19 +88,22 @@ describe("sheet drawing", () => {
     const drawing = createSheetDrawing();
     expect(drawing.hasImages).toBe(false);
     const stripesMedia = media.add(stripes, "p");
-    expect(drawing.add(2, 1, stripesMedia, undefined, undefined, "p", false)).toEqual({
+    expect(drawing.add(2, 1, stripesMedia, undefined, undefined, 2, "p", false)).toEqual({
       width: 120,
       height: 40,
     });
-    expect(drawing.add(2, 2, stripesMedia, 60, undefined, "p", false)).toEqual({
+    expect(drawing.add(2, 2, stripesMedia, 60, undefined, 2, "p", false)).toEqual({
       width: 60,
       height: 20,
     });
-    expect(drawing.add(3, 1, media.add(badge, "p"), undefined, 24, "p", false)).toEqual({
+    expect(drawing.add(3, 1, media.add(badge, "p"), undefined, 24, 2, "p", false)).toEqual({
       width: 24,
       height: 24,
     });
-    expect(drawing.add(3, 2, stripesMedia, 10, 10, "p", false)).toEqual({ width: 10, height: 10 });
+    expect(drawing.add(3, 2, stripesMedia, 10, 10, 2, "p", false)).toEqual({
+      width: 10,
+      height: 10,
+    });
     expect(drawing.hasImages).toBe(true);
     const xml = drawing.render();
     expect(xml).toContain(
@@ -119,8 +122,8 @@ describe("sheet drawing", () => {
   it("anchors a picture in a hidden row or column so that it is sized with its cell", () => {
     const drawing = createSheetDrawing();
     const media = createMediaTable().add(stripes, "p");
-    drawing.add(2, 1, media, undefined, undefined, "p", true);
-    drawing.add(3, 1, media, undefined, undefined, "p", false);
+    drawing.add(2, 1, media, undefined, undefined, 2, "p", true);
+    drawing.add(3, 1, media, undefined, undefined, 2, "p", false);
     const xml = drawing.render();
     // From the inset to the inset plus the picture, inside the one cell: it folds away with it.
     expect(xml).toContain(
@@ -137,14 +140,16 @@ describe("sheet drawing", () => {
   it("rejects a size whose other dimension, scaled by the aspect ratio, passes the limit", () => {
     const drawing = createSheetDrawing();
     const media = createMediaTable().add(stripes, "p");
-    expect(failure(() => drawing.add(0, 0, media, undefined, 50_000, "c", false))).toMatchObject({
-      code: "INVALID_IMAGE",
-      path: "c.height",
-    });
-    const widest = drawing.add(0, 0, media, 100_000, undefined, "c", false);
+    expect(failure(() => drawing.add(0, 0, media, undefined, 50_000, 2, "c", false))).toMatchObject(
+      {
+        code: "INVALID_IMAGE",
+        path: "c.height",
+      },
+    );
+    const widest = drawing.add(0, 0, media, 100_000, undefined, 2, "c", false);
     expect(widest.width).toBe(100_000);
     expect(widest.height).toBeCloseTo(33_333.33, 1);
-    expect(drawing.add(0, 0, media, undefined, 30_000, "c", false)).toEqual({
+    expect(drawing.add(0, 0, media, undefined, 30_000, 2, "c", false)).toEqual({
       width: 90_000,
       height: 30_000,
     });
@@ -153,10 +158,42 @@ describe("sheet drawing", () => {
     new DataView(tall.buffer).setUint32(16, 1);
     new DataView(tall.buffer).setUint32(20, 100_000);
     const tallMedia = createMediaTable().add(tall, "p");
-    expect(failure(() => drawing.add(0, 0, tallMedia, 2, undefined, "c", false))).toMatchObject({
+    expect(failure(() => drawing.add(0, 0, tallMedia, 2, undefined, 2, "c", false))).toMatchObject({
       code: "INVALID_IMAGE",
       path: "c.width",
     });
+  });
+
+  it("anchors a picture its padding inside the cell, also one that folds, and takes a padding of 0", () => {
+    const drawing = createSheetDrawing();
+    const media = createMediaTable().add(stripes, "p");
+    drawing.add(1, 1, media, undefined, undefined, 10, "p", false);
+    drawing.add(1, 2, media, undefined, undefined, 0, "p", false);
+    drawing.add(1, 3, media, undefined, undefined, 7.5, "p", true);
+    const xml = drawing.render();
+    expect(xml).toContain(
+      '<xdr:oneCellAnchor><xdr:from><xdr:col>1</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>95250</xdr:rowOff></xdr:from><xdr:ext cx="1143000" cy="381000"/>',
+    );
+    expect(xml).toContain(
+      "<xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>",
+    );
+    expect(xml).toContain(
+      '<xdr:twoCellAnchor editAs="twoCell"><xdr:from><xdr:col>1</xdr:col><xdr:colOff>71438</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>71438</xdr:rowOff></xdr:from><xdr:to><xdr:col>1</xdr:col><xdr:colOff>1214438</xdr:colOff><xdr:row>3</xdr:row><xdr:rowOff>452438</xdr:rowOff></xdr:to>',
+    );
+  });
+
+  it("rejects a padding that is not a number of pixels from 0, at the property", () => {
+    const drawing = createSheetDrawing();
+    const media = createMediaTable().add(badge, "p");
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY, "10", null, 100_001]) {
+      expect(
+        failure(() => drawing.add(0, 0, media, undefined, undefined, bad as never, "c", false)),
+      ).toMatchObject({
+        code: "INVALID_IMAGE",
+        path: "c.padding",
+        message: expect.stringContaining("from 0 to 100000"),
+      });
+    }
   });
 
   it("rejects a width or height that is not a positive number of pixels, at the property", () => {
@@ -164,13 +201,13 @@ describe("sheet drawing", () => {
     const media = createMediaTable().add(badge, "p");
     for (const bad of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, "40", 100_001]) {
       expect(
-        failure(() => drawing.add(0, 0, media, bad as never, undefined, "c", false)),
+        failure(() => drawing.add(0, 0, media, bad as never, undefined, 2, "c", false)),
       ).toMatchObject({
         code: "INVALID_IMAGE",
         path: "c.width",
       });
       expect(
-        failure(() => drawing.add(0, 0, media, undefined, bad as never, "c", false)),
+        failure(() => drawing.add(0, 0, media, undefined, bad as never, 2, "c", false)),
       ).toMatchObject({
         code: "INVALID_IMAGE",
         path: "c.height",

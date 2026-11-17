@@ -28,8 +28,10 @@ const MAX_ROW_HEIGHT = 409;
 const DEFAULT_ROW_HEIGHT = 15;
 /** Excel's 96 dpi against 72 points per inch. */
 const POINTS_PER_PIXEL = 0.75;
-/** The tallest picture a row can make room for: the row limit in pixels, less the inset. */
-const MAX_IMAGE_ROW_PIXELS = Math.floor(MAX_ROW_HEIGHT / POINTS_PER_PIXEL) - 2 * IMAGE_INSET;
+/** The tallest a picture and the space around it can be for a row to make room: the row limit in pixels. */
+const MAX_ROW_PIXELS = Math.floor(MAX_ROW_HEIGHT / POINTS_PER_PIXEL);
+/** What a column leaves beside a picture without a padding: the room a fitted column gives its widest cell. */
+const UNPADDED_COLUMN_PIXELS = 12;
 /** Built-in number formats a date-like value falls back to. */
 const GENERAL = 0;
 const DATE = 14;
@@ -69,12 +71,12 @@ export interface RowRecords {
   readonly drawing: SheetDrawing;
   /** The row the picture records below belong to; a row without pictures never touches them. */
   imageRow: number;
-  /** The tallest picture in that row, in pixels, and the column holding it. */
+  /** The pixels that row needs for its tallest picture and the space around it, and the column holding it. */
   rowImagePixels: number;
   rowTallestColumn: number;
   /** The rightmost column holding a picture in that row. */
   rowImageColumn: number;
-  /** The widest picture per column, in pixels, for the column widths. */
+  /** The pixels each column needs for its widest picture and the space around it, for the column widths. */
   readonly imagePixels: number[];
   /** Per row style, that style over each column's: what a styled row uses in place of the column styles. */
   readonly rowStyles: WeakMap<CellStyle, (CellStyle | undefined)[]>;
@@ -353,14 +355,14 @@ function endSheetData(
 /** The points the row needs for its tallest picture, or the error when no row can hold it. */
 function pictureRowHeight(records: RowRecords, rowIndex: number, context: RowContext): number {
   const pixels = records.rowImagePixels;
-  if (pixels > MAX_IMAGE_ROW_PIXELS) {
+  if (pixels > MAX_ROW_PIXELS) {
     throw new XlsxMiniError(
       "INVALID_IMAGE",
       cellPath(context, rowIndex, records.rowTallestColumn),
-      `A picture ${pixels} pixels tall does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_IMAGE_ROW_PIXELS} pixels); give it a height, or the row one`,
+      `A picture that needs ${pixels} pixels with the space around it does not fit a row, which Excel caps at ${MAX_ROW_HEIGHT} points (${MAX_ROW_PIXELS} pixels); give it a height, or the row one`,
     );
   }
-  const points = Math.round((pixels + 2 * IMAGE_INSET) * POINTS_PER_PIXEL * 100) / 100;
+  const points = Math.round(pixels * POINTS_PER_PIXEL * 100) / 100;
   return points < DEFAULT_ROW_HEIGHT ? DEFAULT_ROW_HEIGHT : points;
 }
 
@@ -789,7 +791,7 @@ function renderImage(
     throw new XlsxMiniError(
       "INVALID_IMAGE",
       path,
-      "An image cell holds the image, its width and height and a style, not a value, formula or link",
+      "An image cell holds the image, its width, height and padding and a style, not a value, formula or link",
     );
   }
   const records = context.records;
@@ -800,20 +802,25 @@ function renderImage(
     media,
     cell.width,
     cell.height,
+    cell.padding === undefined ? IMAGE_INSET : cell.padding,
     path,
     records.inHiddenRow || records.hiddenColumns[column] === true,
   );
+  // What the row and the column need: the picture and the space on both sides of it.
+  const around = 2 * (cell.padding === undefined ? IMAGE_INSET : cell.padding);
+  const tall = size.height + around;
+  const wide = size.width + (cell.padding === undefined ? UNPADDED_COLUMN_PIXELS : around);
   if (records.imageRow !== rowIndex) {
     records.imageRow = rowIndex;
     records.rowImagePixels = 0;
   }
-  if (size.height > records.rowImagePixels) {
-    records.rowImagePixels = size.height;
+  if (tall > records.rowImagePixels) {
+    records.rowImagePixels = tall;
     records.rowTallestColumn = column;
   }
   // Cells are visited left to right, so the latest picture is the rightmost.
   records.rowImageColumn = column;
-  if (size.width > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = size.width;
+  if (wide > (records.imagePixels[column] ?? 0)) records.imagePixels[column] = wide;
   if (cellStyle === undefined) return "";
   const style = styleAttribute(cellStyle, columnStyle, GENERAL, column, rowIndex, context);
   return style.length === 0 ? "" : `<c r="${reference}"${style}/>`;

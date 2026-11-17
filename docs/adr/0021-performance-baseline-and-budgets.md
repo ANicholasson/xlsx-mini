@@ -130,6 +130,15 @@ The benchmark report carries the gzipped size of both bundles for the pull reque
 
 Row objects (ADR 0027) cost about 400 bytes: the second row loop, the merge of a row style over a column's, and three error messages. They buy a style and a height on the row, the most asked-for thing this writer lacked. The functions newer than Excel 2007 (ADR 0023) had taken 1 185 bytes of the first budget's room before them. The new budgets are again round figures the README can state, a kilobyte apart from the old, with room for the hidden rows and the sheet view that are planned and for the four percent by which the badge's minifier reads above this one.
 
+### Raised for image padding, 2026-11-16
+
+| Bundle            | Before padding |  With it | Budget, before | Budget, now |
+| ----------------- | -------------: | -------: | -------------: | ----------: |
+| `writeXlsx` alone |       18 582 B | 18 683 B |       19 000 B |    19 000 B |
+| Every export      |       20 908 B | 21 003 B |       21 000 B |    22 000 B |
+
+Padding on an image cell (ADR 0031) costs about 100 bytes: one more checked property, the room a row and a column need with it, and a clause in two error messages. It passes the budget for every export by three bytes, because hidden rows, columns and sheets (ADR 0028) and the sheet view (ADR 0029) had taken about 580 of the room left for them. That budget goes up by a kilobyte to the next round figure; the budget for `writeXlsx` alone still holds and stays.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.

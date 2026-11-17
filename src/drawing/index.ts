@@ -4,7 +4,7 @@ import { XML_DECLARATION } from "../xml/index.js";
 
 /** Excel's 96 dpi: one pixel in English Metric Units. */
 const EMU_PER_PIXEL = 9525;
-/** The gap between a picture and its cell's top-left corner, in pixels. */
+/** The gap between a picture without a padding and its cell's top-left corner, in pixels. */
 export const IMAGE_INSET = 2;
 const MAX_IMAGE_PIXELS = 100_000;
 const RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -127,6 +127,8 @@ interface Anchor {
   /** The one-based relationship number in the drawing's relationships part. */
   readonly rId: number;
   readonly size: PictureSize;
+  /** The gap between the picture and its cell's top-left corner, in pixels. */
+  readonly inset: number;
   /** True for a picture in a hidden row or column, which is anchored so that it folds away with it. */
   readonly folds: boolean;
 }
@@ -138,8 +140,9 @@ interface Anchor {
 export interface SheetDrawing {
   /**
    * Anchors the registered image at a zero-based column and row, at the size requested or the
-   * image's own, one given dimension scaling the other. Returns the size drawn, so the row and the
-   * column can make room for it. `folds` says the cell's row or column is hidden.
+   * image's own, one given dimension scaling the other, `inset` pixels inside the cell's top-left
+   * corner. Returns the size drawn, so the row and the column can make room for it. `folds` says
+   * the cell's row or column is hidden.
    */
   add(
     column: number,
@@ -147,6 +150,7 @@ export interface SheetDrawing {
     media: Media,
     width: number | undefined,
     height: number | undefined,
+    inset: number,
     path: string,
     folds: boolean,
   ): PictureSize;
@@ -158,19 +162,20 @@ export interface SheetDrawing {
   relationships(): string;
 }
 
-/** A requested dimension in pixels: a positive finite number, or an error at the property. */
+/** A requested dimension in pixels: a finite number above 0, or from 0 for a padding; or an error at the property. */
 function dimension(value: unknown, path: string, name: string): number | undefined {
   if (value === undefined) return undefined;
+  const padding = name === "padding";
   if (
     typeof value !== "number" ||
-    !(value > 0) ||
+    !(padding ? value >= 0 : value > 0) ||
     !Number.isFinite(value) ||
     value > MAX_IMAGE_PIXELS
   ) {
     throw new XlsxMiniError(
       "INVALID_IMAGE",
       `${path}.${name}`,
-      `An image ${name} is a number of pixels from above 0 to ${MAX_IMAGE_PIXELS}, not ${describeValue(value)}`,
+      `An image ${name} is a number of pixels from ${padding ? "" : "above "}0 to ${MAX_IMAGE_PIXELS}, not ${describeValue(value)}`,
     );
   }
   return value;
@@ -183,9 +188,10 @@ export function createSheetDrawing(): SheetDrawing {
   const relationships = new Map<number, number>();
   const self: SheetDrawing = {
     /** Resolves the drawn size from the request and the image, then records the anchor. */
-    add(column, rowIndex, media, width, height, path, folds) {
+    add(column, rowIndex, media, width, height, inset, path, folds) {
       const w = dimension(width, path, "width");
       const h = dimension(height, path, "height");
+      dimension(inset, path, "padding");
       const size: PictureSize =
         w === undefined && h === undefined
           ? { width: media.width, height: media.height }
@@ -206,7 +212,7 @@ export function createSheetDrawing(): SheetDrawing {
         rId = relationships.size + 1;
         relationships.set(media.id, rId);
       }
-      anchors.push({ column, rowIndex, rId, size, folds });
+      anchors.push({ column, rowIndex, rId, size, inset, folds });
       return size;
     },
     get hasImages() {
@@ -219,12 +225,12 @@ export function createSheetDrawing(): SheetDrawing {
      * that ends in its own cell and is sized with it: nothing while hidden, itself when shown.
      */
     render() {
-      const inset = IMAGE_INSET * EMU_PER_PIXEL;
       let xml = `${XML_DECLARATION}<xdr:wsDr xmlns:xdr="${DRAWING_NAMESPACE}" xmlns:a="${DRAWING_MAIN_NAMESPACE}" xmlns:r="${OFFICE_RELATIONSHIPS_NAMESPACE}">`;
       for (let i = 0; i < anchors.length; i++) {
         const anchor = anchors[i]!;
         const cx = Math.round(anchor.size.width * EMU_PER_PIXEL);
         const cy = Math.round(anchor.size.height * EMU_PER_PIXEL);
+        const inset = Math.round(anchor.inset * EMU_PER_PIXEL);
         const cell = (x: number, y: number): string =>
           `<xdr:col>${anchor.column}</xdr:col><xdr:colOff>${x}</xdr:colOff><xdr:row>${anchor.rowIndex}</xdr:row><xdr:rowOff>${y}</xdr:rowOff>`;
         const tag = anchor.folds ? "twoCellAnchor" : "oneCellAnchor";

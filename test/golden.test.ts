@@ -14,6 +14,7 @@ import {
   hiddenWorkbook,
   sheetViewWorkbook,
   hyperlinksWorkbook,
+  imagePaddingWorkbook,
   imagesWorkbook,
   minimalWorkbook,
   multiSheetWorkbook,
@@ -588,6 +589,36 @@ describe("images workbook (golden)", () => {
     expect(readPart(bytes, "xl/worksheets/_rels/sheet1.xml.rels")).toContain(
       'Target="../drawings/drawing1.xml"',
     );
+  });
+});
+
+describe("image padding workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("image-padding.xlsx", imagePaddingWorkbook);
+  });
+
+  it("sizes rows and columns to a picture and its padding and anchors the picture its padding inside the cell", async () => {
+    const bytes = await writeXlsx(imagePaddingWorkbook, STORE);
+    const sheet = readPart(bytes, "xl/worksheets/sheet1.xml");
+    // Column B is 90 pixels of picture and 10 on each side, column C the 50 of a picture without padding.
+    expect(sheet).toContain(
+      '<col min="2" max="2" width="15.71" customWidth="1"/><col min="3" max="3" width="7.14" customWidth="1"/><col min="4" max="4" width="20" customWidth="1"/></cols>',
+    );
+    expect(sheet.match(/<row r="\d" ht="37.5" customHeight="1">/g)).toHaveLength(3);
+    expect(sheet).toContain('<row r="5" ht="60" customHeight="1">');
+    expect(sheet).toContain('<row r="6" ht="25.5" customHeight="1">');
+    const drawing = readPart(bytes, "xl/drawings/drawing1.xml");
+    expect(drawing.match(/<xdr:oneCellAnchor>/g)).toHaveLength(11);
+    for (const [column, offset, count] of [
+      [1, 95250, 4],
+      [2, 0, 3],
+      [3, 142875, 3],
+      [1, 19050, 1],
+    ] as const) {
+      expect(
+        drawing.split(`<xdr:col>${column}</xdr:col><xdr:colOff>${offset}</xdr:colOff><xdr:row>`),
+      ).toHaveLength(count + 1);
+    }
   });
 });
 

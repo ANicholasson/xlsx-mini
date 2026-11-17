@@ -30,6 +30,7 @@ const ROWS: Readonly<Record<string, string>> = {
   "row-styles.xlsx": "Row styles",
   "hidden.xlsx": "Hidden rows, columns and sheets",
   "sheet-view.xlsx": "Gridlines, zoom, right-to-left",
+  "image-padding.xlsx": "Image padding",
 };
 
 describe("the README's compatibility table", () => {

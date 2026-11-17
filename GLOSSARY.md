@@ -38,6 +38,10 @@ A vertical position across every row, named by letters, carrying a width and a d
 A cell holding a PNG, anchored to the cell at its pixel size and moving with it; the row grows to it, and so does a column without a numeric width. In a hidden row or column it folds away with it.
 _Avoid_: picture, drawing, embedded image
 
+**Padding**:
+The space between the picture of an image cell and each edge of the cell, in pixels. The row grows by it, and so does a column without a numeric width.
+_Avoid_: margin, inset, spacing
+
 **Auto width**:
 A column width estimated from the column's widest cell, character by character against Calibri 11, numbers and dates by their format; from the first 1 000 rows when streaming.
 _Avoid_: autofit
