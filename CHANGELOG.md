@@ -1,5 +1,15 @@
 # xlsx-mini
 
+## 0.9.0
+
+### Minor Changes
+
+- 2a463b2: An image cell takes `padding`: the space between the picture and each edge of its cell, in pixels. `{ image, height: 40, padding: 10 }` gives a row of 60 pixels with the picture in its middle, so one picture is 20 pixels from the next down a column; a column without a numeric width grows the same way. Without `padding` a picture is placed as before, two pixels inside the top-left corner of its cell.
+
+### Patch Changes
+
+- 2bb5dc2: Row heights show as written in Excel for Mac. A sheet without a frozen pane or a `view` was written without a sheet view, and Excel for Mac then showed every row that has a height a third taller than asked: 40 points for 30. A picture kept its size, so it no longer filled its row. Every sheet now carries a sheet view. Numbers and LibreOffice showed the heights right before and still do.
+
 ## 0.8.0
 
 ### Minor Changes
