@@ -334,7 +334,16 @@ describe("renderWorksheet", () => {
         '<pane xSplit="1" ySplit="3" topLeftCell="B4" activePane="bottomRight" state="frozen"/>',
       );
       expect(render({ name: "S", freeze: { rows: 0, columns: 0 }, rows: [[1]] })).not.toContain(
-        "<sheetViews>",
+        "<pane",
+      );
+    });
+
+    it("gives every sheet a sheet view, so Excel for Mac shows a row at the height written", () => {
+      expect(render({ name: "S", rowHeights: { 1: 30 }, rows: [[1]] })).toContain(
+        '<dimension ref="A1:A1"/><sheetViews><sheetView workbookViewId="0"/></sheetViews><sheetData>',
+      );
+      expect(render({ name: "S", rows: [] })).toContain(
+        '<sheetViews><sheetView workbookViewId="0"/></sheetViews>',
       );
     });
 
@@ -349,9 +358,11 @@ describe("renderWorksheet", () => {
       expect(render({ name: "S", view: { zoom: 400 }, rows: [[1]] })).toContain('zoomScale="400"');
     });
 
-    it("writes no view for the settings every application starts from", () => {
+    it("writes the bare view for the settings every application starts from", () => {
       for (const view of [{}, { gridlines: true, rightToLeft: false, zoom: 100 }]) {
-        expect(render({ name: "S", view, rows: [[1]] })).not.toContain("<sheetViews>");
+        expect(render({ name: "S", view, rows: [[1]] })).toContain(
+          '<sheetViews><sheetView workbookViewId="0"/></sheetViews>',
+        );
       }
     });
 

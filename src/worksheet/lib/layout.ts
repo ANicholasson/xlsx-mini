@@ -157,14 +157,13 @@ function viewAttributes(sheet: StreamedSheet, sheetIndex: number): string {
 }
 
 /**
- * The `<sheetViews>` element: how the sheet is shown and its frozen pane, or an empty string when
- * the sheet asks for neither.
+ * The `<sheetViews>` element: how the sheet is shown and its frozen pane. Every sheet carries one,
+ * also a sheet that asks for neither: without it Excel for Mac shows each row a third taller than
+ * its written height.
  */
 export function renderView(sheet: StreamedSheet, sheetIndex: number): string {
-  const attributes = viewAttributes(sheet, sheetIndex);
+  const open = `<sheetViews><sheetView${viewAttributes(sheet, sheetIndex)} workbookViewId="0"`;
   const pane = renderPane(sheet, sheetIndex);
-  if (attributes.length === 0 && pane.length === 0) return "";
-  const open = `<sheetViews><sheetView${attributes} workbookViewId="0"`;
   return pane.length === 0 ? `${open}/></sheetViews>` : `${open}>${pane}</sheetView></sheetViews>`;
 }
 

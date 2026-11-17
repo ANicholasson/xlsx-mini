@@ -12,6 +12,8 @@ The three settings are attributes of the one `<sheetView>` element a worksheet p
 
 A sheet without a view, or with the defaults spelled out, writes the bytes it wrote before.
 
+Update: every sheet now carries the bare sheet view, also one without a view or a frozen pane (ADR 0030). The settings and the pane are written into it as described here.
+
 ## A view is where the sheet starts
 
 These are the state a sheet opens in, and the reader changes them freely. Each application keeps the settings it has a place for: the compatibility log for `sheet-view.xlsx` records which. Numbers has one zoom per window and ignores the file's, and Google Sheets opens at 100 % as well; whether `zoomScaleNormal` would change that in Sheets was not tried.
