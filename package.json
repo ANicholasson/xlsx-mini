@@ -1,6 +1,6 @@
 {
   "name": "xlsx-mini",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Zero-dependency .xlsx writer for TypeScript that runs everywhere.",
   "keywords": [
     "excel",
