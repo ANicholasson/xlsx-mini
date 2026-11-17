@@ -137,6 +137,67 @@ describe("image cells", () => {
     expect(plain.xml).toContain('<col min="1" max="1" width="255" customWidth="1"/>');
   });
 
+  it("grows the row and the column to a picture and its padding, so the picture sits in the middle of its row", () => {
+    const { xml, drawing } = render({
+      name: "S",
+      rows: [[{ image: stripes, height: 30, padding: 10 }], [{ image: badge, padding: 0 }]],
+    });
+    // 90 by 30 pixels and 10 on every side: 110 pixels across, 50 down.
+    expect(xml).toContain('<cols><col min="1" max="1" width="15.71" customWidth="1"/></cols>');
+    expect(xml).toContain('<row r="1" ht="37.5" customHeight="1"/>');
+    expect(drawing?.drawing).toContain(
+      '<xdr:from><xdr:col>0</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>0</xdr:row><xdr:rowOff>95250</xdr:rowOff></xdr:from><xdr:ext cx="857250" cy="285750"/>',
+    );
+    // No padding at all: the row is the picture's height and the picture starts at the corner.
+    expect(xml).toContain('<row r="2" ht="36" customHeight="1"/>');
+    expect(drawing?.drawing).toContain(
+      "<xdr:colOff>0</xdr:colOff><xdr:row>1</xdr:row><xdr:rowOff>0</xdr:rowOff>",
+    );
+    const exact = render({ name: "S", rows: [[{ image: badge, padding: 0 }]] });
+    expect(exact.xml).toContain('<col min="1" max="1" width="6.86" customWidth="1"/>');
+  });
+
+  it("sizes a row for the picture that needs the most with its padding, and keeps a caller's height and width", () => {
+    const { xml, drawing } = render({
+      name: "S",
+      columns: [{ width: 30 }],
+      rows: [
+        [{ image: stripes, padding: 10 }, { image: badge }],
+        [
+          { image: stripes, height: 20 },
+          { image: badge, height: 20, padding: 20 },
+        ],
+        { cells: [{ image: stripes, padding: 10 }], height: 100 },
+      ],
+    });
+    expect(xml).toContain('<row r="1" ht="45" customHeight="1"/>');
+    expect(xml).toContain('<row r="2" ht="45" customHeight="1"/>');
+    expect(xml).toContain('<row r="3" ht="100" customHeight="1"/>');
+    // Column A keeps its width; column B takes the padded badge, 20 and 40 pixels, over the plain one's 48 and 12.
+    expect(xml).toContain(
+      '<cols><col min="1" max="1" width="30" customWidth="1"/><col min="2" max="2" width="8.57" customWidth="1"/></cols>',
+    );
+    expect(drawing?.drawing).toContain(
+      "<xdr:col>0</xdr:col><xdr:colOff>95250</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>95250</xdr:rowOff>",
+    );
+  });
+
+  it("refuses a picture whose padding takes it past what a row can hold, and a padding that is not a number from 0", () => {
+    const fits = render({ name: "S", rows: [[{ image: stripes, height: 345, padding: 100 }]] });
+    expect(fits.xml).toContain('<row r="1" ht="408.75" customHeight="1"/>');
+    const error = failure({
+      name: "S",
+      rows: [[{ image: stripes, height: 346, padding: 100 }]],
+    });
+    expect(error).toMatchObject({ code: "INVALID_IMAGE", path: "sheets[0].rows[0][0]" });
+    expect(error.message).toContain("546 pixels");
+    for (const padding of [-1, null, "10", Number.NaN]) {
+      expect(
+        failure({ name: "S", rows: [[{ image: badge, padding: padding as never }]] }),
+      ).toMatchObject({ code: "INVALID_IMAGE", path: "sheets[0].rows[0][0].padding" });
+    }
+  });
+
   it("writes one media part per distinct image and numbers the drawing's relationships by first use", () => {
     const media = createMediaTable();
     const rendered = renderWorksheet(

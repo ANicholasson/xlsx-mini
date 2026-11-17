@@ -132,11 +132,20 @@ export interface SheetLinkCell {
  *
  * @example
  * const logo: ImageCell = { image: pngBytes, height: 40 };
+ * // 10 pixels of space on every side: a row of 60 pixels with the picture in its middle.
+ * const spaced: ImageCell = { image: pngBytes, height: 40, padding: 10 };
  */
 export interface ImageCell {
   readonly image: Uint8Array;
   readonly width?: number;
   readonly height?: number;
+  /**
+   * The space between the picture and each edge of its cell, in pixels. The row grows to the
+   * picture and its padding, so the picture sits in the middle of its row; a column without a
+   * numeric width is at least that wide. Left out, the picture sits two pixels inside the cell's
+   * top-left corner.
+   */
+  readonly padding?: number;
   readonly style?: CellStyle;
 }
 

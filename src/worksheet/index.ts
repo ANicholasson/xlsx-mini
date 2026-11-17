@@ -118,7 +118,7 @@ interface Frame {
   readonly drawing: () => SheetDrawingParts | undefined;
   /**
    * Everything before the rows; the dimension only when the range is known. `imagePixels` is the
-   * widest picture per column that may widen a column: all of them on the byte path, those of the
+   * room per column for the pictures that may widen a column: all of them on the byte path, those of the
    * sample when streaming under auto width, none when the head goes out before the rows.
    */
   readonly head: (

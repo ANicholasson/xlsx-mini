@@ -21,6 +21,7 @@ import {
   hiddenWorkbook,
   sheetViewWorkbook,
   hyperlinksWorkbook,
+  imagePaddingWorkbook,
   imagesWorkbook,
   layoutWorkbook,
   minimalWorkbook,
@@ -65,6 +66,7 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["print", printWorkbook, {}],
   ["auto-width", autoWidthWorkbook, {}],
   ["images", imagesWorkbook, {}],
+  ["image padding", imagePaddingWorkbook, {}],
 ];
 
 describe("streamXlsx", () => {

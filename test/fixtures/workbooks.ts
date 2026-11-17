@@ -596,6 +596,34 @@ export const imagesWorkbook: Workbook = {
   ],
 };
 
+/** The workbook behind image-padding.xlsx. Change it only together with the fixture. */
+export const imagePaddingWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Padding",
+      autoWidth: true,
+      columns: [undefined, undefined, undefined, { width: 20 }],
+      rows: [
+        [
+          { value: "Item", style: header },
+          { value: "Padded", style: header },
+          { value: "None", style: header },
+          { value: "Width set", style: header },
+        ],
+        // Three rows of 50 pixels: 10 above and below a picture of 30, so 20 between one and the next.
+        ...["A-1", "A-2", "A-3"].map((item) => [
+          item,
+          { image: stripesPng, height: 30, padding: 10 },
+          { image: badgePng, height: 50, padding: 0 },
+          { image: stripesPng, height: 20, padding: 15 },
+        ]),
+        { cells: ["Row height set", { image: stripesPng, height: 30, padding: 10 }], height: 60 },
+        ["No padding", { image: stripesPng, height: 30 }],
+      ],
+    },
+  ],
+};
+
 export const printWorkbook: Workbook = {
   sheets: [
     {

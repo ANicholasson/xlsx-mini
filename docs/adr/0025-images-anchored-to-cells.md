@@ -45,3 +45,5 @@ A `drawing` feature slice, which the dependency rules have reserved since ADR 00
 - Declaring the `png` default and drawing overrides in every streamed package up front: an override for a part that does not exist is a malformed package, and a default nobody uses is a lie about every file.
 
 Update: a picture in a hidden row or column takes a two-cell anchor inside its own cell, so that it folds away with it (ADR 0028). Every other picture keeps the one-cell anchor.
+
+Update: an image cell takes `padding`, the space between the picture and each edge of its cell; the two-pixel inset and the column's spare room described here are what a cell without it keeps (ADR 0031).

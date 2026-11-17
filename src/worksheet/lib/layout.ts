@@ -25,8 +25,8 @@ export interface CollectedColumns {
   /** Whether each listed column is hidden. */
   readonly hidden: readonly boolean[];
   /**
-   * The `<cols>` element from the numeric widths, the measured ones and the widest picture per
-   * column in pixels, or an empty string. A numeric width wins; a picture widens any other column.
+   * The `<cols>` element from the numeric widths, the measured ones and the pixels each column
+   * needs for its widest picture, or an empty string. A numeric width wins; a picture widens any other column.
    * A hidden column is written also without a width, and keeps the width it has.
    */
   readonly cols: (
@@ -99,7 +99,7 @@ export function collectColumns(
         let width = fixed[i] ?? measuredWidths?.[i];
         const pixels = imagePixels[i];
         if (fixed[i] === undefined && pixels !== undefined && pixels > 0) {
-          const forImage = Math.min(MAX_COLUMN_WIDTH, Math.round(((pixels + 12) / 7) * 100) / 100);
+          const forImage = Math.min(MAX_COLUMN_WIDTH, Math.round((pixels / 7) * 100) / 100);
           if (width === undefined || forImage > width) width = forImage;
         }
         const isHidden = hidden[i] === true;
