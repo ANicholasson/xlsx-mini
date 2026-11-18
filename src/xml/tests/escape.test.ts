@@ -18,10 +18,14 @@ describe("escapeXml", () => {
     expect(escapeXml("")).toBe("");
   });
 
-  it("drops characters XML 1.0 cannot carry but keeps tab, newline and carriage return", () => {
+  it("drops characters XML 1.0 cannot carry but keeps tab and newline", () => {
     expect(escapeXml("a\u0000b\u0007c\u001fd")).toBe("abcd");
-    expect(escapeXml("line1\nline2\ttab\r")).toBe("line1\nline2\ttab\r");
+    expect(escapeXml("line1\nline2\ttab")).toBe("line1\nline2\ttab");
     expect(escapeXml("x￾y￿z")).toBe("xyz");
+  });
+
+  it("writes a carriage return as a character reference, which XML does not read as a line feed", () => {
+    expect(escapeXml("a\rb\r\nc\r")).toBe("a&#13;b&#13;\nc&#13;");
   });
 
   it("drops lone surrogates and keeps valid pairs", () => {
@@ -50,7 +54,8 @@ describe("escapeXml", () => {
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
-        .replaceAll("'", "&apos;");
+        .replaceAll("'", "&apos;")
+        .replaceAll("\r", "&#13;");
     };
     const anyCodeUnits = fc
       .array(fc.integer({ min: 0, max: 0xffff }), { maxLength: 40 })

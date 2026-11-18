@@ -90,6 +90,18 @@ describe("renderValidations", () => {
     expect(one({ range: "B2", list: ["a"], input: { title: "", message: "m" } })).toContain(
       'showInputMessage="1" prompt="m"',
     );
+    // Excel and LibreOffice read `_xHHHH_` in a message as the character with that code, and XML
+    // reads a carriage return written as itself as a space in an attribute.
+    expect(
+      one({
+        range: "B2",
+        list: ["a"],
+        input: { title: "_x0041_", message: "a\rb" },
+        error: { title: "_x0041_x0042_", message: "_xZZZZ_" },
+      }),
+    ).toContain(
+      'promptTitle="_x005F_x0041_" prompt="a&#13;b" showErrorMessage="1" errorTitle="_x005F_x0041__x0078_0042_" error="_xZZZZ_"',
+    );
   });
 
   it("reports what is wrong with a rule, at the property", () => {
