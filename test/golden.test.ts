@@ -25,7 +25,7 @@ import {
   ordersWorkbook,
   validationWorkbook,
 } from "./fixtures/workbooks.js";
-import { readText } from "./helpers/text.js";
+import { readTextAsExcel } from "./helpers/text.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -654,7 +654,7 @@ describe("escapes workbook (golden)", () => {
       Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === "string") : [],
     );
     const texts = (xml: string, element: RegExp) =>
-      [...xml.matchAll(element)].map((match) => readText(match[1]!));
+      [...xml.matchAll(element)].map((match) => readTextAsExcel(match[1]!));
     const items = /<t(?: xml:space="preserve")?>([^<]*)<\/t>/g;
     const cached = /<f>[^<]*<\/f><v>([^<]*)<\/v>/g;
 

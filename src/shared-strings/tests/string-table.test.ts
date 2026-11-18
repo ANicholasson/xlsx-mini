@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   textsToReadBack,
   keptByXml,
-  readText,
+  readTextAsExcel,
   readTextAsNumbers,
 } from "../../../test/helpers/text.js";
 import { createStringTable } from "../index.js";
@@ -13,7 +13,7 @@ function readBack(text: string): [string, string] {
   table.intern(text);
   const item = /<si><t(?: xml:space="preserve")?>([^<]*)<\/t><\/si>/.exec(table.render())?.[1];
   if (item === undefined) throw new Error("no string item rendered");
-  return [readText(item), readTextAsNumbers(item)];
+  return [readTextAsExcel(item), readTextAsNumbers(item)];
 }
 
 describe("string table", () => {
@@ -36,6 +36,12 @@ describe("string table", () => {
 
   it.each(textsToReadBack)("writes %j so that it reads back as written", (text) => {
     expect(readBack(text)).toEqual([text, text]);
+  });
+
+  it("looks for an escape in the text that XML keeps, not in the text given", () => {
+    const kept = "_x0041_";
+    expect(keptByXml("_x\u00000041_")).toBe(kept);
+    expect(readBack("_x\u00000041_")).toEqual([kept, kept]);
   });
 
   it("writes any text so that it reads back as written, less what XML cannot carry", () => {

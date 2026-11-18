@@ -46,7 +46,6 @@ const UNDERSCORE = 95;
  * @example escapeText("_x0041_ & co") // "__x0078_0041_ &amp; co"
  */
 export function escapeText(text: string): string {
-  // XML first: a character it drops could otherwise join the pieces of an escape.
   const xml = escapeXml(text);
   let out = "";
   let copiedUpTo = 0;
@@ -59,7 +58,6 @@ export function escapeText(text: string): string {
   return copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
 }
 
-/** True when the `_x` at `index` has four hexadecimal digits and an underscore after it. */
 function startsEscape(text: string, index: number): boolean {
   for (let offset = 2; offset < 6; offset++) {
     if (!isHexDigit(text.charCodeAt(index + offset))) return false;

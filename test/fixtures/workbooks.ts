@@ -654,10 +654,7 @@ export const printWorkbook: Workbook = {
   ],
 };
 
-/**
- * The workbook behind escapes.xlsx: text that looks like the format's `_xHHHH_` escape, and
- * carriage returns, which the applications read back as written only when the writer escapes them.
- */
+/** The workbook behind escapes.xlsx: text that looks like the format's `_xHHHH_` escape, carriage returns and a line feed, and a formula's cached text. */
 export const escapesWorkbook: Workbook = {
   sheets: [
     {

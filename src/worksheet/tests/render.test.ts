@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readText, textsToReadBack } from "../../../test/helpers/text.js";
+import { readTextAsExcel, textsToReadBack } from "../../../test/helpers/text.js";
 import { XlsxMiniError } from "../../errors/index.js";
 import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
@@ -92,7 +92,7 @@ describe("renderWorksheet", () => {
       );
       const inline = /<is><t(?: xml:space="preserve")?>([^<]*)<\/t><\/is>/.exec(xml)?.[1];
       const cached = /<f>A1<\/f><v>([^<]*)<\/v>/.exec(xml)?.[1];
-      expect([inline, cached].map((written) => readText(written ?? "not written"))).toEqual([
+      expect([inline, cached].map((written) => readTextAsExcel(written ?? "not written"))).toEqual([
         text,
         text,
       ]);

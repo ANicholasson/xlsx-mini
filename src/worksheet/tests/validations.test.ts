@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { readText } from "../../../test/helpers/text.js";
+import { readTextAsExcel } from "../../../test/helpers/text.js";
 import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
 import { createStyleTable } from "../../styles/index.js";
@@ -91,8 +91,9 @@ describe("renderValidations", () => {
     expect(one({ range: "B2", list: ["a"], input: { title: "", message: "m" } })).toContain(
       'showInputMessage="1" prompt="m"',
     );
-    // Excel and LibreOffice read `_xHHHH_` in a message as the character with that code, and XML
-    // reads a carriage return written as itself as a space in an attribute.
+  });
+
+  it("writes titles and messages that Excel reads back as written, carriage returns included", () => {
     const written = one({
       range: "B2",
       list: ["a"],
@@ -103,7 +104,7 @@ describe("renderValidations", () => {
     expect(
       Object.fromEntries(
         [...written.matchAll(/ (prompt|error)(Title)?="([^"]*)"/g)].map(
-          ([, name, title, value]) => [`${name}${title ?? ""}`, readText(value!)],
+          ([, name, title, value]) => [`${name}${title ?? ""}`, readTextAsExcel(value!)],
         ),
       ),
     ).toEqual({

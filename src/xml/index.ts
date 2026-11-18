@@ -80,7 +80,6 @@ function isPlainValid(code: number): boolean {
   return code < NOT_A_CHARACTER;
 }
 
-/** The reference for a character that needs one, an empty string for an invalid one, undefined to keep. */
 function replacementFor(code: number): string | undefined {
   switch (code) {
     case CARRIAGE_RETURN:

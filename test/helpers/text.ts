@@ -38,8 +38,7 @@ function decodeXml(xml: string): string {
     );
 }
 
-/** Element text as Excel and LibreOffice read it, decoded independently of the writer. */
-export function readText(xml: string): string {
+export function readTextAsExcel(xml: string): string {
   return decodeXml(xml).replace(/_x([\dA-Fa-f]{4})_/g, (_, code: string) =>
     String.fromCharCode(Number.parseInt(code, 16)),
   );
