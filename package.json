@@ -34,6 +34,10 @@
       "types": "./dist/browser.d.ts",
       "default": "./dist/browser.js"
     },
+    "./read": {
+      "types": "./dist/read.d.ts",
+      "default": "./dist/read.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {

@@ -1,12 +1,62 @@
 import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, dirname, join, posix } from "node:path";
+import { delimiter, dirname, join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import config from "../vite.config.ts";
 import { binary } from "./helpers/bin.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+function readJson(file: string): unknown {
+  return JSON.parse(readFileSync(join(root, file), "utf8"));
+}
+
+function readJsonc(file: string): unknown {
+  const text = readFileSync(join(root, file), "utf8");
+  return JSON.parse(text.replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[\]}])/g, "$1"));
+}
+
+const manifest = readJson("package.json") as {
+  exports: Record<string, string | { types: string; default: string }>;
+};
+
+const entries: [name: string, file: string][] = Object.entries(manifest.exports).flatMap(
+  ([subpath, target]) =>
+    typeof target === "string"
+      ? []
+      : [
+          [
+            `xlsx-mini${subpath.slice(1)}`,
+            target.default.replace(/^\.\/dist\/(.+)\.js$/, "src/$1.ts"),
+          ],
+        ],
+);
+
+describe("the entries", () => {
+  it("are the same in the manifest, the compiler's paths, the test alias and knip", () => {
+    const sorted = (pairs: string[][]) => pairs.map((pair) => pair.join(" -> ")).sort();
+    const tsconfig = readJson("tsconfig.json") as {
+      compilerOptions: { paths: Record<string, string[]> };
+    };
+    const paths = Object.entries(tsconfig.compilerOptions.paths).map(([name, files]) => [
+      name,
+      ...files.map((file) => posix.normalize(file)),
+    ]);
+    const alias = config.resolve?.alias as readonly { find: string; replacement: string }[];
+    const aliased = alias.map(({ find, replacement }) => [
+      find,
+      relative(root, replacement).replaceAll("\\", "/"),
+    ]);
+    const knip = readJsonc("knip.jsonc") as { entry: string[] };
+    const knipEntries = knip.entry.filter((entry) => /^src\/[^/*]+\.ts$/.test(entry));
+
+    expect(sorted(paths)).toEqual(sorted(entries));
+    expect(sorted(aliased)).toEqual(sorted(entries));
+    expect(knipEntries.sort()).toEqual(entries.map(([, file]) => file).sort());
+  });
+});
 
 /**
  * What the build emits is what the package carries under `dist/`. A file in it that names
@@ -41,9 +91,12 @@ describe("the built package", () => {
 
   afterAll(() => rmSync(dist, { recursive: true, force: true }));
 
-  it("has both entries, as code and as declarations", () => {
-    for (const name of ["index.js", "index.d.ts", "browser.js", "browser.d.ts"]) {
-      expect([...files.keys()]).toContain(name);
+  it("has every entry, as code and as declarations", () => {
+    for (const target of Object.values(manifest.exports)) {
+      if (typeof target === "string") continue;
+      for (const file of [target.default, target.types]) {
+        expect([...files.keys()]).toContain(file.replace(/^\.\/dist\//, ""));
+      }
     }
   });
 

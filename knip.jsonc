@@ -3,6 +3,7 @@
   "entry": [
     "src/index.ts",
     "src/browser.ts",
+    "src/read.ts",
     "src/**/tests/**/*.test.ts",
     "test/**/*.test.ts",
     "examples/snippets/*.ts",
