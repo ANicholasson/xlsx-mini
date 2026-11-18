@@ -11,6 +11,7 @@ import { readSideSources } from "./helpers/read-side.ts";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const PLANTED: Readonly<Record<string, readonly string[]>> = {
+  "src/index.ts": ["xlsx-mini/read"],
   "src/read.ts": ["./errors/read.ts", "./opc/read.ts"],
   "src/errors/read.ts": ["./index.ts"],
   "src/errors/index.ts": [],
@@ -38,8 +39,9 @@ describe("the boundary between the write side and the read side", () => {
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "xlsx-mini-boundaries-"));
-    cpSync(join(root, ".dependency-cruiser.cjs"), join(dir, ".dependency-cruiser.cjs"));
-    writeFileSync(join(dir, "tsconfig.json"), "{}\n");
+    for (const config of [".dependency-cruiser.cjs", "tsconfig.json"]) {
+      cpSync(join(root, config), join(dir, config));
+    }
     for (const [file, imports] of Object.entries(PLANTED)) {
       mkdirSync(dirname(join(dir, file)), { recursive: true });
       writeFileSync(
@@ -59,9 +61,10 @@ describe("the boundary between the write side and the read side", () => {
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-  it("refuses an import into the read side from a writer file, and allows tests and benchmarks", () => {
+  it("refuses an import into the read side from a writer file, by path or by the package's name, and allows tests and benchmarks", () => {
     expect(violations.map(({ rule, from, to }) => `${rule.name}: ${from} -> ${to}`).sort()).toEqual(
       [
+        "write-side-never-imports-read-side: src/index.ts -> src/read.ts",
         "write-side-never-imports-read-side: src/opc/index.ts -> src/opc/read.ts",
         "write-side-never-imports-read-side: src/opc/lib/zip.ts -> src/opc/read/part.ts",
         "write-side-never-imports-read-side: src/write-xlsx.ts -> src/errors/read.ts",
