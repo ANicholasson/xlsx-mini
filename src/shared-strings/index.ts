@@ -36,7 +36,6 @@ function renderItem(text: string): string {
 }
 
 const UNDERSCORE = 95;
-const LOWERCASE_X = 120;
 
 /**
  * Escapes text for XML and then for the format, whose readers take `_xHHHH_` for the character
@@ -51,17 +50,17 @@ export function escapeText(text: string): string {
   const xml = escapeXml(text);
   let out = "";
   let copiedUpTo = 0;
-  for (let index = 0; index < xml.length; index++) {
-    if (xml.charCodeAt(index) !== UNDERSCORE || !startsEscape(xml, index)) continue;
+  // The applications decode an escape with a lowercase `x` only.
+  for (let index = xml.indexOf("_x"); index !== -1; index = xml.indexOf("_x", index + 2)) {
+    if (!startsEscape(xml, index)) continue;
     out += `${xml.slice(copiedUpTo, index + 1)}_x0078_`;
     copiedUpTo = index + 2;
   }
   return copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
 }
 
-/** The applications decode an escape with a lowercase `x` only. */
+/** True when the `_x` at `index` has four hexadecimal digits and an underscore after it. */
 function startsEscape(text: string, index: number): boolean {
-  if (text.charCodeAt(index + 1) !== LOWERCASE_X) return false;
   for (let offset = 2; offset < 6; offset++) {
     if (!isHexDigit(text.charCodeAt(index + offset))) return false;
   }
