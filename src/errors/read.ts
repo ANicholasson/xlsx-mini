@@ -135,9 +135,12 @@ const DEFAULTS = {
 const STRUCTURE_SHARE = 1 / 8;
 
 /**
- * Brands a meter. A declared class emits no code. It is a class because TypeScript lets neither an
- * object literal write a class's private member nor a spread copy it, so a meter written out by hand
- * and a copy made by spread both fail to compile.
+ * Brands a meter. A declared class emits no code. It is a class because no object literal can write
+ * a class's private member and a spread drops it, so an object literal where a meter is expected
+ * does not compile, with a spread or without. A cast can still make one, and a copy made through a
+ * function compiles: `Object.assign`, `Object.create`, `structuredClone`, a generic helper that
+ * spreads. `test/boundaries.test.ts` fails on any of these in read-side code other than this file:
+ * a cast other than `as const`, an object spread or rest, and the three functions.
  */
 declare class Metered {
   private readonly metered: true;

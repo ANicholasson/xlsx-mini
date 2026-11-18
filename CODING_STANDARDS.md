@@ -24,7 +24,7 @@ The project has two error classes, one per direction, and neither direction thro
 
 ## Types
 
-Public contracts are interfaces so consumers can augment them. Discriminated unions over boolean flags. Inputs are `readonly`. Literal tables use `satisfies`. No enums, no classes except the two errors, no `any`; a `declare class` that only brands a type emits no code and does not count. A non-null assertion is acceptable only on an index the surrounding loop proves in range, with the proof in a comment.
+Public contracts are interfaces so consumers can augment them. Discriminated unions over boolean flags. Inputs are `readonly`. Literal tables use `satisfies`. No enums, no classes except the two errors, no `any`; a `declare class` that only brands a type emits no code and does not count. The reader's meters carry such a brand. It stops an object literal where a meter is expected, with a spread or without; it does not stop a cast or a copy made through a function. So read-side code casts nothing but `as const` and copies no object by spread, rest, `Object.assign`, `Object.create` or `structuredClone`, and `test/boundaries.test.ts` fails when it does, except in the file that builds the meters. A non-null assertion is acceptable only on an index the surrounding loop proves in range, with the proof in a comment.
 
 ## Tests
 
