@@ -72,7 +72,7 @@ export {
   type SheetFromObjectsOptions,
   sheetFromObjects,
 } from "./lib/from-objects.js";
-export { serialFromCivil, serialFromEpochMillis } from "./lib/serial.js";
+export { epochMillisFromSerial, serialFromCivil, serialFromEpochMillis } from "./lib/serial.js";
 
 /** What the workbook part needs to know about a rendered sheet. */
 interface WorksheetFacts {

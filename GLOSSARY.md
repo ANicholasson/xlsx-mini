@@ -121,6 +121,9 @@ The CRC and sizes of a streamed entry, written after its data because they are o
 Excel's number for a date and time: days since 1899-12-30, with the time of day as the fraction.
 _Avoid_: timestamp, epoch days
 
+**1904 date system**:
+The other day zero a workbook can declare, with `date1904` in its workbook part. Serial 0 is 1904-01-01, and no serial stands for 29 February 1900. The writer always uses the 1900 date system.
+
 **Repair dialog**:
 Excel's "We found a problem with some content" prompt. The failure this project exists to never cause.
 _Avoid_: corruption warning
