@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { type PackageSize, SIZE_BUDGET, measurePackage } from "../bench/size.ts";
 import { binary } from "./helpers/bin.js";
+import { readSideSources } from "./helpers/read-side.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -20,6 +21,12 @@ function writerDigests(size: PackageSize): Record<string, string> {
   };
 }
 
+function modules(dist: string): string[] {
+  return readdirSync(dist, { recursive: true, encoding: "utf8" })
+    .map((name) => name.replaceAll("\\", "/"))
+    .filter((name) => name.endsWith(".js"));
+}
+
 function eraseReadSide(dist: string): void {
   for (const entry of readdirSync(dist, { recursive: true, withFileTypes: true })) {
     const file = join(entry.parentPath, entry.name);
@@ -31,6 +38,7 @@ function eraseReadSide(dist: string): void {
 describe("bundle size", () => {
   let size: PackageSize;
   let erased: PackageSize;
+  let erasedModules: string[];
 
   beforeAll(async () => {
     // A build of its own, so that no other test's build is read half written.
@@ -45,7 +53,9 @@ describe("bundle size", () => {
         shell: tsc.shell,
       });
       size = await measurePackage(dist);
+      const built = modules(dist);
       eraseReadSide(dist);
+      erasedModules = built.filter((module) => !existsSync(join(dist, module))).sort();
       erased = await measurePackage(dist);
     } finally {
       rmSync(dist, { recursive: true, force: true });
@@ -73,6 +83,8 @@ describe("bundle size", () => {
   });
 
   it("bundles the writer to the same bytes with the read side erased from the build", () => {
+    const readSide = readSideSources(root).map((file) => file.replace(/^src\/(.+)\.ts$/, "$1.js"));
+    expect(erasedModules, "erased the read side's modules").toEqual(readSide);
     expect(erased.read).toBeUndefined();
     expect(writerDigests(erased)).toEqual(writerDigests(size));
   });
