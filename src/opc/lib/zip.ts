@@ -1,6 +1,16 @@
 import { XlsxMiniError } from "../../errors/index.js";
 import type { Compression } from "./compression.js";
 import { crc32 } from "./crc32.js";
+import {
+  CENTRAL_HEADER_SIGNATURE,
+  CENTRAL_HEADER_SIZE,
+  END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+  END_OF_CENTRAL_DIRECTORY_SIZE,
+  LOCAL_HEADER_SIGNATURE,
+  LOCAL_HEADER_SIZE,
+  MAX_32_BIT,
+  VERSION_2_0,
+} from "./zip-records.js";
 
 /** A file inside the package: its zip entry name (forward slashes, no leading slash) and bytes. */
 export interface PackagePart {
@@ -8,17 +18,9 @@ export interface PackagePart {
   readonly data: Uint8Array;
 }
 
-const LOCAL_HEADER_SIGNATURE = 0x04034b50;
-const CENTRAL_HEADER_SIGNATURE = 0x02014b50;
-const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
-const LOCAL_HEADER_SIZE = 30;
-const CENTRAL_HEADER_SIZE = 46;
-const END_OF_CENTRAL_DIRECTORY_SIZE = 22;
-const VERSION_2_0 = 20;
 /** 1980-01-01 00:00:00, the DOS epoch. Fixed so identical input gives identical bytes. */
 const DOS_TIME = 0x0000;
 const DOS_DATE = 0x0021;
-const MAX_32_BIT = 0xffffffff;
 
 const encoder = new TextEncoder();
 
