@@ -60,6 +60,7 @@
     "check:package": "pnpm run build && publint --strict && attw --pack . --profile esm-only",
     "verify": "vp check && pnpm run typecheck && pnpm run lint:boundaries && pnpm run knip && pnpm run test:coverage && pnpm run check:package",
     "fixtures:update": "UPDATE_FIXTURES=1 vp test run test/golden.test.ts",
+    "digests:update": "UPDATE_DIGESTS=1 vp test run test/bundle-size.test.ts",
     "validate": "XLSX_MINI_VALIDATE=1 vp test run test/validate",
     "changeset": "changeset",
     "version": "changeset version",

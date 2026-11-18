@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { type PackageSize, SIZE_BUDGET, measurePackage } from "../bench/size.ts";
@@ -9,8 +9,28 @@ import { binary } from "./helpers/bin.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
+const DIGESTS = join(root, "bench", "writer-digests.json");
+
+function writerDigests(size: PackageSize): Record<string, string> {
+  return {
+    writeXlsx: size.writeXlsx.digest,
+    streamXlsx: size.streamXlsx.digest,
+    everything: size.everything.digest,
+    browser: size.browser.digest,
+  };
+}
+
+function eraseReadSide(dist: string): void {
+  for (const entry of readdirSync(dist, { recursive: true, withFileTypes: true })) {
+    const file = join(entry.parentPath, entry.name);
+    const name = relative(dist, file).replaceAll("\\", "/");
+    if (/^read\.|^[^/]+\/read[./]/.test(name)) rmSync(file, { recursive: true, force: true });
+  }
+}
+
 describe("bundle size", () => {
   let size: PackageSize;
+  let erased: PackageSize;
 
   beforeAll(async () => {
     // A build of its own, so that no other test's build is read half written.
@@ -25,8 +45,13 @@ describe("bundle size", () => {
         shell: tsc.shell,
       });
       size = await measurePackage(dist);
+      eraseReadSide(dist);
+      erased = await measurePackage(dist);
     } finally {
       rmSync(dist, { recursive: true, force: true });
+    }
+    if (process.env["UPDATE_DIGESTS"] === "1") {
+      writeFileSync(DIGESTS, `${JSON.stringify(writerDigests(size), null, 2)}\n`);
     }
   });
 
@@ -38,9 +63,26 @@ describe("bundle size", () => {
     expect(size.everything.gzip).toBeLessThanOrEqual(SIZE_BUDGET.everything);
   });
 
+  it("keeps the reader inside its budget", () => {
+    expect(size.read?.gzip).toBeLessThanOrEqual(SIZE_BUDGET.read);
+  });
+
   it("leaves out of a bundle what the application does not import", () => {
     expect(size.writeXlsx.gzip).toBeLessThan(size.everything.gzip);
     expect(size.writeXlsx.minified).toBeLessThan(size.everything.minified);
+  });
+
+  it("bundles the writer to the same bytes with the read side erased from the build", () => {
+    expect(erased.read).toBeUndefined();
+    expect(writerDigests(erased)).toEqual(writerDigests(size));
+  });
+
+  it("bundles the writer to the bytes of its committed digests", () => {
+    const committed: unknown = JSON.parse(readFileSync(DIGESTS, "utf8"));
+    expect(
+      writerDigests(size),
+      "The writer's bytes changed. If the change means to, `pnpm digests:update` records it.",
+    ).toEqual(committed);
   });
 
   it("measures what a bundler does with the package: no module has side effects", () => {

@@ -94,25 +94,39 @@ export function describeSizeChange(baseBytes: number, headBytes: number): string
 
 const BUNDLES: readonly (readonly [keyof PackageSize, string])[] = [
   ["writeXlsx", "`writeXlsx` alone"],
+  ["streamXlsx", "`streamXlsx` alone"],
   ["everything", "Every export"],
+  ["browser", "`xlsx-mini/browser`"],
+  ["read", "`xlsx-mini/read`"],
 ];
 
-/** The size table: what each build adds to an application's bundle, minified and gzipped. */
+/**
+ * The size table: what each build adds to an application's bundle, minified and gzipped, and
+ * whether the bytes are the base's. A build from before the reader has no reader row.
+ */
 function renderSize(size: SizeResult, options: ReportOptions): string[] {
   const lines = [
     "### Bundle size",
     "",
     "Minified and gzipped, as a bundler ships it.",
     "",
-    `| Import | ${options.baseLabel} | ${options.headLabel} | Change |`,
-    "| --- | ---: | ---: | ---: |",
+    `| Import | ${options.baseLabel} | ${options.headLabel} | Change | Same bytes as ${options.baseLabel} |`,
+    "| --- | ---: | ---: | ---: | :---: |",
   ];
   for (const [bundle, title] of BUNDLES) {
-    const head = size.head[bundle].gzip;
-    const base = size.base?.[bundle].gzip;
-    lines.push(
-      `| ${title} | ${base === undefined ? "—" : kilobytes(base)} | ${kilobytes(head)} | ${base === undefined ? "—" : describeSizeChange(base, head)} |`,
-    );
+    const head = size.head[bundle];
+    const base = size.base?.[bundle];
+    if (head === undefined) continue;
+    const cells =
+      base === undefined
+        ? ["—", kilobytes(head.gzip), "—", "—"]
+        : [
+            kilobytes(base.gzip),
+            kilobytes(head.gzip),
+            describeSizeChange(base.gzip, head.gzip),
+            base.digest === head.digest ? "yes" : "no",
+          ];
+    lines.push(`| ${title} | ${cells.join(" | ")} |`);
   }
   lines.push("");
   return lines;
