@@ -1,6 +1,18 @@
 import { XlsxMiniError } from "../../errors/index.js";
 import type { StreamCompression } from "./compression.js";
 import { CRC32_INITIAL, crc32Finish, crc32Update } from "./crc32.js";
+import {
+  CENTRAL_HEADER_SIGNATURE,
+  CENTRAL_HEADER_SIZE,
+  DATA_DESCRIPTOR_SIGNATURE,
+  DATA_DESCRIPTOR_SIZE,
+  END_OF_CENTRAL_DIRECTORY_SIGNATURE,
+  END_OF_CENTRAL_DIRECTORY_SIZE,
+  LOCAL_HEADER_SIGNATURE,
+  LOCAL_HEADER_SIZE,
+  MAX_32_BIT,
+  VERSION_2_0,
+} from "./zip-records.js";
 
 /** A file inside a streamed package: its zip entry name and its bytes as they are produced. */
 export interface StreamedPart {
@@ -8,21 +20,11 @@ export interface StreamedPart {
   readonly body: ReadableStream<Uint8Array>;
 }
 
-const LOCAL_HEADER_SIGNATURE = 0x04034b50;
-const DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
-const CENTRAL_HEADER_SIGNATURE = 0x02014b50;
-const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
-const LOCAL_HEADER_SIZE = 30;
-const DATA_DESCRIPTOR_SIZE = 16;
-const CENTRAL_HEADER_SIZE = 46;
-const END_OF_CENTRAL_DIRECTORY_SIZE = 22;
-const VERSION_2_0 = 20;
 /** Bit 3: CRC and sizes follow the data in a descriptor. */
 const DESCRIPTOR_FLAG = 0x0008;
 /** 1980-01-01 00:00:00, the DOS epoch. Fixed so identical input gives identical bytes. */
 const DOS_TIME = 0x0000;
 const DOS_DATE = 0x0021;
-const MAX_32_BIT = 0xffffffff;
 
 const encoder = new TextEncoder();
 

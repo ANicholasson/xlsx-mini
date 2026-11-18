@@ -1,0 +1,10 @@
+export const LOCAL_HEADER_SIGNATURE = 0x04034b50;
+export const DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
+export const CENTRAL_HEADER_SIGNATURE = 0x02014b50;
+export const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+export const LOCAL_HEADER_SIZE = 30;
+export const DATA_DESCRIPTOR_SIZE = 16;
+export const CENTRAL_HEADER_SIZE = 46;
+export const END_OF_CENTRAL_DIRECTORY_SIZE = 22;
+export const VERSION_2_0 = 20;
+export const MAX_32_BIT = 0xffffffff;
