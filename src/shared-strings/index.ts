@@ -40,28 +40,21 @@ const LOWERCASE_X = 120;
 
 /**
  * Escapes text for XML and then for the format, whose readers take `_xHHHH_` for the character
- * with that code: an underscore that would start one is written `_x005F_`.
+ * with that code: in text that looks like one, the `x` is written `_x0078_`. Escaping the
+ * underscore as `_x005F_` instead reads wrong in Numbers after an `_x` that is not an escape,
+ * because Numbers takes that underscore as the end of the `_x` before it.
  *
- * @example escapeText("_x0041_ & co") // "_x005F_x0041_ &amp; co"
+ * @example escapeText("_x0041_ & co") // "__x0078_0041_ &amp; co"
  */
 export function escapeText(text: string): string {
   // XML first: a character it drops could otherwise join the pieces of an escape.
   const xml = escapeXml(text);
   let out = "";
   let copiedUpTo = 0;
-  let closing = -1;
   for (let index = 0; index < xml.length; index++) {
     if (xml.charCodeAt(index) !== UNDERSCORE || !startsEscape(xml, index)) continue;
-    if (index === closing) {
-      // Numbers reads `_x005F_xHHHH_` as one piece, this underscore included, so the escape that
-      // starts here keeps it and has its `x` escaped instead.
-      out += `${xml.slice(copiedUpTo, index + 1)}_x0078_`;
-      copiedUpTo = index + 2;
-    } else {
-      out += `${xml.slice(copiedUpTo, index)}_x005F_`;
-      copiedUpTo = index + 1;
-      closing = index + 6;
-    }
+    out += `${xml.slice(copiedUpTo, index + 1)}_x0078_`;
+    copiedUpTo = index + 2;
   }
   return copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
 }
