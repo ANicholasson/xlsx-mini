@@ -673,6 +673,7 @@ export const escapesWorkbook: Workbook = {
         ["Two digits", "_x41_"],
         ["A capital X", "_X0041_"],
         ["Two escapes that share an underscore", "_x0041_x0042_"],
+        ["An escape after an _x that is not one", "_x_x0041_"],
         ["An escape closed by a carriage return", "_x0041\r"],
         ["A carriage return", "a\rb"],
         ["A carriage return and a line feed", "a\r\nb"],
