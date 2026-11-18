@@ -31,6 +31,50 @@ export function createStringTable(): StringTable {
 
 function renderItem(text: string): string {
   return needsSpacePreserve(text)
-    ? `<si><t xml:space="preserve">${escapeXml(text)}</t></si>`
-    : `<si><t>${escapeXml(text)}</t></si>`;
+    ? `<si><t xml:space="preserve">${escapeText(text)}</t></si>`
+    : `<si><t>${escapeText(text)}</t></si>`;
+}
+
+const UNDERSCORE = 95;
+const LOWERCASE_X = 120;
+
+/**
+ * Escapes text for XML and then for the format, whose readers take `_xHHHH_` for the character
+ * with that code: an underscore that would start one is written `_x005F_`.
+ *
+ * @example escapeText("_x0041_ & co") // "_x005F_x0041_ &amp; co"
+ */
+export function escapeText(text: string): string {
+  // XML first: a character it drops could otherwise join the pieces of an escape.
+  const xml = escapeXml(text);
+  let out = "";
+  let copiedUpTo = 0;
+  let closing = -1;
+  for (let index = 0; index < xml.length; index++) {
+    if (xml.charCodeAt(index) !== UNDERSCORE || !startsEscape(xml, index)) continue;
+    if (index === closing) {
+      // Numbers reads `_x005F_xHHHH_` as one piece, this underscore included, so the escape that
+      // starts here keeps it and has its `x` escaped instead.
+      out += `${xml.slice(copiedUpTo, index + 1)}_x0078_`;
+      copiedUpTo = index + 2;
+    } else {
+      out += `${xml.slice(copiedUpTo, index)}_x005F_`;
+      copiedUpTo = index + 1;
+      closing = index + 6;
+    }
+  }
+  return copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
+}
+
+/** The applications decode an escape with a lowercase `x` only. */
+function startsEscape(text: string, index: number): boolean {
+  if (text.charCodeAt(index + 1) !== LOWERCASE_X) return false;
+  for (let offset = 2; offset < 6; offset++) {
+    if (!isHexDigit(text.charCodeAt(index + offset))) return false;
+  }
+  return text.charCodeAt(index + 6) === UNDERSCORE;
+}
+
+function isHexDigit(code: number): boolean {
+  return (code >= 48 && code <= 57) || (code >= 65 && code <= 70) || (code >= 97 && code <= 102);
 }

@@ -16,19 +16,20 @@ const LOW_SURROGATE_END = 0xdfff;
 const NOT_A_CHARACTER = 0xfffe;
 
 /**
- * Makes text safe to place in XML: escapes the five reserved characters and drops what XML 1.0
- * cannot carry (control characters other than tab, newline and carriage return, the two
+ * Makes text safe to place in XML: escapes the five reserved characters, writes a carriage return
+ * as a character reference because XML reads one written as itself as a line feed, and drops what
+ * XML 1.0 cannot carry (control characters other than tab, newline and carriage return, the two
  * non-characters U+FFFE and U+FFFF, and lone surrogates). Scans once and returns the input
  * untouched when nothing needs changing, which is the common case for cell text.
  *
- * @example escapeXml("Tom & Jerry\u0000") // "Tom &amp; Jerry"
+ * @example escapeXml("Tom & Jerry\r\u0000") // "Tom &amp; Jerry&#13;"
  */
 export function escapeXml(text: string): string {
   const length = text.length;
   let index = 0;
   for (; index < length; index++) {
     const code = text.charCodeAt(index);
-    if (isReserved(code) || !isPlainValid(code)) break;
+    if (needsReference(code) || !isPlainValid(code)) break;
   }
   if (index === length) return text;
 
@@ -61,13 +62,14 @@ export function needsSpacePreserve(text: string): boolean {
   return isWhitespace(text.charCodeAt(0)) || isWhitespace(text.charCodeAt(text.length - 1));
 }
 
-function isReserved(code: number): boolean {
+function needsReference(code: number): boolean {
   return (
     code === AMPERSAND ||
     code === LESS_THAN ||
     code === GREATER_THAN ||
     code === DOUBLE_QUOTE ||
-    code === APOSTROPHE
+    code === APOSTROPHE ||
+    code === CARRIAGE_RETURN
   );
 }
 
@@ -78,9 +80,11 @@ function isPlainValid(code: number): boolean {
   return code < NOT_A_CHARACTER;
 }
 
-/** The escape for a reserved character, an empty string for an invalid one, undefined to keep. */
+/** The reference for a character that needs one, an empty string for an invalid one, undefined to keep. */
 function replacementFor(code: number): string | undefined {
   switch (code) {
+    case CARRIAGE_RETURN:
+      return "&#13;";
     case AMPERSAND:
       return "&amp;";
     case LESS_THAN:
