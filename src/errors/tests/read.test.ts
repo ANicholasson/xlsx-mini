@@ -87,8 +87,31 @@ describe("a meter", () => {
     expect(() => parts.charge(1)).toThrow(exceeded("parts"));
   });
 
-  it("never fits NaN", () => {
-    expect(() => resolveLimits(undefined).book.parts.charge(Number.NaN)).toThrow(exceeded("parts"));
+  it("never fits NaN or a negative amount, and takes or gives back nothing for one", () => {
+    const limits = resolveLimits({
+      parts: 10,
+      inflatedBytes: 80,
+      sharedStringBytes: 75,
+      rowCharacters: 10,
+    });
+    const { parts, structure, stringBytes } = limits.book;
+    const { rowText } = limits.rows();
+    const meters = [
+      ["parts", parts],
+      ["inflatedBytes", structure],
+      ["rowCharacters", rowText],
+    ] as const;
+    for (const [limit, meter] of meters) {
+      for (const amount of [Number.NaN, -5, -Infinity]) {
+        expect(() => meter.charge(amount), `${limit}: ${amount}`).toThrow(exceeded(limit));
+      }
+      meter.charge(10);
+      expect(() => meter.charge(1), limit).toThrow(exceeded(limit));
+    }
+    stringBytes.charge(70);
+    expect(() => stringBytes.charge(1), "opening the workbook got nothing back").toThrow(
+      exceeded("inflatedBytes"),
+    );
   });
 
   it("charges opening the workbook once, and a charge it refuses takes nothing from a share", () => {
