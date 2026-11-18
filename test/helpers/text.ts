@@ -11,6 +11,13 @@ export const textsToReadBack: readonly string[] = [
   "a\rb",
   "a\r\nb",
   "a\nb",
+  "_x_x0041_",
+  "box_xyz_x0041_",
+  "a_x b_x0041_",
+  "_xZ_x0041_",
+  "_x\r_x0041_",
+  "id_x12_x0041_",
+  "_x_x0078_",
 ];
 
 const ENTITIES: Readonly<Record<string, string>> = {
@@ -39,15 +46,36 @@ export function readText(xml: string): string {
 }
 
 /**
- * A shared string as Numbers 14.4 reads it, as measured: `_x005F_` with the `xHHHH_` after it
- * is the text `_xHHHH_`, so the underscore that closes it never starts another escape. It reads
- * `_x005F_x0041_x005F_x0042_` as `_x0041_x005FB`. Numbers decodes no escape in an inline string.
+ * A shared string as Numbers 14.4 reads it, as measured on 1 014 texts: an `_x` opens a piece and
+ * the next underscore closes it. A piece of `_xHHHH_` is that character, and `_x005F_` with the
+ * `xHHHH_` after it is the text `_xHHHH_`. Any other piece is text up to and with its underscore,
+ * so that underscore starts no escape: `_x_x005F_x0041_` reads `_x_x005FA`. Numbers decodes no
+ * escape in an inline string.
  */
 export function readTextAsNumbers(xml: string): string {
-  return decodeXml(xml).replace(
-    /_x005F_(x[\dA-Fa-f]{4}_)|_x[\dA-Fa-f]{4}_/g,
-    (escape, literal?: string) => (literal === undefined ? readText(escape) : `_${literal}`),
-  );
+  const text = decodeXml(xml);
+  let read = "";
+  let index = 0;
+  for (let open = text.indexOf("_x"); open !== -1; open = text.indexOf("_x", index)) {
+    const close = text.indexOf("_", open + 2);
+    if (close === -1) break;
+    read += text.slice(index, open);
+    index = close + 1;
+    const piece = text.slice(open, index);
+    if (!/^_x[\dA-Fa-f]{4}_$/.test(piece)) {
+      read += piece;
+      continue;
+    }
+    const code = Number.parseInt(piece.slice(2, 6), 16);
+    const escaped = /^x[\dA-Fa-f]{4}_/.exec(text.slice(index))?.[0];
+    if (code === 0x5f && escaped !== undefined) {
+      read += `_${escaped}`;
+      index += escaped.length;
+    } else {
+      read += String.fromCharCode(code);
+    }
+  }
+  return read + text.slice(index);
 }
 
 export function keptByXml(text: string): string {
