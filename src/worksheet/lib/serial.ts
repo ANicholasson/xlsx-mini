@@ -44,8 +44,8 @@ export function serialFromCivil(
  * millisecond. The inverse of `serialFromEpochMillis`. Returns NaN for a serial that names no
  * instant the writer can write. In the 1900 date system that is a serial below 1, from 60 up to 61
  * (29 February 1900, which never existed) or past 9999-12-31. With `date1904` it is a serial below 0
- * or past 9999-12-31. The range holds for the rounded instant too, so a serial a fraction of a
- * millisecond below 60, below 61 or below the end of 9999 gives NaN.
+ * or past 9999-12-31. The range holds for the rounded instant too, so a serial less than half a
+ * millisecond below 60 or below the end of 9999 gives NaN.
  */
 export function epochMillisFromSerial(serial: number, date1904: boolean): number {
   let days = serial;
