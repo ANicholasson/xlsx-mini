@@ -896,8 +896,9 @@ Each golden fixture is opened by hand in four applications before a release; `do
 | Hidden rows, columns and sheets  |        clean         | sheet shown  |     clean     |      clean       |
 | Gridlines, zoom, right-to-left   |        clean         |   no zoom    |    no zoom    |      clean       |
 | Image padding                    |        clean         |    clean     |     clean     |      clean       |
+| Text that looks like an escape   |        clean         |    clean     |  not checked  |     12 of 13     |
 
-Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. Numbers has no hidden sheets: it shows a hidden sheet as an ordinary one and opens on the first sheet, and it keeps a picture in a hidden row or column in view. Hidden rows and columns it hides. Neither Numbers nor Google Sheets takes a sheet's zoom from the file: both open at their own. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
+Google Sheets computes eight of the ten formulas in the newer-functions fixture: it does not know `FILTER` under the name Excel stores it by, and its own `CONCAT` takes two values where Excel's takes a range. Numbers has no hidden sheets: it shows a hidden sheet as an ordinary one and opens on the first sheet, and it keeps a picture in a hidden row or column in view. Hidden rows and columns it hides. Neither Numbers nor Google Sheets takes a sheet's zoom from the file: both open at their own. Text that looks like the format's `_xHHHH_` escape reads back as written. LibreOffice reads a carriage return before a line feed as one line break. Numbers shows the escape in inline strings, which `streamXlsx` writes unless given `strings: "shared"`. LibreOffice also reads every fixture back cell for cell in CI, on every change, formula results included.
 
 ## Contributing
 

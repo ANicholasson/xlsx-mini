@@ -15,6 +15,7 @@ import {
   autoWidthWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
+  escapesWorkbook,
   formulasWorkbook,
   futureFunctionsWorkbook,
   rowStylesWorkbook,
@@ -67,6 +68,7 @@ const fixtures: readonly (readonly [string, Workbook, StreamOptions])[] = [
   ["auto-width", autoWidthWorkbook, {}],
   ["images", imagesWorkbook, {}],
   ["image padding", imagePaddingWorkbook, {}],
+  ["escapes", escapesWorkbook, {}],
 ];
 
 describe("streamXlsx", () => {

@@ -228,3 +228,32 @@ Every sheet now carries a sheet view, which changed the bytes of every fixture b
 | Apple Numbers    | 14.4     | macOS    | clean  | Each file opened from the shell without a dialog; read back through AppleScript for every sheet: name, table size, A1, the heights of the first five rows and the number of pictures. All as before the change: 28 and 48, 24, 39 and 21, 21 and 18; six pictures in `images.xlsx` and five in `hidden.xlsx`, which still opens on its hidden sheet                                                                                                                                                                                                                                                                         | 2026-11-16 |
 | Google Sheets    | web      | browser  | sample | `appearance.xlsx`, `images.xlsx`, `hidden.xlsx` and `sheet-view.xlsx` uploaded to Drive and opened on a visual check, each as recorded above. The other fixtures were not opened again; `orders.xlsx` and `sheet-view.xlsx` carried a sheet view in every sheet before and are recorded clean above                                                                                                                                                                                                                                                                                                                         | 2026-11-17 |
 | LibreOffice Calc | 26.8.2.2 | macOS    | clean  | `soffice --headless --convert-to csv` over every sheet of every fixture; each CSV is identical to the one recorded                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | 2026-11-16 |
+
+## escapes.xlsx (text that looks like the format's `_xHHHH_` escape: the escape of a letter, one inside text, the escapes of an underscore and of a carriage return, letters that are not hexadecimal, two digits, a capital `X`, two escapes that share an underscore, one closed by a carriage return; a carriage return alone and before a line feed; a line feed; a formula's cached text)
+
+| Application      | Version  | Platform | Result   | How it was checked                                                                                                                                                                                                                                                                  | Date       |
+| ---------------- | -------- | -------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Microsoft Excel  | 16.115   | macOS    | clean    | Opened from the shell without a dialog; the thirteen values read back through AppleScript character by character as written, `_x0041_`, `_x005F_`, `_x0041_x0042_`, each carriage return and `a` CR LF `b` included; the formula reads `=B2&""` and shows `_x0041_`                 | 2026-11-18 |
+| Apple Numbers    | 14.4     | macOS    | clean    | Opened from the shell without a dialog; the thirteen values read back through AppleScript character by character as written, each carriage return included                                                                                                                          | 2026-11-18 |
+| LibreOffice Calc | 26.8.3.1 | macOS    | 12 of 13 | `soffice --headless --convert-to csv`; every value matches but `a` CR LF `b`, which reads as `a` LF `b`. LibreOffice keeps a carriage return alone and makes one before a line feed a single line break, which its flat ODS export shows as two paragraphs; it read the same before | 2026-11-18 |
+
+Google Sheets has not opened this fixture yet.
+
+The table below shows where each application reads the escape. It was measured on 0.9.0 with `_x0041_` written as itself. A dash marks a place that the application does not show or that a script cannot read.
+
+| Where                                 | Excel    | Numbers  | LibreOffice |
+| ------------------------------------- | -------- | -------- | ----------- |
+| Text of a cell, in the shared strings | reads    | reads    | reads       |
+| Text of a cell, inline                | reads    | not read | reads       |
+| Validation titles and messages        | reads    | -        | reads       |
+| Sheet names                           | reads    | not read | reads       |
+| Number format codes                   | reads    | not read | reads       |
+| Formulas and the source of a list     | reads    | not read | not read    |
+| Headers and footers                   | reads    | -        | not read    |
+| Link targets, in a relationships part | not read | -        | not read    |
+
+The writer escapes the places where every application that shows them reads the escape: shared cell text, a formula's cached text, and validation titles and messages. A formula's cached text matters only to a reader that does not calculate, because all three applications calculate on open. The writer escapes inline cell text too, because Excel and LibreOffice read the escape there. Numbers shows the escape in inline text, so a stream meant for Numbers takes `strings: "shared"`. Every other place keeps its text as before. Escaping it would trade one application's reading for another's, and a sheet name also stands inside formulas, where only Excel reads the escape.
+
+Numbers reads `_x005F_` and the `xHHHH_` after it as one piece, so it reads `_x005F_x0041_x005F_x0042_` as `_x0041_x005FB`. Where two escapes share an underscore, the writer therefore keeps that underscore and writes the `x` of the second escape as `_x0078_`. All three applications read that form as written.
+
+The writer writes a carriage return as the character reference `&#13;`, which XML does not turn into a line feed. All three applications keep it in shared and inline text. In a validation message, where XML would turn a raw carriage return into a space, Excel keeps it and LibreOffice shows a line break.

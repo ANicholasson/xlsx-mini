@@ -2,12 +2,13 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { type WriteOptions, type Workbook, writeXlsx } from "../src/index.js";
+import { type WriteOptions, type Workbook, streamXlsx, writeXlsx } from "../src/index.js";
 import {
   appearanceWorkbook,
   autoWidthWorkbook,
   cellTypesOptions,
   cellTypesWorkbook,
+  escapesWorkbook,
   formulasWorkbook,
   futureFunctionsWorkbook,
   rowStylesWorkbook,
@@ -24,6 +25,7 @@ import {
   ordersWorkbook,
   validationWorkbook,
 } from "./fixtures/workbooks.js";
+import { readText } from "./helpers/text.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -639,5 +641,32 @@ describe("print workbook (golden)", () => {
     expect(readPart(bytes, "xl/workbook.xml")).toContain(
       '<definedNames><definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;Report&apos;!$1:$1</definedName></definedNames>',
     );
+  });
+});
+
+describe("escapes workbook (golden)", () => {
+  it("is byte-identical to the committed fixture", async () => {
+    await golden("escapes.xlsx", escapesWorkbook);
+  });
+
+  it("reads every text back as written: shared, inline and as a formula's cached text", async () => {
+    const written = [...escapesWorkbook.sheets[0]!.rows].flatMap((row) =>
+      Array.isArray(row) ? row.filter((cell): cell is string => typeof cell === "string") : [],
+    );
+    const texts = (xml: string, element: RegExp) =>
+      [...xml.matchAll(element)].map((match) => readText(match[1]!));
+    const items = /<t(?: xml:space="preserve")?>([^<]*)<\/t>/g;
+    const cached = /<f>[^<]*<\/f><v>([^<]*)<\/v>/g;
+
+    const shared = await writeXlsx(escapesWorkbook, STORE);
+    expect(texts(readPart(shared, "xl/sharedStrings.xml"), items)).toEqual(written);
+    expect(texts(readPart(shared, "xl/worksheets/sheet1.xml"), cached)).toEqual(["_x0041_"]);
+
+    const inline = new Uint8Array(
+      await new Response(streamXlsx(escapesWorkbook, STORE)).arrayBuffer(),
+    );
+    const sheet = readPart(inline, "xl/worksheets/sheet1.xml");
+    expect(texts(sheet, items)).toEqual(written);
+    expect(texts(sheet, cached)).toEqual(["_x0041_"]);
   });
 });

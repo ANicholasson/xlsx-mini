@@ -31,6 +31,7 @@ const ROWS: Readonly<Record<string, string>> = {
   "hidden.xlsx": "Hidden rows, columns and sheets",
   "sheet-view.xlsx": "Gridlines, zoom, right-to-left",
   "image-padding.xlsx": "Image padding",
+  "escapes.xlsx": "Text that looks like an escape",
 };
 
 describe("the README's compatibility table", () => {
