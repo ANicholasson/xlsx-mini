@@ -152,8 +152,9 @@ declare class Metered {
 interface Meter<Limit extends ReadLimit> extends Metered {
   readonly limit: Limit;
   /**
-   * Takes `amount`, never negative, from what is left and from every meter this one is nested in.
-   * Throws `LIMIT_EXCEEDED` naming `limit` when it does not fit: charge before the work, not after.
+   * Takes `amount` from what is left and from every meter this one is nested in. Throws
+   * `LIMIT_EXCEEDED` naming `limit`, and takes nothing, when it does not fit or is not a
+   * non-negative number: charge before the work, not after.
    */
   charge(amount: number): void;
 }
@@ -239,8 +240,8 @@ function meter<Limit extends ReadLimit>(
   return {
     limit,
     charge(amount: number): void {
-      // NaN compares false either way; written like this, it never fits.
-      if (!(amount <= left)) {
+      const fits = amount >= 0 && amount <= left;
+      if (!fits) {
         throw new XlsxReadError("LIMIT_EXCEEDED", `more than limits.${limit} allows`, { limit });
       }
       within?.charge(amount);
