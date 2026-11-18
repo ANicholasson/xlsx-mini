@@ -75,10 +75,11 @@ jobs:
       - name: Tests
         if: matrix.node != 20 && !matrix.coverage
         run: pnpm test
-      # The runtime matrix hosts workerd through Miniflare, which needs Node 22.
-      - name: Tests without the runtime matrix
+      # The runtime matrix hosts workerd through Miniflare, and the boundary test runs
+      # dependency-cruiser; both need Node 22.
+      - name: Tests without the runtime matrix and the boundary test
         if: matrix.node == 20
-        run: pnpm exec vp test run --exclude "test/runtimes/**"
+        run: pnpm exec vp test run --exclude "test/runtimes/**" --exclude test/boundaries.test.ts
 
   build:
     name: build
