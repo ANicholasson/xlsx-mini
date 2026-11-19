@@ -15,13 +15,7 @@ export function refuse(what: string): never {
   throw new XlsxReadError("INVALID_XML", what);
 }
 
-/** One part's bytes as decoded text, chunk by chunk. */
 export interface TextChunks {
-  /**
-   * The next chunk of text, or `undefined` at the end. A character split across two byte chunks
-   * is carried over, and a UTF-8 byte order mark is dropped. Bytes that are not valid UTF-8 are
-   * refused, a UTF-16 byte order mark among them: nothing is replaced with U+FFFD.
-   */
   next(): Promise<string | undefined>;
 }
 
@@ -70,16 +64,15 @@ export function parseIndex(text: string, start: number, end: number): number {
   return value;
 }
 
-/** Whether XML 1.0 lets a document hold this code point (its production `Char`). */
+/** XML 1.0 section 2.2, the production `Char`. */
 function isCharacter(point: number): boolean {
   if (point < 32) return point === TAB || point === LINE_FEED || point === CARRIAGE_RETURN;
   return point < 0xd800 || (point > 0xdfff && point < 0xfffe) || point > 0xffff;
 }
 
 /**
- * The code point that the reference between `&` and `;` stands for, by `text[start, end)`, or -1:
- * XML predefines five entities, and a character reference names one character XML allows, in
- * decimal or after `x` in hexadecimal.
+ * The code point of the reference between `&` and `;`, or -1. XML 1.0 predefines five entities
+ * (section 4.6), and a character reference must name a `Char` (4.1).
  */
 export function referenced(text: string, start: number, end: number): number {
   if (text.charCodeAt(start) !== HASH) {
@@ -108,10 +101,9 @@ export const ATTRIBUTE = 2;
 type Reading = typeof TEXT | typeof CDATA | typeof ATTRIBUTE;
 
 /**
- * `text[start, end)` as XML means it, for a span the tokenizer has checked: references decoded
- * except in CDATA, CR LF and a lone CR read as LF, and in an attribute value every tab and line
- * end written as itself read as a space. A loop, not a replace with a callback: no step waits on
- * the rest of the text. The result still points into `text`: `detach` it before it is kept.
+ * `text[start, end)` as XML 1.0 reads it: references decoded except in CDATA (4.1), line ends
+ * (2.11), and in an attribute value the normalization of section 3.3.3. The result may be a slice
+ * of `text`.
  */
 export function decode(text: string, start: number, end: number, reading: Reading): string {
   let out = "";
@@ -124,8 +116,7 @@ export function decode(text: string, start: number, end: number, reading: Readin
       next = text.indexOf(";", at) + 1;
       read = String.fromCodePoint(referenced(text, at + 1, next - 1));
     } else if (code === CARRIAGE_RETURN) {
-      // What follows the span is never a line feed: a span ends at markup or at its quote.
-      if (text.charCodeAt(next) === LINE_FEED) next++;
+      if (next < end && text.charCodeAt(next) === LINE_FEED) next++;
       read = reading === ATTRIBUTE ? " " : "\n";
     } else if (reading === ATTRIBUTE && (code === TAB || code === LINE_FEED)) {
       read = " ";

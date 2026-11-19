@@ -6,20 +6,17 @@ import { type Token, chunked, collector, outcomeOf, tokensOf, utf8 } from "./rea
 
 const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
-/** The text of the one element of `<t>…</t>`. */
 async function textOf(content: string): Promise<string> {
   const tokens = await tokensOf(`<t>${content}</t>`);
   expect(tokens).toHaveLength(2);
   return tokens[1]![3] as string;
 }
 
-/** The value of attribute `a` of `<e a=…/>`, given with its quotes. */
 async function valueOf(quoted: string): Promise<string | undefined> {
   const tokens = await tokensOf(`<e a=${quoted}/>`, { asked: ["a"] });
   return (tokens[0]![3] as Record<string, string>)["a"];
 }
 
-/** What a visitor sees on the first open tag of a part. */
 async function onOpen<Seen>(part: string, look: (xml: XmlCursor) => Seen): Promise<Seen> {
   const seen: Seen[] = [];
   await readXml(chunked(part), {
@@ -346,7 +343,6 @@ describe("refused with INVALID_XML", () => {
   });
 
   it("the worksheet of a mutated workbook that a reader without tag matching read as empty", async () => {
-    // Fuzz file 05351 of the reader prototypes: a cell opens as `b` and closes as `c`.
     const mutated =
       `${XML_DECLARATION}<worksheet xmlns="http:o/schemas.openxmlformats.org/spreadsheetml/2006/main">` +
       '<sheetData><row r="1"><c`r="A1" t="s"><v>0</v></c><b r="B1"><v>42</v></c></row></sheetData></worksh%et>';
@@ -692,7 +688,6 @@ describe("refused with INVALID_XML", () => {
 });
 
 describe("scanXml", () => {
-  /** Yields the text of every `v`, and returns how many there were. */
   function values(): XmlVisitor<string, number> {
     let count = 0;
     return {
@@ -747,7 +742,6 @@ describe("scanXml", () => {
       close: () => undefined,
       end: () => bytes.reads,
     });
-    // Two chunks, and the read that says there are no more.
     expect(readsAtEnd).toBe(3);
     expect(bytes.closes).toBe(1);
   });

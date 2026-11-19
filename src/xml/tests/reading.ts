@@ -1,7 +1,5 @@
-// What the tests of the read side of XML share: a part as chunks, and its tokens as values to compare.
 import { type ByteChunks, type XmlCursor, type XmlVisitor, readXml } from "../read.js";
 
-/** An open tag with the attributes that were asked for and found, or a close tag with its text. */
 export type Token =
   | readonly ["open", name: string, depth: number, attributes: Readonly<Record<string, string>>]
   | readonly ["close", name: string, depth: number, text: string];
@@ -12,10 +10,6 @@ export function utf8(text: string): Uint8Array {
   return encoder.encode(text);
 }
 
-/**
- * A part given in chunks that end at `cuts`, which counts what is asked of it. Every chunk is a
- * view of one buffer, which the next read overwrites, as a package may.
- */
 export interface Chunked extends ByteChunks {
   readonly reads: number;
   readonly closes: number;
@@ -39,7 +33,6 @@ export function chunked(part: string | Uint8Array, cuts: readonly number[] = [])
     read() {
       const end = ends[reads++];
       if (end === undefined) return Promise.resolve(undefined);
-      // What the last chunk held becomes bytes that are not UTF-8 before the new one is copied in.
       reused.fill(0xff, 0, last);
       const chunk = reused.subarray(0, end - from);
       chunk.set(bytes.subarray(from, end));
@@ -53,7 +46,6 @@ export function chunked(part: string | Uint8Array, cuts: readonly number[] = [])
   };
 }
 
-/** Collects every token, asking each open tag for the attributes in `asked`. */
 export function collector(asked: readonly string[] = []): XmlVisitor<never, Token[]> {
   const tokens: Token[] = [];
   return {
@@ -82,7 +74,6 @@ export function tokensOf(part: string | Uint8Array, reading: Reading = {}): Prom
   return readXml(chunked(part, reading.cuts), collector(reading.asked));
 }
 
-/** The tokens of a part, or the code it is refused with. */
 export async function outcomeOf(
   part: string | Uint8Array,
   reading: Reading = {},

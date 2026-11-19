@@ -1,21 +1,19 @@
 import type { XmlCursor } from "./contract.js";
 import { ATTRIBUTE, CDATA, TEXT, decode, detach, parseIndex, referenced, refuse } from "./text.js";
 
-/** What `Tokenizer.next` returns. Numbers, not strings: compared once per token. */
 export const NEED = 0;
 export const OPEN = 1;
 export const CLOSE = 2;
 const END = 3;
 type Token = typeof NEED | typeof OPEN | typeof CLOSE | typeof END;
 
-/** Markup that is no token for a visitor has been read: a comment, an instruction, CDATA. */
 const SKIPPED = 4;
 
-/** Elements may nest this deep. An open element costs memory that no inflate limit sees. */
+/** An open element costs memory that no inflate limit sees. */
 const MAX_DEPTH = 256;
 /**
- * One tag, one run of text or one comment may be this many characters: 128 times the longest cell
- * text. So may the names of the elements last opened at each depth together, which are kept.
+ * About 128 times the longest text a cell holds. The names kept for the elements last opened at
+ * each depth may hold as many characters together.
  */
 const MAX_TOKEN_LENGTH = 4_194_304;
 
@@ -42,15 +40,11 @@ const GREATER_THAN = 62;
 const QUESTION = 63;
 const RIGHT_BRACKET = 93;
 
-/** What a character can be, as flags: one lookup per character answers every loop below. */
 const SPACE = 1;
 const NAME_START = 2;
 const NAME = 4;
-/** Ends a run of character data, or needs a look: `<`, `&`, `>`, a carriage return, a forbidden character. */
 const TEXT_STOP = 8;
-/** Ends an attribute value, or needs a look: a quote, `<`, `&`, a forbidden character. */
 const VALUE_STOP = 16;
-/** XML 1.0 allows no document to hold it: a control character other than tab and the line ends. */
 const FORBIDDEN = 32;
 
 const KINDS = new Uint8Array(128);
@@ -67,9 +61,8 @@ KINDS[95] = NAME_START | NAME;
 KINDS.fill(NAME_START | NAME, 97, 123);
 
 /**
- * The flags of one UTF-16 unit. Outside ASCII a unit is text and nothing else, so a name holds
- * ASCII only; U+FFFE and U+FFFF are forbidden. A surrogate is half of a character XML allows:
- * the decoder gives no other.
+ * Outside ASCII a unit is text and nothing else, so a name holds ASCII only. A surrogate is half
+ * of a character XML allows: the decoder gives no other.
  */
 function kindOf(code: number): number {
   // The comparison holds the index inside the table.
@@ -79,7 +72,6 @@ function kindOf(code: number): number {
 /** The buffer ends in a character XML forbids, so every loop stops there without asking where the end is. */
 const SENTINEL = "\0";
 
-/** Below this many attributes a tag's names are compared in pairs; from there on, through a set. */
 const PAIRED_ATTRIBUTES = 8;
 
 /**
@@ -109,47 +101,31 @@ export interface Tokenizer extends XmlCursor {
 }
 
 export function createTokenizer(): Tokenizer {
-  /** Where the sentinel stands in the buffer: one past the last character fed. */
   let limit = 0;
-  /** The next character to read. Everything before it is read, except the text run of a leaf. */
   let position = 0;
-  /** The characters dropped from the front of the buffer so far. */
   let dropped = 0;
-  /** Text fed since the buffer was last read. */
   let fed = "";
   let ended = false;
-  /** The characters `fed` must hold before an unfinished token is read again. */
   let awaited = 0;
 
-  /** The open elements by their names as written, which a close tag must repeat, and by local name. */
   const names: string[] = [];
   const locals: string[] = [];
-  /** The characters of `names`. A name stays after its element closes, for the next at its depth. */
-  let named = 0;
+  let nameCharacters = 0;
   let depth = 0;
   let rooted = false;
   let selfClosing = false;
 
-  /** The open element has no child yet, so the character data read so far is its text. */
   let leaf = false;
-  /** The element the last `CLOSE` closed had no child. */
   let textful = false;
-  /** The leaf's text before the comment, instruction or CDATA section that split it, decoded. */
   let joined = "";
-  /** The leaf's last run of character data, as written, and whether it reads as written. */
   let runStart = 0;
   let runEnd = 0;
   let runPlain = true;
 
-  /** The attributes of the open tag, four numbers each: where its key and its value start and end. */
   const spans: number[] = [];
   let spanCount = 0;
   const seen = new Set<string>();
 
-  /**
-   * The buffer cannot hold a token at `at`. When that is its end and more text may come, `NEED`;
-   * otherwise the part is refused.
-   */
   function stuck(at: number, what: string): typeof NEED {
     if (at < limit || ended) refuse(what);
     const unfinished = limit - position;
@@ -158,7 +134,6 @@ export function createTokenizer(): Tokenizer {
     return NEED;
   }
 
-  /** Whether `text` holds `word` at `at`. */
   function holds(text: string, at: number, word: string, from: number, length: number): boolean {
     for (let offset = 0; offset < length; offset++) {
       if (text.charCodeAt(at + offset) !== word.charCodeAt(from + offset)) return false;
@@ -166,31 +141,31 @@ export function createTokenizer(): Tokenizer {
     return true;
   }
 
-  /** Where the reference that starts at `at` ends, at its `;`, or -1 when the buffer ends first. */
   function reference(text: string, at: number): number {
     let end = at + 1;
     let code = text.charCodeAt(end);
     while (code === HASH || (kindOf(code) & NAME) !== 0) code = text.charCodeAt(++end);
-    if (code !== SEMICOLON) return stuck(end, UNDEFINED_ENTITY) - 1;
+    if (code !== SEMICOLON) {
+      stuck(end, UNDEFINED_ENTITY);
+      return -1;
+    }
     if (referenced(text, at + 1, end) < 0) refuse(UNDEFINED_ENTITY);
     return end;
   }
 
-  /** Where `word` next stands from `at` on, past characters XML allows, or -1 when the buffer ends first. */
   function find(text: string, at: number, word: string): number {
     const first = word.charCodeAt(0);
     for (;;) {
       const code = text.charCodeAt(at);
       if (code === first && text.startsWith(word, at)) return at;
-      if ((kindOf(code) & FORBIDDEN) !== 0) return stuck(at, MALFORMED) - 1;
+      if ((kindOf(code) & FORBIDDEN) !== 0) {
+        stuck(at, MALFORMED);
+        return -1;
+      }
       at++;
     }
   }
 
-  /**
-   * The leaf's run of character data joins the text before it: what follows splits its text.
-   * Detached, or every chunk such a run was cut from stays alive until the element closes.
-   */
   function join(text: string, more: string): void {
     joined += detach(
       (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)) + more,
@@ -199,7 +174,6 @@ export function createTokenizer(): Tokenizer {
     if (joined.length > MAX_TOKEN_LENGTH) refuse(TOO_LONG);
   }
 
-  /** The index in `spans` of the attribute with this key, or -1. */
   function attributeAt(key: string): number {
     const text = cursor.buffer;
     const length = key.length;
@@ -211,10 +185,6 @@ export function createTokenizer(): Tokenizer {
     return -1;
   }
 
-  /**
-   * Reads on from `position`: character data up to the next markup, then that markup. Returns the
-   * token it completes, `SKIPPED` for markup a visitor never sees, or `NEED` with nothing read.
-   */
   function scan(): Token | typeof SKIPPED {
     const text = cursor.buffer;
     let at = position;
@@ -222,7 +192,6 @@ export function createTokenizer(): Tokenizer {
 
     if (code !== LESS_THAN) {
       if (depth === 0) {
-        // Outside the root only white space is character data.
         while ((kindOf(code) & SPACE) !== 0) code = text.charCodeAt(++at);
         position = at;
         if (code !== LESS_THAN) {
@@ -317,7 +286,6 @@ export function createTokenizer(): Tokenizer {
     let nameStart = at + 1;
     let declaration = false;
     if (second === QUESTION) {
-      // A processing instruction, or at the very start of the part the XML declaration.
       let end = at + 2;
       code = text.charCodeAt(end);
       if ((kindOf(code) & NAME_START) === 0) return stuck(end, MALFORMED);
@@ -348,7 +316,6 @@ export function createTokenizer(): Tokenizer {
       refuse(AFTER_ROOT);
     }
 
-    // An open tag, an empty element, or the declaration, which is written like one.
     let end = nameStart;
     let colon = 0;
     for (;;) {
@@ -360,7 +327,6 @@ export function createTokenizer(): Tokenizer {
     const nameEnd = end;
     if (colon === nameEnd - 1) return stuck(end, MALFORMED);
 
-    // What a tag of many attributes left behind is let go before another tag is read.
     if (spans.length > 4 * PAIRED_ATTRIBUTES) {
       spans.length = 0;
       seen.clear();
@@ -389,8 +355,6 @@ export function createTokenizer(): Tokenizer {
       }
       const keyEnd = end;
       if (prefixEnd === keyEnd - 1) return stuck(end, MALFORMED);
-      // A prefix is dropped, but not the one that makes the name a namespace declaration, and not
-      // in the declaration, whose three names have none.
       const key =
         prefixEnd === 0 ||
         declaration ||
@@ -417,6 +381,7 @@ export function createTokenizer(): Tokenizer {
       }
 
       // Two attributes of one tag with one key are one too many: a lookup could not tell them apart.
+      // Every index below `spanCount` was written for an attribute before this one.
       const length = keyEnd - key;
       if (spanCount < 4 * PAIRED_ATTRIBUTES) {
         for (let other = 0; other < spanCount; other += 4) {
@@ -450,7 +415,8 @@ export function createTokenizer(): Tokenizer {
     if (next - at > MAX_TOKEN_LENGTH) refuse(TOO_LONG);
 
     if (declaration) {
-      // `version="1.0"`, then an encoding that is UTF-8, then `standalone`: in that order.
+      // `version="1.0"`, then an encoding that is UTF-8, then `standalone`: in that order. `value`
+      // is asked only for an attribute `attributeAt` found.
       const encoding = attributeAt("encoding");
       const standalone = attributeAt("standalone");
       const value = (span: number): string => text.slice(spans[span + 2]!, spans[span + 3]!);
@@ -475,8 +441,8 @@ export function createTokenizer(): Tokenizer {
     const sibling = names[depth];
     const length = nameEnd - nameStart;
     if (sibling?.length !== length || !holds(text, nameStart, sibling, 0, length)) {
-      named += length - (sibling?.length ?? 0);
-      if (named > MAX_TOKEN_LENGTH) refuse(TOO_MANY_NAMES);
+      nameCharacters += length - (sibling?.length ?? 0);
+      if (nameCharacters > MAX_TOKEN_LENGTH) refuse(TOO_MANY_NAMES);
       const name = detach(text.slice(nameStart, nameEnd));
       names[depth] = name;
       locals[depth] = colon === 0 ? name : detach(text.slice(colon + 1, nameEnd));
@@ -499,6 +465,7 @@ export function createTokenizer(): Tokenizer {
     valueEnd: 0,
     buffer: SENTINEL,
 
+    // `attributeAt` gives the first of four numbers the scan of the open tag wrote, or -1.
     attribute(name: string): string | undefined {
       const at = attributeAt(name);
       if (at < 0) return undefined;
@@ -542,7 +509,6 @@ export function createTokenizer(): Tokenizer {
       if (fed.length < awaited && !ended) return NEED;
       awaited = 0;
       if (fed !== "") {
-        // The run of a leaf stays until its element closes: its text is cut from the buffer then.
         const kept = runEnd > runStart ? runStart : position;
         // Joined, not added: V8 reads every character of a string made with `+` through the
         // string it was made of, one step more on each character the tokenizer reads.

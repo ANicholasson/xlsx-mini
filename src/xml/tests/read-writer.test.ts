@@ -98,7 +98,6 @@ describe("what the writer writes", () => {
         expect(await tokensOf(entry.data, { asked, cuts }), where).toEqual(tokens);
       }
     }
-    // A workbook has six parts at the least.
     expect(files.length).toBeGreaterThan(20);
     expect(parts).toBeGreaterThanOrEqual(files.length * 6);
   });
@@ -128,13 +127,11 @@ describe("what the writer writes", () => {
     );
   });
 
-  /** Whether the writer keeps a character, by the function that decides it. */
   const keeps = (point: number): boolean => escapeXml(String.fromCodePoint(point)) !== "";
 
   it("is read character for character: every character the writer keeps, written as itself", async () => {
     let all = "";
     for (let point = 0; point <= 0x10ffff; point++) {
-      // The two that start markup are written as references, below.
       if (keeps(point) && point !== 38 && point !== 60) all += String.fromCodePoint(point);
     }
     expect(all.length).toBeGreaterThan(2_000_000);

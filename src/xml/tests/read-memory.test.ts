@@ -12,18 +12,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const MEBIBYTE = 1_048_576;
 
-/** The old space the child's heap is held to, in mebibytes. */
 const HEAP_MEBIBYTES = 512;
-/** Milliseconds within which a flood is refused. */
 const REFUSAL_MILLISECONDS = 2_000;
-/**
- * The most that is read of a flood of one token before it is refused: a token is read again only
- * when the buffer holds twice what it held of it, so up to twice the longest token, and a chunk.
- */
+/** A token is read again once the buffer has doubled: twice the longest token, and two chunks. */
 const TOKEN_FLOOD_BYTES = 2 * 4_194_304 + 2 * 16_384;
-/** The most the heap may hold more while a flood is read than before it: an eighth of the heap. */
 const FLOOD_HEAP_BYTES = 64 * MEBIBYTE;
-/** The most the heap may hold for what a visitor kept of a part of 64 MiB: its strings. */
 const KEPT_HEAP_BYTES = 2 * MEBIBYTE;
 
 describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
@@ -98,7 +91,6 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
   it("refuses the text of one element that many comments split, once it is longer than a token may be", () => {
     const [flood] = floodsOf("the text of one element, in runs between comments");
     expect(flood).toMatchObject({ outcome: "INVALID_XML" });
-    // 16 characters of text in every 23 of the part.
     expect(flood!.bytesRead).toBeGreaterThan((4_194_304 * 23) / 16);
     expect(flood!.bytesRead).toBeLessThan((4_194_304 * 23) / 16 + 2 * 16_384);
     expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
@@ -107,7 +99,6 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
   it("refuses nested elements whose names are longer than a token may be, before it holds them", () => {
     const [flood] = floodsOf("the long names of 256 nested elements");
     expect(flood).toMatchObject({ outcome: "INVALID_XML" });
-    // Nine names of half a mebibyte pass 4 194 304 characters.
     expect(flood!.bytesRead).toBeLessThan(10 * 500_010);
     expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
   });
@@ -116,7 +107,6 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     const [flood] = floodsOf("the text of one element, in runs between long comments");
     expect(flood).toMatchObject({ outcome: "read" });
     expect(flood!.bytesRead).toBeGreaterThan(report.floodBytes);
-    // 16 characters of text in every 16 023 bytes of the part: about 134 000 characters in all.
     expect(flood!.heapGrowth).toBeLessThan(4 * MEBIBYTE);
   });
 
@@ -125,7 +115,6 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
       const flood = floodsOf(kind).find(({ chunkBytes }) => chunkBytes === 16 * MEBIBYTE);
       expect(flood, kind).toMatchObject({ outcome: "INVALID_XML", bytesRead: 16 * MEBIBYTE });
       expect(flood!.milliseconds, kind).toBeLessThan(REFUSAL_MILLISECONDS);
-      // The chunk itself is held while it is read, as text and as what is left of it.
       expect(flood!.heapGrowth, kind).toBeLessThan(3 * 16 * MEBIBYTE);
     }
   });

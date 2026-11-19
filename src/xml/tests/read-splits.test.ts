@@ -7,7 +7,6 @@ import { type Token, outcomeOf, tokensOf, utf8 } from "./reading.js";
 
 type Place = "text" | "cdata" | '"' | "'";
 
-/** One character of text or of an attribute value, and which of its ways to be written is taken. */
 interface Character {
   readonly point: number;
   readonly way: number;
@@ -24,7 +23,6 @@ interface Element {
   readonly name: string;
   readonly attributes: readonly Attribute[];
   readonly children: readonly Node[];
-  /** Picks the white space inside the tags, and how an element without children is written. */
   readonly layout: number;
 }
 
@@ -44,7 +42,6 @@ const ENTITIES: Readonly<Record<number, string>> = {
 
 const LINE_ENDS = ["\n", "\r\n", "\r"];
 
-/** Every way XML allows `point` to be written in `place` and still be read as `point`. */
 function waysToWrite(point: number, place: Place): string[] {
   const character = String.fromCodePoint(point);
   if (place === "cdata") return point === 10 ? LINE_ENDS : [character];
@@ -85,7 +82,6 @@ function isDeclaration(name: string): boolean {
   return name === "xmlns" || name.startsWith("xmlns:");
 }
 
-/** What an attribute is asked for by: its name without a prefix, a namespace declaration whole. */
 function keyOf(name: string): string {
   return isDeclaration(name) ? name : name.slice(name.indexOf(":") + 1);
 }
@@ -115,7 +111,6 @@ function writeNode(node: Node): string {
         .join("");
       const open = `<${node.name}${attributes}${gap(3)}`;
       if (node.children.length === 0 && layout % 2 === 0) return `${open}/>`;
-      // Two runs of text side by side are one run: they are written as one.
       const children: Node[] = [];
       for (const child of node.children) {
         const last = children.at(-1);
@@ -197,7 +192,6 @@ const attributeName = fc.constantFrom(
   "ref",
 );
 
-/** Text for a comment or an instruction, which XML passes over: without what would end it early. */
 const passedOver = fc
   .array(point, { maxLength: 8 })
   .map((points) => String.fromCodePoint(...points).replaceAll("\r", " "));
@@ -278,7 +272,6 @@ const part: fc.Arbitrary<Part> = fc
     };
   });
 
-/** Where to cut `length` bytes into chunks: anywhere, or after every byte. */
 const cutsOf = (length: number): fc.Arbitrary<number[]> =>
   fc.oneof(
     { weight: 4, arbitrary: fc.array(fc.nat({ max: length }), { maxLength: 6 }) },

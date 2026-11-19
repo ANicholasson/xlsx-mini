@@ -1,22 +1,17 @@
-// Run by read-memory.test.ts in a process of its own, with a heap limit and a collector to call:
-// what it measures is the memory of that process. Prints one line of JSON, a `Report`.
+// Run by read-memory.test.ts in a process of its own, with a heap limit and a collector to call.
+// Prints one line of JSON, a `Report`.
 import { getHeapStatistics } from "node:v8";
 import { type ByteChunks, type XmlCursor, type XmlVisitor, readXml } from "../read.js";
 
-/** A part made to exhaust a reader, and how reading it ended. */
 export interface Flood {
   readonly name: string;
   readonly chunkBytes: number;
-  /** `read`, or the code the part was refused with. */
   readonly outcome: string;
-  /** How much of the part was asked for before it ended. */
   readonly bytesRead: number;
   readonly milliseconds: number;
-  /** The most the heap held more than before the read, garbage collected, sampled as it was read. */
   readonly heapGrowth: number;
 }
 
-/** What a visitor kept of a large part, and what the heap holds for it once the part has ended. */
 interface Keeping {
   readonly what: string;
   readonly strings: number;
@@ -30,16 +25,11 @@ export interface Report {
   readonly floods: readonly Flood[];
   readonly partBytes: number;
   readonly kept: readonly Keeping[];
-  /**
-   * What the heap holds more, as a part ends, than before it was read, when one tag of the part
-   * held as many attributes as a token may and was followed by 8 MiB of small elements.
-   */
   readonly heldAfterAttributes: number;
 }
 
 const collect = (globalThis as { gc?: () => void }).gc ?? (() => undefined);
 
-/** What the heap holds once garbage is gone. */
 function held(): number {
   collect();
   collect();
@@ -48,7 +38,6 @@ function held(): number {
 
 const encoder = new TextEncoder();
 
-/** One read in this many samples the heap. */
 const SAMPLED_READS = 64;
 
 interface Source extends ByteChunks {
@@ -56,10 +45,6 @@ interface Source extends ByteChunks {
   readonly heapPeak: number;
 }
 
-/**
- * A part of `total` bytes that is never held whole: `head`, then `repeated` over and over, cut off
- * at `total`, in chunks of `chunkBytes`.
- */
 function repeating(head: string, repeated: string, total: number, chunkBytes: number): Source {
   const start = encoder.encode(head);
   const unit = encoder.encode(repeated);
@@ -95,10 +80,6 @@ function repeating(head: string, repeated: string, total: number, chunkBytes: nu
   };
 }
 
-/**
- * A part whose pieces `piece` makes one after the other, `total` bytes of them at the least, and
- * then `tail`.
- */
 function made(
   piece: (index: number) => string,
   total: number,
@@ -157,9 +138,7 @@ async function flood(name: string, chunkBytes: number, source: Source): Promise<
   };
 }
 
-/** As large as a part may inflate to under the default limits. */
 const FLOOD_BYTES = 134_217_728;
-/** What a package gives of a stored part at a time, and the most an inflate gives of a deflated one. */
 const SLICE = 16_384;
 const LARGEST_CHUNK = 16_777_216;
 
@@ -207,7 +186,6 @@ floods.push(
   ),
 );
 
-/** A part of elements that each hold an attribute and a text, in every way those are written. */
 const PART_BYTES = 67_108_864;
 /**
  * One element in this many is kept: more often than a chunk ends, so that every chunk is kept
@@ -234,7 +212,6 @@ const keepers: [what: string, on: "open" | "close", keep: (xml: XmlCursor) => st
   ],
 ];
 
-/** Reads the part with a visitor that keeps something of one element in `EVERY`. */
 async function keeping(
   what: string,
   on: "open" | "close",
