@@ -413,6 +413,22 @@ describe("refused with INVALID_XML", () => {
     await expectRefused(`${"<a>".repeat(256)}<b/>`);
   });
 
+  it("names of nested elements longer than 4 194 304 characters together", async () => {
+    const quarter = 1_048_576;
+    const names = ["a", "b", "c", "d"].map((letter) => letter.repeat(quarter));
+    const nested = (last: string) =>
+      [...names.slice(0, 3), last].map((name) => `<${name}>`).join("") +
+      [last, ...names.slice(0, 3).reverse()].map((name) => `</${name}>`).join("");
+    await expectRead(nested(names[3]!), "4 194 304 characters of names");
+    await expectRefused(nested(`${names[3]!}d`), "one character more");
+    await expectRefused(nested(`x:${names[3]!}`), "the prefix counts");
+    const siblings = names.map((name) => `<${name}/>`).join("");
+    await expectRead(
+      `<r>${siblings}${siblings}<e${names[0]!}/></r>`,
+      "siblings, one after another",
+    );
+  });
+
   it("a token longer than 4 194 304 characters, of any kind", async () => {
     const most = 4_194_304;
     const tokens: [string, (length: number) => string][] = [

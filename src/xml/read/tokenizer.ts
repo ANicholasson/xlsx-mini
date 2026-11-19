@@ -13,7 +13,10 @@ const SKIPPED = 4;
 
 /** Elements may nest this deep. An open element costs memory that no inflate limit sees. */
 const MAX_DEPTH = 256;
-/** One tag, one run of text or one comment may be this many characters: 128 times the longest cell text. */
+/**
+ * One tag, one run of text or one comment may be this many characters: 128 times the longest cell
+ * text. So may the names of the elements last opened at each depth together, which are kept.
+ */
 const MAX_TOKEN_LENGTH = 4_194_304;
 
 const MALFORMED = "a part is not well-formed XML";
@@ -22,6 +25,7 @@ const UNDEFINED_ENTITY = "a part holds an entity XML does not define";
 const DOCTYPE = "a part holds a DOCTYPE";
 const TOO_DEEP = "a part nests elements deeper than 256";
 const TOO_LONG = "a part holds a token longer than 4 194 304 characters";
+const TOO_MANY_NAMES = "a part holds element names longer than 4 194 304 characters together";
 const AFTER_ROOT = "a part holds content after its root element";
 
 const EXCLAMATION = 33;
@@ -120,6 +124,8 @@ export function createTokenizer(): Tokenizer {
   /** The open elements by their names as written, which a close tag must repeat, and by local name. */
   const names: string[] = [];
   const locals: string[] = [];
+  /** The characters of `names`. A name stays after its element closes, for the next at its depth. */
+  let named = 0;
   let depth = 0;
   let rooted = false;
   let selfClosing = false;
@@ -181,10 +187,14 @@ export function createTokenizer(): Tokenizer {
     }
   }
 
-  /** The leaf's run of character data joins the text before it: what follows splits its text. */
+  /**
+   * The leaf's run of character data joins the text before it: what follows splits its text.
+   * Detached, or every chunk such a run was cut from stays alive until the element closes.
+   */
   function join(text: string, more: string): void {
-    joined +=
-      (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)) + more;
+    joined += detach(
+      (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)) + more,
+    );
     runEnd = runStart;
     if (joined.length > MAX_TOKEN_LENGTH) refuse(TOO_LONG);
   }
@@ -350,6 +360,11 @@ export function createTokenizer(): Tokenizer {
     const nameEnd = end;
     if (colon === nameEnd - 1) return stuck(end, MALFORMED);
 
+    // What a tag of many attributes left behind is let go before another tag is read.
+    if (spans.length > 4 * PAIRED_ATTRIBUTES) {
+      spans.length = 0;
+      seen.clear();
+    }
     spanCount = 0;
     let empty = false;
     for (;;) {
@@ -460,6 +475,8 @@ export function createTokenizer(): Tokenizer {
     const sibling = names[depth];
     const length = nameEnd - nameStart;
     if (sibling?.length !== length || !holds(text, nameStart, sibling, 0, length)) {
+      named += length - (sibling?.length ?? 0);
+      if (named > MAX_TOKEN_LENGTH) refuse(TOO_MANY_NAMES);
       const name = detach(text.slice(nameStart, nameEnd));
       names[depth] = name;
       locals[depth] = colon === 0 ? name : detach(text.slice(colon + 1, nameEnd));

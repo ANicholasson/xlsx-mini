@@ -104,6 +104,22 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
   });
 
+  it("refuses nested elements whose names are longer than a token may be, before it holds them", () => {
+    const [flood] = floodsOf("the long names of 256 nested elements");
+    expect(flood).toMatchObject({ outcome: "INVALID_XML" });
+    // Nine names of half a mebibyte pass 4 194 304 characters.
+    expect(flood!.bytesRead).toBeLessThan(10 * 500_010);
+    expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
+  });
+
+  it("holds the text of one element that long comments split, not the chunks it was cut from", () => {
+    const [flood] = floodsOf("the text of one element, in runs between long comments");
+    expect(flood).toMatchObject({ outcome: "read" });
+    expect(flood!.bytesRead).toBeGreaterThan(report.floodBytes);
+    // 16 characters of text in every 16 023 bytes of the part: about 134 000 characters in all.
+    expect(flood!.heapGrowth).toBeLessThan(4 * MEBIBYTE);
+  });
+
   it("refuses a long token that comes in the largest chunks an inflate gives, at the first", () => {
     for (const kind of ["one run of text", "one attribute value"]) {
       const flood = floodsOf(kind).find(({ chunkBytes }) => chunkBytes === 16 * MEBIBYTE);
@@ -134,6 +150,10 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
       expect(characters / strings, what).toBeGreaterThan(13);
       expect(heapGrowth, what).toBeLessThan(KEPT_HEAP_BYTES);
     }
+  });
+
+  it("lets go of a tag of as many attributes as a token may hold once the next tag is read", () => {
+    expect(report.heldAfterAttributes).toBeLessThan(MEBIBYTE);
   });
 
   it("sees a chunk that is kept alive: slices of the buffer, which the contract forbids keeping, hold the part", () => {

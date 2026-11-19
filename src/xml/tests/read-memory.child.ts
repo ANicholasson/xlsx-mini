@@ -30,6 +30,11 @@ export interface Report {
   readonly floods: readonly Flood[];
   readonly partBytes: number;
   readonly kept: readonly Keeping[];
+  /**
+   * What the heap holds more, as a part ends, than before it was read, when one tag of the part
+   * held as many attributes as a token may and was followed by 8 MiB of small elements.
+   */
+  readonly heldAfterAttributes: number;
 }
 
 const collect = (globalThis as { gc?: () => void }).gc ?? (() => undefined);
@@ -185,6 +190,21 @@ floods.push(
     SLICE,
     made((index) => (index === 0 ? "<a" : ` n${index}=""`), FLOOD_BYTES, SLICE),
   ),
+  await flood(
+    "the long names of 256 nested elements",
+    SLICE,
+    made((index) => `<p:e${index}${"n".repeat(500_000)}>`, FLOOD_BYTES, SLICE),
+  ),
+  await flood(
+    "the text of one element, in runs between long comments",
+    SLICE,
+    made(
+      (index) => (index === 0 ? "<a>" : `<!--${"c".repeat(16_000)}-->${"x".repeat(16)}`),
+      FLOOD_BYTES,
+      SLICE,
+      "</a>",
+    ),
+  ),
 );
 
 /** A part of elements that each hold an attribute and a text, in every way those are written. */
@@ -246,11 +266,37 @@ async function keeping(
 const kept: Keeping[] = [];
 for (const [what, on, keep] of keepers) kept.push(await keeping(what, on, keep));
 
+const beforeAttributes = held();
+let heldAfterAttributes = 0;
+await readXml(
+  made(
+    (index) =>
+      index === 0
+        ? "<part><a"
+        : index < 380_000
+          ? ` n${index}=""`
+          : index === 380_000
+            ? "/>"
+            : "<b><c>1</c></b>",
+    12 * 1_048_576,
+    SLICE,
+    "</part>",
+  ),
+  {
+    open() {},
+    close: () => undefined,
+    end() {
+      heldAfterAttributes = held() - beforeAttributes;
+    },
+  },
+);
+
 const report: Report = {
   heapLimit: getHeapStatistics().heap_size_limit,
   floodBytes: FLOOD_BYTES,
   floods,
   partBytes: PART_BYTES,
   kept,
+  heldAfterAttributes,
 };
 console.log(JSON.stringify(report));

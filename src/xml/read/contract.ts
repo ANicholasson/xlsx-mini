@@ -28,7 +28,8 @@ export interface XmlCursor {
   /**
    * An attribute of the open tag by local name, or `undefined`. Its value is as XML normalizes it:
    * references decoded, and a tab or a line end written as itself read as a space. A namespace
-   * declaration is not an attribute. Allocates: for parts read once. Only valid in `open`.
+   * declaration is found only by its whole name. The value keeps no chunk of the part alive.
+   * Allocates: for parts read once. Only valid in `open`.
    */
   attribute(name: string): string | undefined;
 
@@ -51,8 +52,8 @@ export interface XmlCursor {
 
   /**
    * The character data directly inside the element being closed, when it had no child element;
-   * `""` otherwise. References and CDATA are decoded, CR LF and a lone CR read as LF. Only valid in
-   * `close`.
+   * `""` otherwise. References and CDATA are decoded, CR LF and a lone CR read as LF. The text keeps
+   * no chunk of the part alive. Only valid in `close`.
    */
   text(): string;
 }
