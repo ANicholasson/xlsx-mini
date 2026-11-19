@@ -1,12 +1,15 @@
 import { execFile as execFileCallback, execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { deflateRawSync } from "node:zlib";
 import { EdgeVM } from "@edge-runtime/vm";
 import { Miniflare } from "miniflare";
 import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { XLSX_MIME_TYPE, streamXlsx, writeXlsx } from "../../src/index.js";
+import { createPackage } from "../../src/opc/index.js";
 import { type Command, binary as binaryIn, direct } from "../helpers/bin.js";
 import { readPart as readPartOf, unzip } from "../helpers/unzip.js";
 import { type HostReport, workbook } from "./scenario.mjs";
@@ -50,14 +53,39 @@ const hosts: readonly Host[] = [
 ];
 
 /** Runs an entry in a separate process and parses the one JSON line it prints. */
-async function spawn(command: Command, args: readonly string[]): Promise<HostReport> {
+async function spawn<Report = HostReport>(
+  command: Command,
+  args: readonly string[],
+): Promise<Report> {
   const { stdout } = await execFile(command.file, [...args], {
     cwd: root,
     encoding: "utf8",
     shell: command.shell,
   });
-  return JSON.parse(stdout) as HostReport;
+  return JSON.parse(stdout) as Report;
 }
+
+interface ReadReport {
+  readonly outcomes: readonly ({ readonly sheet: string } | { readonly refused: string })[];
+}
+
+interface Reader {
+  readonly name: string;
+  readonly run: (packages: readonly string[]) => Promise<ReadReport>;
+}
+
+const readers: readonly Reader[] = [
+  { name: "Node", run: (packages) => spawn(node, ["test/runtimes/read.mjs", ...packages]) },
+  {
+    name: "Bun",
+    run: (packages) => spawn(binary("bun"), ["run", "test/runtimes/read.mjs", ...packages]),
+  },
+  {
+    name: "Deno",
+    run: (packages) =>
+      spawn(binary("deno"), ["run", "--quiet", "--no-lock", "test/runtimes/read.mjs", ...packages]),
+  },
+];
 
 /** Bundles an entry with everything it imports from dist/ into one file, as a deploy tool would. */
 async function bundle(entry: string, format: "esm" | "iife"): Promise<string> {
@@ -160,6 +188,53 @@ describe("runtime matrix", () => {
     it("loads the browser entry, which refuses to download without a document", () => {
       expect(report.mime).toBe(XLSX_MIME_TYPE);
       expect(report.noDom).toBe("NO_DOM");
+    });
+  });
+
+  describe("the package reader", () => {
+    const sheet = "xl/worksheets/sheet1.xml";
+    const hostile = join(root, "src", "opc", "tests", "fixtures");
+    let written: Uint8Array;
+    let packages: readonly string[];
+
+    beforeAll(async () => {
+      written = await writeXlsx(workbook);
+      const data = unzip(written).find(({ name }) => name === sheet)!.data;
+      const cut = await createPackage([{ path: sheet, data }], {
+        method: 8,
+        compress: (bytes) => Promise.resolve(deflateRawSync(bytes).subarray(0, -1)),
+      });
+      packages = [
+        written,
+        cut,
+        readFileSync(join(hostile, "empty-stream-then-gzip-member.zip")),
+        readFileSync(join(hostile, "stream-trailer-then-gzip-member.zip")),
+      ].map((bytes) => Buffer.from(bytes).toString("base64"));
+    });
+
+    describe.each(readers)("in $name", (host) => {
+      let outcomes: ReadReport["outcomes"];
+
+      beforeAll(async () => {
+        ({ outcomes } = await host.run(packages));
+      }, 60_000);
+
+      it("reads a deflated sheet as an independent reader does", () => {
+        expect(outcomes[0]).toEqual({
+          sheet: Buffer.from(readPartOf(written, sheet)).toString("base64"),
+        });
+      });
+
+      it("refuses a sheet whose deflate stream is cut short", () => {
+        expect(outcomes[1]).toEqual({ refused: "INVALID_PACKAGE" });
+      });
+
+      it("refuses a sheet whose deflate stream ends early and is followed by a gzip member", () => {
+        expect(outcomes.slice(2)).toEqual([
+          { refused: "INVALID_PACKAGE" },
+          { refused: "INVALID_PACKAGE" },
+        ]);
+      });
     });
   });
 });

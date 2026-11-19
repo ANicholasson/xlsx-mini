@@ -1,5 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -195,4 +203,66 @@ describe("read-side code", () => {
       );
     expect(forgeries).toEqual([]);
   });
+});
+
+/** The one file that may name the platform's inflate as a global: it constructs it. */
+const INFLATES = "src/opc/read/part.ts";
+
+const USES_OF_INFLATE = `export const uses = [
+  typeof DecompressionStream,
+  new DecompressionStream("gzip"),
+  globalThis.DecompressionStream,
+  globalThis["DecompressionStream"],
+  self.DecompressionStream,
+  typeof process,
+];
+`;
+
+interface Diagnostic {
+  readonly code: string;
+  readonly filename: string;
+  readonly labels: readonly { readonly span: { readonly line: number } }[];
+}
+
+describe("the platform's inflate", () => {
+  it("is refused by the linter as a global outside the one file that constructs it, and as a property of the global object in every file, and that file is refused a Node global as every core file is", () => {
+    const dir = mkdtempSync(join(tmpdir(), "xlsx-mini-inflate-"));
+    try {
+      for (const config of ["package.json", "tsconfig.json", "vite.config.ts"]) {
+        cpSync(join(root, config), join(dir, config));
+      }
+      symlinkSync(join(root, "node_modules"), join(dir, "node_modules"), "junction");
+      const files = [INFLATES, "src/opc/read/directory.ts", "src/opc/lib/zip.ts", "src/browser.ts"];
+      for (const file of files) {
+        mkdirSync(dirname(join(dir, file)), { recursive: true });
+        writeFileSync(join(dir, file), USES_OF_INFLATE);
+      }
+      const vp = binary(root, "vp");
+      const result = spawnSync(vp.file, ["lint", "src", "--format", "json"], {
+        cwd: dir,
+        encoding: "utf8",
+        shell: vp.shell,
+      });
+      const { diagnostics } = JSON.parse(result.stdout) as { diagnostics: Diagnostic[] };
+      const refused = (file: string) =>
+        diagnostics
+          .filter(({ filename }) => filename.replaceAll("\\", "/") === file)
+          .map(({ code, labels }) => `${labels[0]?.span.line}: ${code}`)
+          .sort();
+      const asProperty = [4, 5, 6].map((line) => `${line}: eslint(no-restricted-properties)`);
+      const asGlobal = [2, 3].map((line) => `${line}: eslint(no-restricted-globals)`);
+      const nodeGlobal = "7: eslint(no-restricted-globals)";
+
+      expect(refused(INFLATES)).toEqual([...asProperty, nodeGlobal]);
+      for (const file of ["src/opc/read/directory.ts", "src/opc/lib/zip.ts"]) {
+        expect(refused(file), file).toEqual([...asGlobal, ...asProperty, nodeGlobal]);
+      }
+      expect(refused("src/browser.ts"), "the browser entry may still use a Node global").toEqual([
+        ...asGlobal,
+        ...asProperty,
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 30_000);
 });
