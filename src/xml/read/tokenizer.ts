@@ -374,9 +374,12 @@ export function createTokenizer(): Tokenizer {
       }
       const keyEnd = end;
       if (prefixEnd === keyEnd - 1) return stuck(end, MALFORMED);
-      // A prefix is dropped, but not the one that makes the name a namespace declaration.
+      // A prefix is dropped, but not the one that makes the name a namespace declaration, and not
+      // in the declaration, whose three names have none.
       const key =
-        prefixEnd === 0 || (prefixEnd - start === 5 && text.startsWith("xmlns", start))
+        prefixEnd === 0 ||
+        declaration ||
+        (prefixEnd - start === 5 && text.startsWith("xmlns", start))
           ? start
           : prefixEnd + 1;
       while ((kindOf(code) & SPACE) !== 0) code = text.charCodeAt(++end);
