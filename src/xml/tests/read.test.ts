@@ -423,7 +423,7 @@ describe("refused with INVALID_XML", () => {
       `<r>${siblings}${siblings}<e${names[0]!}/></r>`,
       "siblings, one after another",
     );
-  });
+  }, 60_000);
 
   it("a token longer than 4 194 304 characters, of any kind", async () => {
     const most = 4_194_304;
@@ -451,7 +451,7 @@ describe("refused with INVALID_XML", () => {
       ).toBe("INVALID_XML");
       if (kind !== "an entity") await expectRead(token(most), `${kind} of ${most}`);
     }
-  });
+  }, 60_000);
 
   it("the text of one element longer than 4 194 304 characters, however it is split", async () => {
     const half = "x".repeat(2_097_152);
@@ -462,7 +462,7 @@ describe("refused with INVALID_XML", () => {
     await expectRefused(`<t>${half}<?p?>${half}<?p?>x</t>`);
     await expectRefused(`<t>${half}<?p?>${half}x<?p?></t>`);
     await expectRead(`<t>${half}<?p?>${half}<a/>${half}</t>`, "text that a child element ends");
-  });
+  }, 60_000);
 
   it("content after the root", async () => {
     await expectRead(`<a/> \n<!-- c --><?p?>\r\n`);

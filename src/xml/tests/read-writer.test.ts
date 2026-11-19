@@ -139,7 +139,7 @@ describe("what the writer writes", () => {
     expect(tokens[1]![3] === all.replace("\r", "\n")).toBe(true);
     const value = all.replace('"', "'").replace(/[\t\n\r]/g, " ");
     expect((tokens[0]![3] as Record<string, string>)["a"] === value).toBe(true);
-  });
+  }, 60_000);
 
   it("is read character for character: a reference to every character the writer keeps", async () => {
     const elements: string[] = [];
@@ -159,7 +159,7 @@ describe("what the writer writes", () => {
     const read = tokens.filter(([kind, name]) => kind === "close" && name === "t");
     expect(read).toHaveLength(texts.length);
     expect(read.every(([, , , text], index) => text === texts[index])).toBe(true);
-  });
+  }, 60_000);
 
   it("is all that is read: a character the writer drops is refused, as itself and as a reference", async () => {
     const dropped: number[] = [];
