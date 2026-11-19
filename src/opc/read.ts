@@ -9,7 +9,7 @@
 import type { Meter, PartMeter, PartUse } from "../errors/read.js";
 import { readDirectory } from "./read/directory.js";
 import { foldName } from "./read/layout.js";
-import { type PartBytes, openPart } from "./read/part.js";
+import { type PartBytes, framingOnce, openPart } from "./read/part.js";
 import { byteSource } from "./read/source.js";
 
 export type { PartBytes } from "./read/part.js";
@@ -71,12 +71,13 @@ export async function openPackage(
 ): Promise<PackageReader> {
   const source = byteSource(file);
   const directory = await readDirectory(source, parts, structure);
+  const framing = framingOnce();
   return {
     open(part, meter) {
       const entry = directory.entries.get(foldName(part.name));
       if (entry === undefined) return undefined;
       meter.charge(entry.size);
-      return openPart(source, directory.start, entry);
+      return openPart(source, directory.start, entry, framing);
     },
   };
 }

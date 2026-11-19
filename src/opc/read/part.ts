@@ -56,8 +56,9 @@ export function openPart(
   source: ByteSource,
   directoryStart: number,
   entry: DirectoryEntry,
+  framing: () => Promise<Framing>,
 ): PartBytes {
-  const chunks = verified(source, directoryStart, entry);
+  const chunks = verified(source, directoryStart, entry, framing);
   let failure: { readonly reason: unknown } | undefined;
   return {
     async read() {
@@ -79,6 +80,7 @@ async function* verified(
   source: ByteSource,
   directoryStart: number,
   entry: DirectoryEntry,
+  framing: () => Promise<Framing>,
 ): Chunks<Uint8Array> {
   if (entry.encrypted) refuse("a part is encrypted");
   if (entry.method !== METHOD_STORED && entry.method !== METHOD_DEFLATED) {
@@ -115,7 +117,7 @@ async function* verified(
   let crc = CRC32_INITIAL;
   for await (const chunk of entry.method === METHOD_STORED
     ? slices
-    : inflated(member(slices, entry))) {
+    : inflated(slices, entry, framing)) {
     read += chunk.length;
     if (read > entry.size) refuse("a part is larger than the directory states");
     crc = crc32Update(crc, chunk);
@@ -125,15 +127,67 @@ async function* verified(
   if (crc32Finish(crc) !== entry.crc32) refuse("a part has another CRC-32 than stated");
 }
 
+/**
+ * What the platform's inflate is given of a deflated part: its deflate stream alone, or the stream
+ * as a gzip member, whichever makes the part's content its first deflate stream or a refusal.
+ */
+type Framing = "deflate-raw" | "gzip";
+
 /** How a gzip member starts: the two bytes that name one, deflate, and nothing more said of it. */
 const GZIP_HEADER = new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]);
 
+/** A raw deflate stream whose one block is whole and not marked as the last: it is cut short. */
+const CUT_SHORT = new Uint8Array([0, 0, 0, 0xff, 0xff]);
+
+/** A gzip member of nothing: the header, an empty last block, a CRC-32 and a size of zero. */
+const EMPTY_MEMBER = [...GZIP_HEADER, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+const TWO_MEMBERS = new Uint8Array([...EMPTY_MEMBER, ...EMPTY_MEMBER]);
+
+/**
+ * Asks the platform once, at the first deflated part read, how a part goes to its inflate. The
+ * stream alone where the inflate refuses a stream cut short: Node 20 to 26 and Bun 1.4 do. Node 24,
+ * 26 and Bun also refuse bytes after the end of the stream; Node 20 and 22 stop at its end and do
+ * not report them. Deno 2.9 reads a stream cut short as if it had ended, so there the stream goes
+ * as a gzip member, which Deno holds to its end and does not read past. Node 20, 22 and Bun read on
+ * into a second member, so a member goes nowhere the stream alone will do. Where neither holds, a
+ * deflated part is refused with `NO_INFLATE`.
+ */
+export function framingOnce(): () => Promise<Framing> {
+  let found: Promise<Framing> | undefined;
+  return () => (found ??= platformFraming());
+}
+
+async function platformFraming(): Promise<Framing> {
+  if (await refuses("deflate-raw", CUT_SHORT)) return "deflate-raw";
+  if (await refuses("gzip", TWO_MEMBERS)) return "gzip";
+  throw new XlsxReadError(
+    "NO_INFLATE",
+    "a part is deflated and the platform's inflate does not stop at the end of a deflate stream",
+  );
+}
+
+/** Whether the platform has an inflate for `format`, and that inflate refuses `bytes`. */
+async function refuses(format: Framing, bytes: Uint8Array<ArrayBuffer>): Promise<boolean> {
+  let inflate: DecompressionStream;
+  try {
+    inflate = new DecompressionStream(format);
+  } catch {
+    return false;
+  }
+  const writer = inflate.writable.getWriter();
+  const reader = inflate.readable.getReader();
+  const reading = async (): Promise<undefined> => {
+    while (!(await reader.read()).done);
+  };
+  return Promise.all([writer.write(bytes), writer.close(), reading()]).then(
+    () => false,
+    () => true,
+  );
+}
+
 /**
  * A part's deflate stream as a gzip member: a header in front of it, and behind it what a member
- * ends in, which is the CRC-32 and the size that the directory states. So the platform holds the
- * stream to its end by itself. Given the stream alone, Node 20 and 22 report no bytes after its
- * end and Deno 2.9 no stream that is cut short. Node 20 still lets one kind of bytes after the end
- * pass: a copy of that CRC-32 and size, where the lowest byte of the CRC-32 is zero.
+ * ends in, which is the CRC-32 and the size that the directory states.
  */
 async function* member(
   slices: Chunks<Uint8Array<ArrayBuffer>>,
@@ -172,14 +226,20 @@ function refuseInflate(): never {
  * and Node 20 and 22 then read a part's every compressed byte ahead of a consumer that has asked
  * for one chunk.
  */
-async function* inflated(slices: Chunks<Uint8Array<ArrayBuffer>>): Chunks<Uint8Array> {
-  const { readable, writable } = platformInflate();
+async function* inflated(
+  slices: Chunks<Uint8Array<ArrayBuffer>>,
+  entry: DirectoryEntry,
+  framing: () => Promise<Framing>,
+): Chunks<Uint8Array> {
+  const format = await framing();
+  const input = format === "gzip" ? member(slices, entry) : slices;
+  const { readable, writable } = new DecompressionStream(format);
   const reader = readable.getReader();
   const writer = writable.getWriter();
   let feeding: Promise<undefined> | undefined;
   let fed = false;
   const feed = async (): Promise<undefined> => {
-    const slice = await slices.next();
+    const slice = await input.next();
     if (slice.done) {
       fed = true;
       // What the end of the stream brings, a failure too, comes out of the readable side.
@@ -205,13 +265,5 @@ async function* inflated(slices: Chunks<Uint8Array<ArrayBuffer>>): Chunks<Uint8A
     }
   } finally {
     void Promise.allSettled([reader.cancel(), writer.abort()]);
-  }
-}
-
-function platformInflate(): DecompressionStream {
-  try {
-    return new DecompressionStream("gzip");
-  } catch {
-    throw new XlsxReadError("NO_INFLATE", "a part is deflated and the platform has no inflate");
   }
 }

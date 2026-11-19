@@ -18,7 +18,8 @@
  * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.
  *
  * About the platform or the call:
- * - `NO_INFLATE`: a part is deflated and the platform has no `DecompressionStream`.
+ * - `NO_INFLATE`: a part is deflated and the platform has no `DecompressionStream`, or one that
+ *   reads a deflate stream cut short as whole and reads on past the end of a gzip member.
  * - `UNKNOWN_SHEET`: `rows` was asked for a name or an index the workbook does not have.
  * - `INVALID_LIMIT`: a limit that is not a positive finite number. `limit` names it.
  *

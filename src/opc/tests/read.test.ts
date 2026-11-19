@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { unzip } from "../../../test/helpers/unzip.js";
 import { resolveLimits } from "../../errors/read.js";
@@ -41,6 +42,57 @@ const parts = [
 ];
 
 const deflate = selectCompression("deflate");
+
+interface WatchedInflate {
+  readonly format: CompressionFormat;
+  readonly given: Uint8Array[];
+}
+
+/**
+ * Puts a watch on the platform's inflate: every one made from here on, with its format and each
+ * chunk it is given. An inflate of a format in `refusingNothing` refuses nothing and gives out
+ * what it is given, as one does that reads a stream cut short as if it had ended.
+ */
+function watchedInflates(refusingNothing: readonly CompressionFormat[] = []): WatchedInflate[] {
+  const Inflate = DecompressionStream;
+  const inflates: WatchedInflate[] = [];
+  vi.stubGlobal(
+    "DecompressionStream",
+    class {
+      readonly readable: ReadableStream<Uint8Array>;
+      readonly writable: WritableStream<Uint8Array<ArrayBuffer>>;
+
+      constructor(format: CompressionFormat) {
+        const given: Uint8Array[] = [];
+        inflates.push({ format, given });
+        const inflate = refusingNothing.includes(format)
+          ? new TransformStream<Uint8Array, Uint8Array>()
+          : new Inflate(format);
+        const writer = inflate.writable.getWriter();
+        this.readable = inflate.readable;
+        this.writable = new WritableStream({
+          write: (chunk) => {
+            given.push(chunk.slice());
+            return writer.write(chunk);
+          },
+          close: () => writer.close(),
+          abort: (reason) => writer.abort(reason),
+        });
+      }
+    },
+  );
+  return inflates;
+}
+
+/** Whether the platform's gzip inflate reads on into a second member, as Node 20, 22 and Bun do. */
+function platformReadsSecondMember(): Promise<boolean> {
+  const member = gzipSync(new Uint8Array(0));
+  const inflated = new Blob([member, member]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Response(inflated).arrayBuffer().then(
+    () => true,
+    () => false,
+  );
+}
 
 describe("openPackage", () => {
   it("reads back every part of what createPackage and streamPackage write, stored and deflated, from bytes, an ArrayBuffer and a Blob", async () => {
@@ -210,47 +262,52 @@ describe("a part", () => {
     }
   });
 
-  it("gives the platform's inflate the part as a gzip member that ends in the directory's CRC-32 and size, no more than 16 384 bytes at a time", async () => {
-    const Inflate = DecompressionStream;
-    const formats: string[] = [];
-    const given: Uint8Array[] = [];
-    vi.stubGlobal(
-      "DecompressionStream",
-      class {
-        readonly readable: ReadableStream<Uint8Array>;
-        readonly writable: WritableStream<Uint8Array<ArrayBuffer>>;
-
-        constructor(format: CompressionFormat) {
-          formats.push(format);
-          const inflate = new Inflate(format);
-          const writer = inflate.writable.getWriter();
-          this.readable = inflate.readable;
-          this.writable = new WritableStream({
-            write: (chunk) => {
-              given.push(chunk.slice());
-              return writer.write(chunk);
-            },
-            close: () => writer.close(),
-            abort: (reason) => writer.abort(reason),
-          });
-        }
-      },
-    );
+  it("gives the platform's inflate the deflate stream alone where it refuses a stream cut short, no more than 16 384 bytes at a time, after asking once per package", async () => {
+    const inflates = watchedInflates();
     const bytes = await createPackage(parts, deflate);
     const image = unzip(bytes).find(({ name }) => name === "xl/media/image1.png")!;
     expect(image.compressedSize).toBeGreaterThan(6 * 16_384);
+    const dataStart = image.localHeaderOffset + 30 + image.name.length;
+
+    const pkg = await open(bytes);
+    expect(same(await read(pkg, image.name), image.data)).toBe(true);
+    expect(same(await read(pkg, sheet), parts[1]!.data)).toBe(true);
+
+    const [asked, inflated, another, ...more] = inflates;
+    expect(more).toEqual([]);
+    expect(asked).toEqual({
+      format: "deflate-raw",
+      given: [new Uint8Array([0, 0, 0, 0xff, 0xff])],
+    });
+    expect([inflated!.format, another!.format]).toEqual(["deflate-raw", "deflate-raw"]);
+    expect(Math.max(...inflated!.given.map((chunk) => chunk.length))).toBeLessThanOrEqual(16_384);
+    expect(
+      same(joined(inflated!.given), bytes.subarray(dataStart, dataStart + image.compressedSize)),
+    ).toBe(true);
+  });
+
+  it("gives the platform's inflate the deflate stream as a gzip member that ends in the directory's CRC-32 and size where its raw inflate reads a stream cut short, as Deno 2.9's does, and refuses with NO_INFLATE where its gzip inflate reads a second member too", async () => {
+    const secondMember = await platformReadsSecondMember();
+    const inflates = watchedInflates(["deflate-raw"]);
+    const bytes = await createPackage(parts, deflate);
+    const image = unzip(bytes).find(({ name }) => name === "xl/media/image1.png")!;
     const dataStart = image.localHeaderOffset + 30 + image.name.length;
     const trailer = new DataView(new ArrayBuffer(8));
     trailer.setUint32(0, image.crc32, true);
     trailer.setUint32(4, image.uncompressedSize, true);
 
-    expect(same(await read(await open(bytes), image.name), image.data)).toBe(true);
+    const reading = read(await open(bytes), image.name);
+    if (secondMember) {
+      await expect(reading).rejects.toMatchObject({ code: "NO_INFLATE" });
+      expect(inflates.map(({ format }) => format)).toEqual(["deflate-raw", "gzip"]);
+      return;
+    }
+    expect(same(await reading, image.data)).toBe(true);
 
-    expect(formats).toEqual(["gzip"]);
-    expect(Math.max(...given.map((chunk) => chunk.length))).toBeLessThanOrEqual(16_384);
+    expect(inflates.map(({ format }) => format)).toEqual(["deflate-raw", "gzip", "gzip"]);
     expect(
       same(
-        joined(given),
+        joined(inflates[2]!.given),
         joined([
           new Uint8Array([0x1f, 0x8b, 8, 0, 0, 0, 0, 0, 0, 0xff]),
           bytes.subarray(dataStart, dataStart + image.compressedSize),
@@ -258,6 +315,13 @@ describe("a part", () => {
         ]),
       ),
     ).toBe(true);
+    const cut = await createPackage(parts, {
+      method: 8,
+      compress: async (data) => (await deflate.compress(data)).subarray(0, -1),
+    });
+    await expect(read(await open(cut), image.name)).rejects.toMatchObject({
+      code: "INVALID_PACKAGE",
+    });
   });
 
   it("lets go of the platform's inflate when it is closed, and when it refuses", async () => {
@@ -443,6 +507,14 @@ describe("a platform without an inflate", () => {
     const part = pkg.open(partName(sheet, "worksheet"), resolveLimits(undefined).rows().inflate)!;
     await expect(part.read()).rejects.toMatchObject({ code: "NO_INFLATE" });
     await expect(part.read()).rejects.toMatchObject({ code: "NO_INFLATE" });
+  });
+
+  it("refuses a deflated part with NO_INFLATE where the platform's inflate reads a raw stream cut short and a gzip member after another", async () => {
+    const stored = await createPackage(parts, store);
+    const deflated = await createPackage(parts, deflate);
+    watchedInflates(["deflate-raw", "gzip"]);
+    expect(same(await read(await open(stored), sheet), parts[1]!.data)).toBe(true);
+    await expect(read(await open(deflated), sheet)).rejects.toMatchObject({ code: "NO_INFLATE" });
   });
 
   it("refuses a deflated part with NO_INFLATE where the platform names the inflate and has none for the format asked of it", async () => {
