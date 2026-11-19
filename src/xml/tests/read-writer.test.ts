@@ -135,9 +135,11 @@ describe("what the writer writes", () => {
       if (keeps(point) && point !== 38 && point !== 60) all += String.fromCodePoint(point);
     }
     expect(all.length).toBeGreaterThan(2_000_000);
-    const tokens = await tokensOf(`<t a="${all.replace('"', "'")}">${all}</t>`, { asked: ["a"] });
-    expect(tokens[1]![3] === all.replace("\r", "\n")).toBe(true);
-    const value = all.replace('"', "'").replace(/[\t\n\r]/g, " ");
+    const tokens = await tokensOf(`<t a="${all.replaceAll('"', "'")}">${all}</t>`, {
+      asked: ["a"],
+    });
+    expect(tokens[1]![3] === all.replaceAll("\r", "\n")).toBe(true);
+    const value = all.replaceAll('"', "'").replace(/[\t\n\r]/g, " ");
     expect((tokens[0]![3] as Record<string, string>)["a"] === value).toBe(true);
   }, 60_000);
 

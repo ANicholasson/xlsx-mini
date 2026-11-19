@@ -245,7 +245,7 @@ describe("the attributes of an open tag", () => {
 
   it("are gone when the element closes", async () => {
     const seen: unknown[] = [];
-    await readXml(chunked(`<a r="1"><b r="2"/></a>`), {
+    await readXml(chunked(`<a r="1"><b r="2"/><c r="3">x</c></a>`), {
       open() {},
       close(xml) {
         seen.push([xml.name, xml.attribute("r"), xml.index("r"), xml.valueStart("r")]);
@@ -255,6 +255,7 @@ describe("the attributes of an open tag", () => {
     });
     expect(seen).toEqual([
       ["b", undefined, -1, -1],
+      ["c", undefined, -1, -1],
       ["a", undefined, -1, -1],
     ]);
   });
@@ -429,6 +430,8 @@ describe("refused with INVALID_XML", () => {
     const most = 4_194_304;
     const tokens: [string, (length: number) => string][] = [
       ["a run of text", (length) => `<a>${"x".repeat(length)}</a>`],
+      ["a run of text after a child element", (length) => `<a><b/>${"x".repeat(length)}</a>`],
+      ["a run of text before a child element", (length) => `<a>${"x".repeat(length)}<b/></a>`],
       ["an open tag", (length) => `<a b="${"x".repeat(length - 9)}"/>`],
       ["white space in a tag", (length) => `<a${" ".repeat(length - 3)}>`.concat("</a>")],
       ["a close tag", (length) => `<a></a${" ".repeat(length - 4)}>`],
