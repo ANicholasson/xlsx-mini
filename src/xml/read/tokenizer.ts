@@ -524,7 +524,9 @@ export function createTokenizer(): Tokenizer {
       if (fed !== "") {
         // The run of a leaf stays until its element closes: its text is cut from the buffer then.
         const kept = runEnd > runStart ? runStart : position;
-        cursor.buffer = cursor.buffer.slice(kept, limit) + fed + SENTINEL;
+        // Joined, not added: V8 reads every character of a string made with `+` through the
+        // string it was made of, one step more on each character the tokenizer reads.
+        cursor.buffer = [cursor.buffer.slice(kept, limit), fed, SENTINEL].join("");
         fed = "";
         dropped += kept;
         position -= kept;
