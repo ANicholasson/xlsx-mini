@@ -6,7 +6,10 @@
 
 /** One part's bytes as chunks. A package's part is one; a test passes its own. */
 export interface ByteChunks {
-  /** The next chunk, or `undefined` after the last. A chunk is read before the next is asked for. */
+  /**
+   * The next chunk, or `undefined` after the last. A chunk is read before the next is asked for,
+   * which may overwrite it.
+   */
   read(): Promise<Uint8Array | undefined>;
   /** Called once when the part has been read to its end, refused, or left early. */
   close(): void;

@@ -12,7 +12,10 @@ export function utf8(text: string): Uint8Array {
   return encoder.encode(text);
 }
 
-/** A part given in chunks that end at `cuts`, which counts what is asked of it. */
+/**
+ * A part given in chunks that end at `cuts`, which counts what is asked of it. Every chunk is a
+ * view of one buffer, which the next read overwrites, as a package may.
+ */
 export interface Chunked extends ByteChunks {
   readonly reads: number;
   readonly closes: number;
@@ -21,6 +24,8 @@ export interface Chunked extends ByteChunks {
 export function chunked(part: string | Uint8Array, cuts: readonly number[] = []): Chunked {
   const bytes = typeof part === "string" ? utf8(part) : part;
   const ends = [...cuts.filter((cut) => cut <= bytes.length), bytes.length];
+  const reused = new Uint8Array(bytes.length);
+  let last = 0;
   let from = 0;
   let reads = 0;
   let closes = 0;
@@ -34,7 +39,11 @@ export function chunked(part: string | Uint8Array, cuts: readonly number[] = [])
     read() {
       const end = ends[reads++];
       if (end === undefined) return Promise.resolve(undefined);
-      const chunk = bytes.subarray(from, end);
+      // What the last chunk held becomes bytes that are not UTF-8 before the new one is copied in.
+      reused.fill(0xff, 0, last);
+      const chunk = reused.subarray(0, end - from);
+      chunk.set(bytes.subarray(from, end));
+      last = chunk.length;
       from = end;
       return Promise.resolve(chunk);
     },
