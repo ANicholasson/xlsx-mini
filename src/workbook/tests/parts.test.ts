@@ -17,6 +17,14 @@ describe("renderWorkbook", () => {
     );
   });
 
+  it("writes a carriage return in a sheet name as itself, in the name and in a reference to the sheet", () => {
+    const xml = renderWorkbook([{ ...plain("a\rb"), printTitles: "$1:$1" }]);
+    expect(xml).toContain('<sheet name="a\rb" sheetId="1" r:id="rId1"/>');
+    expect(xml).toContain(
+      '<definedName name="_xlnm.Print_Titles" localSheetId="0">&apos;a\rb&apos;!$1:$1</definedName>',
+    );
+  });
+
   it("marks a hidden sheet, and names the first sheet that is shown when a hidden one precedes it", () => {
     const hidden = (name: string): SheetEntry => ({ ...plain(name), hidden: true });
     expect(renderWorkbook([hidden("A"), hidden("B"), plain("C"), plain("D")])).toContain(

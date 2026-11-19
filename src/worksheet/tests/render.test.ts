@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
+import { readTextAsExcel, textsToReadBack } from "../../../test/helpers/text.js";
 import { XlsxMiniError } from "../../errors/index.js";
 import { createMediaTable } from "../../drawing/index.js";
 import { createStringTable } from "../../shared-strings/index.js";
@@ -81,6 +82,22 @@ describe("renderWorksheet", () => {
     );
     expect(xml).toContain('<row r="2"><c r="A2" t="s"><v>2</v></c><c r="B2"><v>42.5</v></c></row>');
   });
+
+  it.each(textsToReadBack)(
+    "writes %j so that it reads back as written, inline and as a formula's cached text",
+    (text) => {
+      const xml = render(
+        { name: "S", rows: [[text, { formula: "A1", value: text }]] },
+        { inlineStrings: true },
+      );
+      const inline = /<is><t(?: xml:space="preserve")?>([^<]*)<\/t><\/is>/.exec(xml)?.[1];
+      const cached = /<f>A1<\/f><v>([^<]*)<\/v>/.exec(xml)?.[1];
+      expect([inline, cached].map((written) => readTextAsExcel(written ?? "not written"))).toEqual([
+        text,
+        text,
+      ]);
+    },
+  );
 
   it("writes booleans as boolean cells", () => {
     const xml = render({ name: "S", rows: [[true, false]] });

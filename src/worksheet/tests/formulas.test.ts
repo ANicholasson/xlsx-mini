@@ -25,9 +25,13 @@ const xml = (sheet: Sheet, overrides?: Partial<WorksheetContext>) =>
   new TextDecoder().decode(render(sheet, overrides).data);
 
 describe("formula cells", () => {
-  it("writes the formula escaped inside <f>, without a value", () => {
-    const sheet = xml({ name: "S", rows: [[{ formula: 'IF(A2>1,"a & b","c")' }]] });
+  it("writes the formula escaped inside <f>, without a value, and a carriage return as itself, which XML reads as a line feed", () => {
+    const sheet = xml({
+      name: "S",
+      rows: [[{ formula: 'IF(A2>1,"a & b","c")' }, { formula: "A2+\rB2" }]],
+    });
     expect(sheet).toContain('<c r="A1"><f>IF(A2&gt;1,&quot;a &amp; b&quot;,&quot;c&quot;)</f></c>');
+    expect(sheet).toContain('<c r="B1"><f>A2+\rB2</f></c>');
   });
 
   it("writes a cached value typed as the result: number, text as str, boolean", () => {

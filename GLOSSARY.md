@@ -111,6 +111,10 @@ Text stored once in a workbook-wide table and referenced by index from every cel
 Text written inside its own cell, so nothing has to be held until the end. What `streamXlsx` writes unless asked for shared strings.
 _Avoid_: rich string
 
+**Escape**:
+A character that the text of a part writes as `_xHHHH_`, its UTF-16 code in four hexadecimal digits. The applications read cell text through it, so in text that looks like one, the writer escapes the `x` as `_x0078_`.
+_Avoid_: entity and character reference (XML's own `&amp;` and `&#13;`)
+
 **Chunk**:
 One piece of a streamed part as the consumer receives it: at most 65 535 bytes, so it is one stored deflate block where that fallback applies.
 

@@ -1,4 +1,5 @@
 import { XlsxMiniError, describeValue } from "../../errors/index.js";
+import { escapeText } from "../../shared-strings/index.js";
 import { escapeXml } from "../../xml/index.js";
 import { absolute, boxProblem, parseReference, quoteSheetName } from "./cell-ref.js";
 import type { DataValidation, ValidationMessage } from "./model.js";
@@ -226,7 +227,7 @@ function message(
     throw invalid(`${path}.title`, `A title is at most ${MAX_TITLE_LENGTH} characters`);
   }
   return (
-    (title === undefined || title.length === 0 ? "" : ` ${titleAttribute}="${escapeXml(title)}"`) +
-    ` ${bodyAttribute}="${escapeXml(value.message)}"`
+    (title === undefined || title.length === 0 ? "" : ` ${titleAttribute}="${escapeText(title)}"`) +
+    ` ${bodyAttribute}="${escapeText(value.message)}"`
   );
 }

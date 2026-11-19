@@ -653,3 +653,30 @@ export const printWorkbook: Workbook = {
     },
   ],
 };
+
+/** The workbook behind escapes.xlsx: text that looks like the format's `_xHHHH_` escape, carriage returns and a line feed, and a formula's cached text. */
+export const escapesWorkbook: Workbook = {
+  sheets: [
+    {
+      name: "Escapes",
+      columns: [{ width: 36 }, { width: 18 }],
+      rows: [
+        ["Case", "Text"],
+        ["The escape of A", "_x0041_"],
+        ["An escape inside text", "part _x00e6_ no"],
+        ["The escape of an underscore", "_x005F_"],
+        ["The escape of a carriage return", "_x000D_"],
+        ["Letters that are not hexadecimal", "_xZZZZ_"],
+        ["Two digits", "_x41_"],
+        ["A capital X", "_X0041_"],
+        ["Two escapes that share an underscore", "_x0041_x0042_"],
+        ["An escape after an _x that is not one", "_x_x0041_"],
+        ["An escape closed by a carriage return", "_x0041\r"],
+        ["A carriage return", "a\rb"],
+        ["A carriage return and a line feed", "a\r\nb"],
+        ["A line feed", "a\nb"],
+        ["A formula's cached text", { formula: 'B2&""', value: "_x0041_" }],
+      ],
+    },
+  ],
+};

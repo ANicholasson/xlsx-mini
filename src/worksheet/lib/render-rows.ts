@@ -1,5 +1,5 @@
 import { XlsxMiniError, atPath, describeValue } from "../../errors/index.js";
-import type { StringTable } from "../../shared-strings/index.js";
+import { type StringTable, escapeText } from "../../shared-strings/index.js";
 import type { CellStyle } from "../../styles/index.js";
 import { type TextSink, escapeXml, needsSpacePreserve } from "../../xml/index.js";
 import { IMAGE_INSET, type MediaTable, type SheetDrawing } from "../../drawing/index.js";
@@ -483,7 +483,7 @@ function renderValue(
       if (context.inlineStrings === true) {
         if (measure) widths.text(column, value, cellStyle, columnStyle);
         const space = needsSpacePreserve(value) ? ' xml:space="preserve"' : "";
-        return `<c r="${reference}"${style} t="inlineStr"><is><t${space}>${escapeXml(value)}</t></is></c>`;
+        return `<c r="${reference}"${style} t="inlineStr"><is><t${space}>${escapeText(value)}</t></is></c>`;
       }
       const index = context.strings.intern(value);
       if (measure) widths.sharedText(column, index, value, cellStyle, columnStyle);
@@ -676,7 +676,7 @@ function renderFormula(
         );
       }
       if (measure) widths.text(column, value, cellStyle, columnStyle);
-      return `${open} t="str">${f}<v>${escapeXml(value)}</v></c>`;
+      return `${open} t="str">${f}<v>${escapeText(value)}</v></c>`;
     case "number":
       if (!Number.isFinite(value)) {
         throw new XlsxMiniError(
