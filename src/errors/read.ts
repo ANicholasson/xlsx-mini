@@ -137,10 +137,13 @@ const STRUCTURE_SHARE = 1 / 8;
 /**
  * Brands a meter. A declared class emits no code. It is a class because no object literal can write
  * a class's private member and a spread drops it, so an object literal where a meter is expected
- * does not compile, with a spread or without. A cast can still make one, and a copy made through a
- * function compiles: `Object.assign`, `Object.create`, `structuredClone`, a generic helper that
- * spreads. `test/boundaries.test.ts` fails on any of these in read-side code other than this file:
- * a cast other than `as const`, an object spread or rest, and the three functions.
+ * does not compile, with a spread or without. The types stop no more than that: a cast makes a
+ * meter, and so does a copy made through a function. `test/boundaries.test.ts` searches read-side
+ * code other than this file for the forms a reader would reach for: a cast other than `as const`, a
+ * type predicate, an object spread or rest, `structuredClone`, `Reflect`, a function of `Object`
+ * that does more than read one or freeze it, and `globalThis` other than as `globalThis.name`. The
+ * search guards against habit and proves nothing: a helper in a file outside the read side, an
+ * overload whose body returns a literal, and a value typed `any` all pass it.
  */
 declare class Metered {
   private readonly metered: true;
@@ -159,7 +162,7 @@ interface Meter<Limit extends ReadLimit> extends Metered {
    * `LIMIT_EXCEEDED` naming `limit`, and takes nothing, when it does not fit or is not a
    * non-negative number: charge before the work, not after.
    */
-  charge(amount: number): void;
+  readonly charge: (amount: number) => void;
 }
 
 /**
