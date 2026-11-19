@@ -166,7 +166,6 @@ async function platformFraming(): Promise<Framing> {
   );
 }
 
-/** Whether the platform has an inflate for `format`, and that inflate refuses `bytes`. */
 async function refuses(format: Framing, bytes: Uint8Array<ArrayBuffer>): Promise<boolean> {
   let inflate: DecompressionStream;
   try {
@@ -185,10 +184,6 @@ async function refuses(format: Framing, bytes: Uint8Array<ArrayBuffer>): Promise
   );
 }
 
-/**
- * A part's deflate stream as a gzip member: a header in front of it, and behind it what a member
- * ends in, which is the CRC-32 and the size that the directory states.
- */
 async function* member(
   slices: Chunks<Uint8Array<ArrayBuffer>>,
   entry: DirectoryEntry,

@@ -131,8 +131,6 @@ describe("a package that lies about a part's content", () => {
   it(
     "is refused when the part inflates to fewer bytes than declared and those have its CRC-32",
     async () => {
-      // Four bytes with the CRC-32 that no bytes at all have, as the trailer of a gzip member of
-      // them states it.
       const data = new Uint8Array([0x9d, 0x0a, 0xd9, 0x6d]);
       const crc32 = (bytes: Uint8Array) => {
         const member = gzipSync(bytes);
@@ -251,10 +249,10 @@ describe("a package that lies about a part's content", () => {
     BOUND,
   );
 
-  // Written by a verifier of this reader. The sheet's deflate stream ends early and a gzip member
-  // follows it: after an empty stream and eight zero bytes in the first, after the stream and the
-  // gzip trailer of its 95 bytes in the second. Python's zipfile and Info-ZIP unzip read the first
-  // stream, 0 and 95 bytes, where the directory states 90 and 140.
+  // The sheet's deflate stream ends early and a gzip member follows it: after an empty stream and
+  // eight zero bytes in the first, after the stream and the gzip trailer of its 95 bytes in the
+  // second. Python's zipfile and Info-ZIP unzip read the first stream, 0 and 95 bytes, where the
+  // directory states 90 and 140.
   it.each(["empty-stream-then-gzip-member.zip", "stream-trailer-then-gzip-member.zip"])(
     "is refused when a gzip member follows the end of the deflate stream: %s",
     async (fixture) => {

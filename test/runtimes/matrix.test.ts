@@ -65,12 +65,10 @@ async function spawn<Report = HostReport>(
   return JSON.parse(stdout) as Report;
 }
 
-/** What `read.mjs` made of each package: the sheet in base64, or the code it was refused with. */
 interface ReadReport {
   readonly outcomes: readonly ({ readonly sheet: string } | { readonly refused: string })[];
 }
 
-/** A host that runs the package reader built in dist/ on packages given in base64. */
 interface Reader {
   readonly name: string;
   readonly run: (packages: readonly string[]) => Promise<ReadReport>;

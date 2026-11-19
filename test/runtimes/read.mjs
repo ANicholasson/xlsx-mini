@@ -1,5 +1,3 @@
-// Run by Node, Bun and Deno: reads the sheet of each package it is given in base64 with the
-// package reader in dist/, and prints one line of JSON, a `ReadReport`.
 import { resolveLimits } from "../../dist/errors/read.js";
 import { openPackage, partName } from "../../dist/opc/read.js";
 

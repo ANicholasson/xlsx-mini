@@ -48,11 +48,6 @@ interface WatchedInflate {
   readonly given: Uint8Array[];
 }
 
-/**
- * Puts a watch on the platform's inflate: every one made from here on, with its format and each
- * chunk it is given. An inflate of a format in `refusingNothing` refuses nothing and gives out
- * what it is given, as one does that reads a stream cut short as if it had ended.
- */
 function watchedInflates(refusingNothing: readonly CompressionFormat[] = []): WatchedInflate[] {
   const Inflate = DecompressionStream;
   const inflates: WatchedInflate[] = [];
@@ -84,7 +79,6 @@ function watchedInflates(refusingNothing: readonly CompressionFormat[] = []): Wa
   return inflates;
 }
 
-/** Whether the platform's gzip inflate reads on into a second member, as Node 20, 22 and Bun do. */
 function platformReadsSecondMember(): Promise<boolean> {
   const member = gzipSync(new Uint8Array(0));
   const inflated = new Blob([member, member]).stream().pipeThrough(new DecompressionStream("gzip"));
