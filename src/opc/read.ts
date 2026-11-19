@@ -43,10 +43,7 @@ export interface PackageReader {
    * is no way to a part's bytes without a meter of the use its name carries: the use is taken from
    * the name alone, so a meter of another use does not compile.
    */
-  open<Use extends PartUse>(
-    part: PartName<Use>,
-    meter: PartMeter<NoInfer<Use>>,
-  ): PartBytes | undefined;
+  open<Use extends PartUse>(part: PartName<Use>, meter: PartMeter<Use>): PartBytes | undefined;
 }
 
 /**
@@ -59,10 +56,11 @@ export interface PackageReader {
  * fit is refused with `LIMIT_EXCEEDED` after one read of the end of the file.
  *
  * Throws `NOT_XLSX` when the file is no package, naming a compound file, and `INVALID_PACKAGE`
- * when the package is cut short, has bytes in front of it or after it, has an end that can be read
- * in two ways, a damaged directory or a part outside it, or names a part twice. A zip64 package is
- * accepted, and so is a comment after the end record. An error of the `Blob` itself is passed on
- * as it is: it says nothing about the file.
+ * when the package is cut short, has bytes after its end record, stands behind bytes that put its
+ * directory elsewhere than its end record says, has an end that can be read in two ways, a damaged
+ * directory or a part outside it, or names a part twice. A zip64 package is accepted, and so is a
+ * comment after the end record, and bytes in front whose length the offsets include. An error of
+ * the `Blob` itself is passed on as it is: it says nothing about the file.
  */
 export async function openPackage(
   file: Uint8Array | ArrayBuffer | Blob,
