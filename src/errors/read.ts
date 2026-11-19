@@ -155,7 +155,7 @@ declare class Metered {
  * Whatever inflates, allocates per position or counts entries needs a meter handed to it, and only
  * `resolveLimits` makes one.
  */
-interface Meter<Limit extends ReadLimit> extends Metered {
+export interface Meter<Limit extends ReadLimit> extends Metered {
   readonly limit: Limit;
   /**
    * Takes `amount` from what is left and from every meter this one is nested in. Throws
@@ -175,10 +175,14 @@ const PART_LIMIT = {
   worksheet: "inflatedBytes",
 } as const satisfies Record<string, ReadLimit>;
 
-type PartUse = keyof typeof PART_LIMIT;
+export type PartUse = keyof typeof PART_LIMIT;
 
-/** A meter of inflated bytes that says which kind of part it pays for. */
-interface PartMeter<Use extends PartUse> extends Meter<(typeof PART_LIMIT)[Use]> {
+/**
+ * A meter of inflated bytes that says which kind of part it pays for. `in out` holds a meter to
+ * its one use: it is no meter of "this use or that", so a part whose name leaves its use open
+ * between two has no meter to be opened with.
+ */
+export interface PartMeter<in out Use extends PartUse> extends Meter<(typeof PART_LIMIT)[Use]> {
   readonly use: Use;
 }
 
