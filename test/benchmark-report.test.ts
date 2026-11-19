@@ -75,6 +75,25 @@ describe("renderReport", () => {
     expect(report).not.toContain("against main");
   });
 
+  it("states how many tokens per second the tokenizer reads, at its minimum", () => {
+    const tokens: BenchmarkResult = {
+      suite: "wide table",
+      variant: "tokens",
+      samples: 7,
+      head: { minMs: 120, p50Ms: 125 },
+      tokens: 4_200_000,
+    };
+    const node = run("node", 1, false);
+    const report = renderReport([{ ...node, benchmarks: [...node.benchmarks, tokens] }], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+    });
+    expect(report).toContain("| wide table | tokens | — | 120.0 ms | — |");
+    expect(report).toContain(
+      "`tokens` is the reader's tokenizer over the worksheet of the wide table: 4,200,000 tokens, which this pull request reads at 35.0 million tokens per second.",
+    );
+  });
+
   it("adds the size of both builds in a bundle, gzipped, and whether the bytes are the same", () => {
     const size: SizeResult = {
       head: {

@@ -6,6 +6,7 @@
 // one process share the engine's compiled code and its heap, and on the runner that made one of
 // them write a streamed sheet at less than half its speed; apart, a build meets what a program
 // using it meets, and a benchmark is not shaped by the ones before it.
+// The variant `tokens` times the reader's tokenizer over the wide table's worksheet instead.
 // `pnpm bench` prints a table; `--json <file>` also writes the results, and `--samples <file>`
 // every process's timings, for studying the harness itself.
 import { spawnSync } from "node:child_process";
@@ -13,15 +14,33 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as Api from "../src/index.ts";
-import type { BenchmarkResult, RunResult, Timing, Variant } from "./report.ts";
+import type * as Xml from "../src/xml/read.ts";
+import { unzip } from "../test/helpers/unzip.ts";
+import {
+  type BenchmarkResult,
+  type RunResult,
+  type Timing,
+  type Variant,
+  tokensPerSecond,
+} from "./report.ts";
 import { type SuiteName, suites, withAutoWidths } from "./workbooks.ts";
 
 type Write = () => Promise<unknown>;
 
-const VARIANTS = ["deflate", "store", "stream", "auto"] as const satisfies readonly Variant[];
+const VARIANTS = [
+  "deflate",
+  "store",
+  "stream",
+  "auto",
+  "tokens",
+] as const satisfies readonly Variant[];
 
-/** What one process measured: its timings, or null when the build cannot write the variant. */
-type Samples = readonly number[] | null;
+const TOKENIZED: SuiteName = "wide table";
+
+const PART_SLICE = 16_384;
+
+/** Null when the build cannot do what the variant asks. */
+type Measured = { readonly samples: readonly number[]; readonly tokens?: number } | null;
 
 interface RuntimeInfo {
   readonly runtime: string;
@@ -69,32 +88,86 @@ async function succeeds(write: Write): Promise<boolean> {
 }
 
 /**
+ * The tokenizer of a build over one part: every open and every close tag is a token, counted by a
+ * visitor that asks for nothing else, so the time is the tokenizer's own. The part comes in the
+ * chunks a package gives of a stored part.
+ */
+async function tokenizing(
+  dist: string,
+  part: Uint8Array,
+): Promise<{ readonly read: Write; readonly tokens: () => number }> {
+  const { readXml } = (await import(
+    pathToFileURL(resolve(dist, "xml/read.js")).href
+  )) as typeof Xml;
+  let tokens = 0;
+  return {
+    tokens: () => tokens,
+    read() {
+      let at = 0;
+      tokens = 0;
+      return readXml(
+        {
+          read() {
+            const chunk = at < part.length ? part.subarray(at, at + PART_SLICE) : undefined;
+            at += PART_SLICE;
+            return Promise.resolve(chunk);
+          },
+          close() {},
+        },
+        {
+          open() {
+            tokens++;
+          },
+          close() {
+            tokens++;
+            return undefined;
+          },
+          end: () => undefined,
+        },
+      );
+    },
+  };
+}
+
+/**
  * What a measuring process does: loads the one build from its `dist/` folder, as the host itself
  * resolves it, builds the one suite, writes it once to warm up, then `iterations` timed times
- * with a collection before each where the host exposes one.
+ * with a collection before each where the host exposes one. For the tokenizer the suite is written
+ * once, and its worksheet is what is read and timed.
  */
 async function measure(
   dist: string,
   suite: string,
   variant: Variant,
   iterations: number,
-): Promise<Samples> {
+): Promise<Measured> {
   const api = (await import(pathToFileURL(resolve(dist, "index.js")).href)) as typeof Api;
   const workbook = suites.find(([name]) => name === suite)![1]();
   const written = variant === "auto" ? withAutoWidths(workbook) : workbook;
-  const write: Write =
-    variant === "deflate"
-      ? () => api.writeXlsx(written)
-      : variant === "stream"
-        ? () => api.streamXlsx(written).pipeTo(new WritableStream())
-        : () => api.writeXlsx(written, { compression: "none" });
+  let tokens: (() => number) | undefined;
+  let write: Write;
+  if (variant === "tokens") {
+    const file = await api.writeXlsx(written, { compression: "none" });
+    const sheet = unzip(file).find(({ name }) => name === "xl/worksheets/sheet1.xml")!;
+    // A build from before the tokenizer has no such module, and then no such row.
+    const tokenizer = await tokenizing(dist, sheet.data).catch(() => undefined);
+    if (tokenizer === undefined) return null;
+    ({ read: write, tokens } = tokenizer);
+  } else {
+    write =
+      variant === "deflate"
+        ? () => api.writeXlsx(written)
+        : variant === "stream"
+          ? () => api.streamXlsx(written).pipeTo(new WritableStream())
+          : () => api.writeXlsx(written, { compression: "none" });
+  }
   if (!(await succeeds(write))) return null;
   const samples: number[] = [];
   for (let i = 0; i < iterations; i++) {
     collectGarbage();
     samples.push(await time(write));
   }
-  return samples;
+  return tokens === undefined ? { samples } : { samples, tokens: tokens() };
 }
 
 /** Runs this file again on the same runtime, with the same engine flags, for one measurement. */
@@ -103,7 +176,7 @@ function measureInProcess(
   suite: SuiteName,
   variant: Variant,
   iterations: number,
-): Samples {
+): Measured {
   const script = fileURLToPath(import.meta.url);
   const { runtime } = detectRuntime();
   // Every measuring process gets a collector to call, however this one was started; Bun has its own.
@@ -132,7 +205,7 @@ function measureInProcess(
   if (child.status !== 0) {
     throw new Error(`Measuring ${suite}, ${variant} of ${dist} ended with status ${child.status}`);
   }
-  return JSON.parse(child.stdout) as Samples;
+  return JSON.parse(child.stdout) as Measured;
 }
 
 function summarize(samples: readonly number[]): Timing {
@@ -143,14 +216,14 @@ function summarize(samples: readonly number[]): Timing {
 const iterations = Number(argument("--iterations") ?? 4);
 const measured = argument("--measure");
 if (measured !== undefined) {
-  // A measuring process: its whole output is its timings, for the process that started it.
-  const samples = await measure(
+  // A measuring process: its whole output is what it measured, for the process that started it.
+  const measurement = await measure(
     measured,
     argument("--suite")!,
     argument("--variant") as Variant,
     iterations,
   );
-  console.log(JSON.stringify(samples));
+  console.log(JSON.stringify(measurement));
 } else {
   const headDist = argument("--dist") ?? fileURLToPath(new URL("../dist/", import.meta.url));
   const baseDist = argument("--base");
@@ -161,12 +234,15 @@ if (measured !== undefined) {
   // runs on the warmer or the busier machine.
   const headSamples = new Map<string, number[]>();
   const baseSamples = new Map<string, number[]>();
+  const tokens = new Map<string, number>();
   const unwritable = new Set<string>();
   const processes: object[] = [];
+  const variantsOf = (suite: SuiteName): readonly Variant[] =>
+    VARIANTS.filter((variant) => variant !== "tokens" || suite === TOKENIZED);
   let turn = 0;
   for (let round = 0; round < rounds; round++) {
     for (const [suite] of suites) {
-      for (const variant of VARIANTS) {
+      for (const variant of variantsOf(suite)) {
         const key = `${suite}\n${variant}`;
         const builds: (readonly [dist: string, isHead: boolean])[] =
           baseDist === undefined || unwritable.has(key)
@@ -177,17 +253,19 @@ if (measured !== undefined) {
               ];
         if ((round + turn++) % 2 === 1) builds.reverse();
         for (const [dist, isHead] of builds) {
-          const samples = measureInProcess(dist, suite, variant, iterations);
+          const measurement = measureInProcess(dist, suite, variant, iterations);
+          const samples = measurement?.samples ?? null;
           processes.push({ build: isHead ? "head" : "base", round, suite, variant, samples });
-          if (samples === null) {
-            // A base from before streaming or auto widths has no such row; the build under test
-            // must write every variant.
+          if (measurement === null) {
+            // A base from before streaming, auto widths or the tokenizer has no such row; the
+            // build under test must do what every variant asks.
             if (isHead) throw new Error(`The build under test could not write ${key}`);
             unwritable.add(key);
             continue;
           }
           const into = isHead ? headSamples : baseSamples;
-          into.set(key, [...(into.get(key) ?? []), ...samples]);
+          into.set(key, [...(into.get(key) ?? []), ...measurement.samples]);
+          if (isHead && measurement.tokens !== undefined) tokens.set(key, measurement.tokens);
         }
       }
     }
@@ -195,15 +273,17 @@ if (measured !== undefined) {
 
   const benchmarks: BenchmarkResult[] = [];
   for (const [suite] of suites) {
-    for (const variant of VARIANTS) {
+    for (const variant of variantsOf(suite)) {
       const key = `${suite}\n${variant}`;
       const base = unwritable.has(key) ? undefined : baseSamples.get(key);
+      const read = tokens.get(key);
       benchmarks.push({
         suite,
         variant,
         samples: rounds * iterations,
         head: summarize(headSamples.get(key)!),
         ...(base === undefined ? {} : { base: summarize(base) }),
+        ...(read === undefined ? {} : { tokens: read }),
       });
     }
   }
@@ -227,6 +307,7 @@ if (measured !== undefined) {
       "min ms": b.head.minMs.toFixed(1),
       "p50 ms": b.head.p50Ms.toFixed(1),
       ...(b.base === undefined ? {} : { "base min ms": b.base.minMs.toFixed(1) }),
+      ...(b.tokens === undefined ? {} : { "tokens per second": tokensPerSecond(b.tokens, b.head) }),
     })),
   );
 

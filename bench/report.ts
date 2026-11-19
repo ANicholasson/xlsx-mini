@@ -7,7 +7,8 @@ import type { PackageSize, SizeResult } from "./size.ts";
 
 /** `stream` is `streamXlsx` with its defaults into a sink that discards the bytes. */
 /** `auto` is the suite with every column sized to its content, written as STORE, to read against `store`. */
-export type Variant = "deflate" | "store" | "stream" | "auto";
+/** `tokens` is the reader's tokenizer over the suite's worksheet, every open and close tag a token. */
+export type Variant = "deflate" | "store" | "stream" | "auto" | "tokens";
 
 /** The minimum and the median of a benchmark's runs, in milliseconds. */
 export interface Timing {
@@ -22,6 +23,8 @@ export interface BenchmarkResult {
   readonly samples: number;
   readonly head: Timing;
   readonly base?: Timing;
+  /** For `tokens`: how many tokens one run reads. */
+  readonly tokens?: number;
 }
 
 /** Every benchmark of one runtime. */
@@ -57,6 +60,10 @@ function runtimeTitle(run: RunResult): string {
 
 function ms(value: number): string {
   return `${value.toFixed(1)} ms`;
+}
+
+export function tokensPerSecond(tokens: number, timing: Timing): string {
+  return `${(tokens / timing.minMs / 1000).toFixed(1)} million`;
 }
 
 function shortCommit(commit: string | undefined): string {
@@ -141,7 +148,7 @@ export function renderReport(runs: readonly RunResult[], options: ReportOptions)
     COMMENT_MARKER,
     "## Benchmarks",
     "",
-    `Write time per suite: ${options.headLabel} and \`${options.baseLabel}\` built and timed on the same runner, each in processes of its own that take turns, the minimum of ${samples} runs each. ` +
+    `Time per suite: ${options.headLabel} and \`${options.baseLabel}\` built and timed on the same runner, each in processes of its own that take turns, the minimum of ${samples} runs each. ` +
       `Changes inside ±${NOISE_BAND * 100} % are noise; ⚠️ marks more than ${NOISE_BAND * 100} % slower, 🔴 more than ${ALERT_BAND * 100} % slower, 🟢 more than ${NOISE_BAND * 100} % faster.`,
     "",
   ];
@@ -158,6 +165,13 @@ export function renderReport(runs: readonly RunResult[], options: ReportOptions)
       lines.push(`| ${b.suite} | ${b.variant} | ${base} | ${ms(b.head.minMs)} | ${change} |`);
     }
     lines.push("");
+    for (const b of run.benchmarks) {
+      if (b.tokens === undefined) continue;
+      lines.push(
+        `\`tokens\` is the reader's tokenizer over the worksheet of the ${b.suite}: ${b.tokens.toLocaleString("en-US")} tokens, which ${options.headLabel} reads at ${tokensPerSecond(b.tokens, b.head)} tokens per second.`,
+        "",
+      );
+    }
   }
   if (options.size !== undefined) lines.push(...renderSize(options.size, options));
   lines.push(
