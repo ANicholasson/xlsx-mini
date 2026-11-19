@@ -94,10 +94,17 @@ describe("the package reader in a process whose heap is held to 512 MiB", () => 
     }
   });
 
-  it("reads a part of 128 MiB from a Blob over a file and holds less than 8 MiB of it at a time", () => {
-    const { fileBytes, contentBytes, retainedGrowth } = report.reading;
+  it("reads a part of 128 MiB in stored blocks from a Blob over a file and holds less than 8 MiB of it at a time", () => {
+    const { fileBytes, contentBytes, retainedGrowth } = report.readings.stored;
     expect(contentBytes).toBe(128 * MEBIBYTE);
     expect(fileBytes).toBeGreaterThan(contentBytes);
+    expect(retainedGrowth).toBeLessThan(READING_BYTES);
+  });
+
+  it("reads a deflated part of 128 MiB from a Blob over a file and holds less than 8 MiB of it at a time", () => {
+    const { fileBytes, contentBytes, retainedGrowth } = report.readings.deflated;
+    expect(contentBytes).toBe(128 * MEBIBYTE);
+    expect(fileBytes).toBeLessThan(contentBytes / 4);
     expect(retainedGrowth).toBeLessThan(READING_BYTES);
   });
 });

@@ -36,7 +36,8 @@ interface Reading {
 export interface Report {
   readonly heapLimit: number;
   readonly openings: readonly Opening[];
-  readonly reading: Reading;
+  /** A part of noise in stored blocks, and a part of rows that the platform's deflate shrinks. */
+  readonly readings: { readonly stored: Reading; readonly deflated: Reading };
 }
 
 const collect = (globalThis as { gc?: () => void }).gc ?? (() => undefined);
@@ -146,9 +147,17 @@ async function opening(entries: number, file: Uint8Array | CountedBlob): Promise
   };
 }
 
-/** A part of `bytes` bytes that no deflate shortens, made as it is pulled. */
-function body(bytes: number): ReadableStream<Uint8Array> {
-  const chunk = noise(65_536);
+/** 64 KiB of rows as a worksheet holds them, which a deflate shrinks about five times. */
+function rows(): Uint8Array {
+  let text = "";
+  for (let row = 1; text.length < 65_536; row++) {
+    text += `<row r="${row}"><c r="A${row}"><v>${row * 7}</v></c><c r="B${row}" t="s"><v>${row % 97}</v></c></row>`;
+  }
+  return new TextEncoder().encode(text.slice(0, 65_536));
+}
+
+/** A part of `bytes` bytes, `chunk` over and over, made as it is pulled. */
+function body(bytes: number, chunk: Uint8Array): ReadableStream<Uint8Array> {
   let made = 0;
   return new ReadableStream({
     pull(controller) {
@@ -160,18 +169,24 @@ function body(bytes: number): ReadableStream<Uint8Array> {
 }
 
 /**
- * Writes a package of one part of `contentBytes` bytes to a file, as `streamPackage` writes it
- * where it cannot deflate, and reads the part back through a `Blob` over that file.
+ * Writes a package of one part of `contentBytes` bytes to a file, as `streamPackage` writes it in
+ * stored blocks or through the platform's deflate, and reads the part back through a `Blob` over
+ * that file.
  */
-async function reading(directory: string, contentBytes: number): Promise<Reading> {
-  const path = join(directory, "large.xlsx");
+async function reading(
+  directory: string,
+  contentBytes: number,
+  compression: "none" | "deflate",
+): Promise<Reading> {
+  const path = join(directory, `large-${compression}.xlsx`);
   const sheet = "xl/worksheets/sheet1.xml";
   const file = openSync(path, "w");
+  const chunk = compression === "none" ? noise(65_536) : rows();
   async function* parts(): AsyncGenerator<StreamedPart> {
-    yield { path: sheet, body: body(contentBytes) };
+    yield { path: sheet, body: body(contentBytes, chunk) };
   }
-  for await (const chunk of streamPackage(parts(), selectStreamCompression("none"))) {
-    writeSync(file, chunk);
+  for await (const written of streamPackage(parts(), selectStreamCompression(compression))) {
+    writeSync(file, written);
   }
   closeSync(file);
 
@@ -212,10 +227,13 @@ for (const entries of [4_000_000, 110_000, 90_000]) {
 
 const [directory] = process.argv.slice(2);
 if (directory === undefined) throw new Error("no folder to write in");
+// As large as a part may be under the default limits.
 const report: Report = {
   heapLimit: getHeapStatistics().heap_size_limit,
   openings,
-  // As large as a part may be under the default limits.
-  reading: await reading(directory, 134_217_728),
+  readings: {
+    stored: await reading(directory, 134_217_728, "none"),
+    deflated: await reading(directory, 134_217_728, "deflate"),
+  },
 };
 console.log(JSON.stringify(report));
