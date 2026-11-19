@@ -90,7 +90,24 @@ const { assign } = Object;
 const reached = globalThis.Object.assign({}, meter);
 const kept = [...meters, ...Object.keys(meter), ["a"] as const] satisfies unknown[];
 use(...meters, Object.freeze(meter), meters[0]!);
+const inherited = Object.setPrototypeOf({ charge() {} }, meter);
+function isMeter(value: unknown): value is Meter<"parts"> { return true; }
+function assertMeter(value: unknown): asserts value is Meter<"parts"> {}
+const indexed = globalThis["structuredClone"](meter);
+const reflected = Reflect.get(meter, "charge");
+const everything = globalThis;
+const inflate = globalThis.DecompressionStream;
 `;
+
+/** What read-side code may call on `Object`: the functions that read one, and `freeze`. */
+const OBJECT_READS: ReadonlySet<string> = new Set([
+  "entries",
+  "freeze",
+  "hasOwn",
+  "is",
+  "keys",
+  "values",
+]);
 
 type Node = { readonly type: string; readonly start: number } & Readonly<Record<string, unknown>>;
 
@@ -105,6 +122,7 @@ function forgeryAt(
   key: string | undefined,
 ): string | undefined {
   if (node.type === "TSTypeAssertion") return "cast";
+  if (node.type === "TSTypePredicate") return "type predicate";
   if (node.type === "TSAsExpression") {
     const { typeName } = node["typeAnnotation"] as Node;
     return (typeName as Node | undefined)?.["name"] === "const" ? undefined : "cast";
@@ -113,11 +131,15 @@ function forgeryAt(
   if (node.type === "RestElement" && parent?.type === "ObjectPattern") return "object rest";
   if (node.type !== "Identifier") return undefined;
   if (node["name"] === "structuredClone") return "structuredClone";
+  if (node["name"] === "Reflect") return "Reflect";
+  const named =
+    parent?.type === "MemberExpression" && key === "object" && parent["computed"] !== true;
+  if (node["name"] === "globalThis") return named ? undefined : "globalThis";
   if (node["name"] !== "Object") return undefined;
   const member =
     parent?.type === "MemberExpression" && key === "object" ? memberName(parent) : undefined;
   if (typeof member !== "string") return "Object";
-  return member === "assign" || member === "create" ? `Object.${member}` : undefined;
+  return OBJECT_READS.has(member) ? undefined : `Object.${member}`;
 }
 
 function forgeriesIn(source: string): string[] {
@@ -140,7 +162,7 @@ function forgeriesIn(source: string): string[] {
 }
 
 describe("read-side code", () => {
-  it("is searched for every way past a meter's brand that compiles: a cast or a copy", () => {
+  it("is searched for a cast, a type predicate, a copied object, and Object, Reflect or globalThis used to make one", () => {
     expect(forgeriesIn(FORGERIES)).toEqual([
       "2: cast",
       "3: cast",
@@ -154,10 +176,16 @@ describe("read-side code", () => {
       "10: structuredClone",
       "11: Object",
       "12: Object",
+      "15: Object.setPrototypeOf",
+      "16: type predicate",
+      "17: type predicate",
+      "18: globalThis",
+      "19: Reflect",
+      "20: globalThis",
     ]);
   });
 
-  it("casts and copies no object, except in the file that builds the meters", () => {
+  it("holds none of them, except in the file that builds the meters", () => {
     const sources = readSideSources(root);
     expect(sources).toContain(BUILDS_METERS);
     const forgeries = sources

@@ -16,6 +16,6 @@ export function readSideSources(root: string): string[] {
   const patterns = [rule.to.path].flat().map((pattern) => new RegExp(pattern));
   return readdirSync(join(root, "src"), { recursive: true, encoding: "utf8" })
     .map((name) => `src/${name.replaceAll("\\", "/")}`)
-    .filter((file) => file.endsWith(".ts") && patterns.some((pattern) => pattern.test(file)))
+    .filter((file) => /\.[cm]?ts$/.test(file) && patterns.some((pattern) => pattern.test(file)))
     .sort();
 }
