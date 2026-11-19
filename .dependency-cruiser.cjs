@@ -16,6 +16,8 @@ const R = PACKAGES_ROOT;
 const PACKAGE_INTERNALS = `^${R}/[^/]+/[^/]+/`;
 /** Any file that lives inside a feature folder. */
 const INSIDE_A_PACKAGE = `^${R}/[^/]+/`;
+/** The read side: the reader's entry, and every feature's root file read.ts and folder read/. */
+const READ_SIDE = [`^${R}/read\\.ts$`, `^${R}/[^/]+/read(\\.ts$|/)`];
 
 /** @type {import('dependency-cruiser').IConfiguration} */
 module.exports = {
@@ -68,6 +70,15 @@ module.exports = {
       severity: "error",
       from: { path: `^${R}/(xml|opc)/` },
       to: { path: `^${R}/(workbook|worksheet|styles|shared-strings|drawing)/` },
+    },
+    // The writer's bundles stay the same bytes whatever the reader holds (ADR 0032).
+    {
+      name: "write-side-never-imports-read-side",
+      comment:
+        "Nothing outside the read side imports it; tests and benchmarks may. The read side imports the write side as any feature would.",
+      severity: "error",
+      from: { pathNot: [...READ_SIDE, `^${R}/[^/]+/tests/`, "^test/", "^bench/"] },
+      to: { path: READ_SIDE },
     },
   ],
   options: {

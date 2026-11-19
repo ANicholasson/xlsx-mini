@@ -139,6 +139,22 @@ Row objects (ADR 0027) cost about 400 bytes: the second row loop, the merge of a
 
 Padding on an image cell (ADR 0031) costs about 100 bytes: one more checked property, the room a row and a column need with it, and a clause in two error messages. It passes the budget for every export by three bytes, because hidden rows, columns and sheets (ADR 0028) and the sheet view (ADR 0029) had taken about 580 of the room left for them. That budget goes up by a kilobyte to the next round figure; the budget for `writeXlsx` alone still holds and stays.
 
+### The reader's budget, and the writer's bytes held, 2026-11-18
+
+The reader (ADR 0032) is an entry of its own, `xlsx-mini/read`, and has a budget of its own: 8 000 bytes gzipped for every export of it. The three prototypes that ADR was decided on came to between 5 010 and 5 975 bytes; the rest is room for what a prototype could leave out. Like the writer's budgets, it is a ceiling that only a feature which needs the bytes raises.
+
+`bench/size.ts` now measures five bundles: the writer's four (`writeXlsx` alone, `streamXlsx` alone, every export, the browser entry) and the reader. Each comes with the SHA-256 of its minified bytes. The writer's four digests are committed in `bench/writer-digests.json`, and the size test fails when a build's digests differ from them; `pnpm digests:update` rewrites the file, so every change to the writer's bytes is a line in the pull request that causes it. The size test also erases the read side from its build and requires the writer's bundles to stay the same bytes. The benchmark report states for each bundle whether its bytes are those of `main`.
+
+| Bundle              | Minified |  Gzipped | Budget (gzipped) |
+| ------------------- | -------: | -------: | ---------------: |
+| `writeXlsx` alone   | 51 199 B | 18 683 B |         19 000 B |
+| `streamXlsx` alone  | 52 927 B | 19 466 B |             none |
+| Every export        | 58 367 B | 21 010 B |         22 000 B |
+| `xlsx-mini/browser` |    659 B |    450 B |             none |
+| `xlsx-mini/read`    |    224 B |    160 B |          8 000 B |
+
+The reader's bundle is its error class alone so far: nothing reads a file yet, so nothing the entry exports reaches the limits' meters.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.

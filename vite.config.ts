@@ -12,6 +12,10 @@ const config: ViteUserConfig = {
         find: "xlsx-mini/browser",
         replacement: fileURLToPath(new URL("./src/browser.ts", import.meta.url)),
       },
+      {
+        find: "xlsx-mini/read",
+        replacement: fileURLToPath(new URL("./src/read.ts", import.meta.url)),
+      },
       { find: "xlsx-mini", replacement: fileURLToPath(new URL("./src/index.ts", import.meta.url)) },
     ],
   },

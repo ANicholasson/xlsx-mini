@@ -8,7 +8,11 @@ import {
   readSize,
   renderReport,
 } from "../bench/report.ts";
-import type { SizeResult } from "../bench/size.ts";
+import type { PackageSize, SizeResult } from "../bench/size.ts";
+
+function bundle(digest: string, gzip: number): PackageSize["writeXlsx"] {
+  return { digest, minified: gzip * 3, gzip };
+}
 
 function run(runtime: string, headScale = 1, withBase = true): RunResult {
   const benchmark = (suite: string, variant: "deflate" | "store", ms: number): BenchmarkResult => ({
@@ -71,15 +75,20 @@ describe("renderReport", () => {
     expect(report).not.toContain("against main");
   });
 
-  it("adds the size of both builds in a bundle, gzipped, when it is given one", () => {
+  it("adds the size of both builds in a bundle, gzipped, and whether the bytes are the same", () => {
     const size: SizeResult = {
       head: {
-        writeXlsx: { minified: 45_900, gzip: 16_490 },
-        everything: { minified: 52_741, gzip: 18_648 },
+        writeXlsx: bundle("w2", 16_490),
+        streamXlsx: bundle("s2", 17_000),
+        everything: bundle("e", 18_648),
+        browser: bundle("b", 450),
+        read: bundle("r", 5_100),
       },
       base: {
-        writeXlsx: { minified: 45_747, gzip: 16_423 },
-        everything: { minified: 52_741, gzip: 18_648 },
+        writeXlsx: bundle("w1", 16_423),
+        streamXlsx: bundle("s1", 17_000),
+        everything: bundle("e", 18_648),
+        browser: bundle("b", 450),
       },
     };
     const report = renderReport([run("node")], {
@@ -88,9 +97,12 @@ describe("renderReport", () => {
       size,
     });
     expect(report.indexOf("### Bundle size")).toBeGreaterThan(report.indexOf("### Node"));
-    expect(report).toContain("| Import | main | this pull request | Change |");
-    expect(report).toContain("| `writeXlsx` alone | 16.42 kB | 16.49 kB | +67 B (+0.4 %) |");
-    expect(report).toContain("| Every export | 18.65 kB | 18.65 kB | same |");
+    expect(report).toContain("| Import | main | this pull request | Change | Same bytes as main |");
+    expect(report).toContain("| `writeXlsx` alone | 16.42 kB | 16.49 kB | +67 B (+0.4 %) | no |");
+    expect(report).toContain("| `streamXlsx` alone | 17.00 kB | 17.00 kB | same | no |");
+    expect(report).toContain("| Every export | 18.65 kB | 18.65 kB | same | yes |");
+    expect(report).toContain("| `xlsx-mini/browser` | 0.45 kB | 0.45 kB | same | yes |");
+    expect(report).toContain("| `xlsx-mini/read` | — | 5.10 kB | — | — |");
   });
 
   it("shows the size without a change when there is no base build", () => {
@@ -99,12 +111,15 @@ describe("renderReport", () => {
       headLabel: "this pull request",
       size: {
         head: {
-          writeXlsx: { minified: 45_747, gzip: 16_423 },
-          everything: { minified: 52_741, gzip: 18_648 },
+          writeXlsx: bundle("w", 16_423),
+          streamXlsx: bundle("s", 17_000),
+          everything: bundle("e", 18_648),
+          browser: bundle("b", 450),
         },
       },
     });
-    expect(report).toContain("| `writeXlsx` alone | — | 16.42 kB | — |");
+    expect(report).toContain("| `writeXlsx` alone | — | 16.42 kB | — | — |");
+    expect(report).not.toContain("xlsx-mini/read");
   });
 
   it("has no size table without sizes", () => {

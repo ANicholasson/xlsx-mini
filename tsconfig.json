@@ -14,7 +14,11 @@
     "noUnusedParameters": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "paths": { "xlsx-mini": ["./src/index.ts"], "xlsx-mini/browser": ["./src/browser.ts"] },
+    "paths": {
+      "xlsx-mini": ["./src/index.ts"],
+      "xlsx-mini/browser": ["./src/browser.ts"],
+      "xlsx-mini/read": ["./src/read.ts"]
+    },
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true

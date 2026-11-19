@@ -1,24 +1,33 @@
 // Measures what the built package adds to an application's bundle: the package is bundled from
-// its `dist/` folder the way a deploy tool would, minified and gzipped, once for an application
-// that imports only `writeXlsx` and once for every export. The size test holds the result to its
-// budget, and `--dist <dist> --base <dist> --json <file>` writes both builds' sizes for the
-// benchmark report.
-import { mkdirSync, writeFileSync } from "node:fs";
+// its `dist/` folder the way a deploy tool would, minified and gzipped, once for each way an
+// application imports it. The size test holds the result to its budgets and the writer's bundles
+// to their committed digests, and `--dist <dist> --base <dist> --json <file>` writes both builds'
+// sizes for the benchmark report.
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import { rolldown } from "rolldown";
 
-/** One bundle: its bytes minified, and those bytes gzipped at the highest level. */
+/** One bundle: the SHA-256 of its minified bytes, their number, and their number gzipped. */
 interface BundleSize {
+  readonly digest: string;
   readonly minified: number;
   readonly gzip: number;
 }
 
-/** The two bundles measured: an application importing only `writeXlsx`, and every export. */
+/**
+ * The bundles measured. The writer's four: an application importing only `writeXlsx`, only
+ * `streamXlsx`, every export, and the browser entry. Then the reader's, which a build from before
+ * the reader does not have.
+ */
 export interface PackageSize {
   readonly writeXlsx: BundleSize;
+  readonly streamXlsx: BundleSize;
   readonly everything: BundleSize;
+  readonly browser: BundleSize;
+  readonly read?: BundleSize;
 }
 
 /** What the benchmark report shows: the build under test and, on a pull request, its base. */
@@ -31,7 +40,7 @@ export interface SizeResult {
  * The most gzipped bytes each bundle may take. Only a feature that needs the bytes raises it, in its
  * own pull request and in ADR 0021.
  */
-export const SIZE_BUDGET = { writeXlsx: 19_000, everything: 22_000 } as const;
+export const SIZE_BUDGET = { writeXlsx: 19_000, everything: 22_000, read: 8_000 } as const;
 
 const ENTRY = "\0entry";
 
@@ -55,7 +64,11 @@ async function measureBundle(statement: string): Promise<BundleSize> {
   try {
     const { output } = await build.generate({ format: "esm", minify: true });
     const code = new TextEncoder().encode(output[0].code);
-    return { minified: code.length, gzip: gzipSync(code, { level: 9 }).length };
+    return {
+      digest: createHash("sha256").update(code).digest("hex"),
+      minified: code.length,
+      gzip: gzipSync(code, { level: 9 }).length,
+    };
   } finally {
     await build.close();
   }
@@ -63,11 +76,16 @@ async function measureBundle(statement: string): Promise<BundleSize> {
 
 /** The sizes of the package built into `dist`. */
 export async function measurePackage(dist: string): Promise<PackageSize> {
-  const index = JSON.stringify(pathToFileURL(resolve(dist, "index.js")).href);
-  return {
+  const url = (file: string) => JSON.stringify(pathToFileURL(resolve(dist, file)).href);
+  const index = url("index.js");
+  const writer = {
     writeXlsx: await measureBundle(`export { writeXlsx } from ${index};`),
+    streamXlsx: await measureBundle(`export { streamXlsx } from ${index};`),
     everything: await measureBundle(`export * from ${index};`),
+    browser: await measureBundle(`export * from ${url("browser.js")};`),
   };
+  if (!existsSync(resolve(dist, "read.js"))) return writer;
+  return { ...writer, read: await measureBundle(`export * from ${url("read.js")};`) };
 }
 
 function argument(argv: readonly string[], name: string): string | undefined {

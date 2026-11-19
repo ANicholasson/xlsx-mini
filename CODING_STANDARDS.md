@@ -20,11 +20,11 @@ Cell normalisation, escaping, interning, style lookup and part assembly run once
 
 ## Errors
 
-Every error thrown to a caller is the project's one error class, with a code from the documented union and a path such as `sheets[1].rows[40][2]`. Validation fails on the first problem. The only silent fix is stripping characters XML cannot carry; everything else throws.
+The project has two error classes, one per direction, and neither direction throws the other's. The writer throws `XlsxMiniError`, with a code from its documented union and a path into the caller's input such as `sheets[1].rows[40][2]`. Validation fails on the first problem. The only silent fix is stripping characters XML cannot carry; everything else throws. The reader throws `XlsxReadError`, with a code from its own union and, where known, the sheet and the cell in the file.
 
 ## Types
 
-Public contracts are interfaces so consumers can augment them. Discriminated unions over boolean flags. Inputs are `readonly`. Literal tables use `satisfies`. No enums, no classes except the error, no `any`. A non-null assertion is acceptable only on an index the surrounding loop proves in range, with the proof in a comment.
+Public contracts are interfaces so consumers can augment them. Discriminated unions over boolean flags. Inputs are `readonly`. Literal tables use `satisfies`. No enums, no classes except the two errors, no `any`; a `declare class` that only brands a type emits no code and does not count. The reader's meters carry such a brand. It stops an object literal where a meter is expected, with a spread or without; it does not stop a cast or a copy made through a function. So read-side code casts nothing but `as const`, writes no type predicate, and copies no object by spread, rest or `structuredClone`. Of `Object` it calls only the functions that read one (`keys`, `values`, `entries`, `hasOwn`, `is`) and `freeze`; it uses no `Reflect`, and `globalThis` only as `globalThis.name`. `test/boundaries.test.ts` fails when it does, except in the file that builds the meters. That test searches for these forms and proves nothing more: a helper outside the read side that copies, an overload whose body returns a literal, and a value typed `any` pass it, so review has to catch them. A non-null assertion is acceptable only on an index the surrounding loop proves in range, with the proof in a comment.
 
 ## Tests
 
