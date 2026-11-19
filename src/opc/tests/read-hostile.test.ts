@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { constants, crc32, deflateRawSync, gzipSync, inflateRawSync } from "node:zlib";
+import { constants, deflateRawSync, gzipSync, inflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vite-plus/test";
 import { resolveLimits } from "../../errors/read.js";
 import { createPackage, selectCompression, store } from "../index.js";
@@ -131,8 +131,13 @@ describe("a package that lies about a part's content", () => {
   it(
     "is refused when the part inflates to fewer bytes than declared and those have its CRC-32",
     async () => {
-      // Four bytes with the CRC-32 that no bytes at all have.
+      // Four bytes with the CRC-32 that no bytes at all have, as the trailer of a gzip member of
+      // them states it.
       const data = new Uint8Array([0x9d, 0x0a, 0xd9, 0x6d]);
+      const crc32 = (bytes: Uint8Array) => {
+        const member = gzipSync(bytes);
+        return member.readUInt32LE(member.length - 8);
+      };
       expect([crc32(data), crc32(new Uint8Array(0))]).toEqual([0, 0]);
       const lying = (method: 0 | 8, payload: Uint8Array) =>
         createPackage([{ path: sheet, data }], {
