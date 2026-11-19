@@ -237,6 +237,19 @@ describe("a package that lies about a part's content", () => {
     BOUND,
   );
 
+  // Written by a verifier of this reader. The sheet's deflate stream ends early and a gzip member
+  // follows it: after an empty stream and eight zero bytes in the first, after the stream and the
+  // gzip trailer of its 95 bytes in the second. Python's zipfile and Info-ZIP unzip read the first
+  // stream, 0 and 95 bytes, where the directory states 90 and 140.
+  it.each(["empty-stream-then-gzip-member.zip", "stream-trailer-then-gzip-member.zip"])(
+    "is refused when a gzip member follows the end of the deflate stream: %s",
+    async (fixture) => {
+      const bytes = new Uint8Array(readFileSync(join(here, "fixtures", fixture)));
+      await expect(readSheet(bytes)).rejects.toEqual(damaged);
+    },
+    BOUND,
+  );
+
   it(
     "repeats its refusal on every later read, and never ends the part after one",
     async () => {
