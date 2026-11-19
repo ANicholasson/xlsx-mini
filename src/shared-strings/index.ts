@@ -41,9 +41,11 @@ const UNDERSCORE = 95;
  * Escapes text for XML and then for the format, whose readers take `_xHHHH_` for the character
  * with that code: in text that looks like one, the `x` is written `_x0078_`. Escaping the
  * underscore as `_x005F_` instead reads wrong in Numbers after an `_x` that is not an escape,
- * because Numbers takes that underscore as the end of the `_x` before it.
+ * because Numbers takes that underscore as the end of the `_x` before it. A carriage return is
+ * written `&#13;`, because XML reads one written as itself as a line feed. Only text takes that
+ * reference: Excel repairs a file whose formula holds it.
  *
- * @example escapeText("_x0041_ & co") // "__x0078_0041_ &amp; co"
+ * @example escapeText("_x0041_ & co\r") // "__x0078_0041_ &amp; co&#13;"
  */
 export function escapeText(text: string): string {
   const xml = escapeXml(text);
@@ -55,7 +57,8 @@ export function escapeText(text: string): string {
     out += `${xml.slice(copiedUpTo, index + 1)}_x0078_`;
     copiedUpTo = index + 2;
   }
-  return copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
+  const escaped = copiedUpTo === 0 ? xml : out + xml.slice(copiedUpTo);
+  return escaped.includes("\r") ? escaped.replaceAll("\r", "&#13;") : escaped;
 }
 
 function startsEscape(text: string, index: number): boolean {
