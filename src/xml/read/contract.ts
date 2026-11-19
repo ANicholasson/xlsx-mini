@@ -11,7 +11,10 @@ export interface ByteChunks {
    * which may overwrite it.
    */
   read(): Promise<Uint8Array | undefined>;
-  /** Called once when the part has been read to its end, refused, or left early. */
+  /**
+   * Called once when the part has been read to its end, refused, or left early. Not called when
+   * the scan was never started.
+   */
   close(): void;
 }
 

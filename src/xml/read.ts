@@ -5,9 +5,10 @@
  * A part reader is a synchronous visitor. It never sees bytes, a promise or a chunk edge, so it
  * cannot inflate, cannot wait and cannot be handed half a token. What XML itself can do to a
  * reader is refused here with `INVALID_XML`, for every part alike: a DOCTYPE, text that is not
- * valid UTF-8, nesting deeper than 256, a token longer than 4 194 304 characters, tags that do
- * not match, an entity XML does not define, content after the root. Those two numbers are not
- * limits a caller sets: no workbook comes near them.
+ * valid UTF-8, nesting deeper than 256, a token longer than 4 194 304 characters, the names of
+ * the open elements longer than that together, tags that do not match, an entity XML does not
+ * define, content after the root. Those numbers are not limits a caller sets: no workbook comes
+ * near them.
  */
 import type { ByteChunks, XmlVisitor } from "./read/contract.js";
 import { textChunks } from "./read/text.js";
@@ -19,7 +20,8 @@ export { parseIndex } from "./read/text.js";
 /**
  * Drives one part through its visitor, lazily: tokens are read synchronously, one `await` is paid
  * per chunk of the part and one per item. The part is closed when the generator finishes, throws
- * or is returned early, so a consumer that stops reading stops the inflate.
+ * or is returned early, so a consumer that stops reading stops the inflate. A generator that was
+ * never started has read nothing and closes nothing: whoever opened the part still has to close it.
  *
  * The only way from bytes to tokens: a part reader added later gets the refusals above without
  * asking for them. `end` runs only after the last chunk has been read, which is when a package
