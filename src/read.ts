@@ -79,8 +79,9 @@ export async function openXlsx(
 ): Promise<OpenedWorkbook> {
   const { book } = resolveLimits(options?.limits);
   const pkg = await openPackage(file, book.parts, book.structure);
-  const listed = await readWorkbook((name) =>
-    pkg.open(partName(name, "structure"), book.structure),
+  const listed = await readWorkbook(
+    (name) => pkg.open(partName(name, "structure"), book.structure),
+    book.structure,
   );
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
   return {

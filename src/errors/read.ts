@@ -201,9 +201,9 @@ interface BookMeters {
   /** One charge per entry of the package's directory, before the entry is kept. */
   readonly parts: Meter<"parts">;
   /**
-   * For a part that becomes a list in memory (relationships, the sheet list, styles) and for the
-   * package's directory: an eighth of `inflatedBytes`, because a list item can cost twenty times
-   * its XML.
+   * For a part that becomes a list in memory (relationships, the sheet list, styles), for the
+   * package's directory and for the part names the relationships resolve to: an eighth of
+   * `inflatedBytes`, because a list item can cost twenty times its XML.
    */
   readonly structure: PartMeter<"structure">;
   /** For the shared-string table's part. */

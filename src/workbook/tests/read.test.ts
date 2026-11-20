@@ -83,7 +83,7 @@ async function read(
   const sheets = await readWorkbook((name) => {
     opened.push(name);
     return pkg.open(partName(name, "structure"), meters.structure);
-  });
+  }, meters.structure);
   return { sheets, opened };
 }
 

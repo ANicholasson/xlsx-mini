@@ -7,7 +7,7 @@
  * Elements are matched by where they stand, since the tokenizer drops prefixes and looks at no
  * namespace: the root's local name, then the path down from it.
  */
-import { XlsxReadError } from "../errors/read.js";
+import { type Meter, XlsxReadError } from "../errors/read.js";
 import { type PartName, partName } from "../opc/read.js";
 import { type ByteChunks, type XmlVisitor, readXml } from "../xml/read.js";
 import {
@@ -72,7 +72,10 @@ function notWorkbook(): never {
  * else.
  *
  * A relationship is followed once, however many sheets name it: a workbook may point every sheet
- * at one long target, and resolving it per sheet would hold a copy of the path for each.
+ * at one long target, and resolving it per sheet would hold a copy of the path for each. The part
+ * name a relationship resolves to is charged to `names` before it is made, by the length of the
+ * workbook's own name and of the target: a workbook under a long folder would otherwise repeat
+ * that folder for every relationship.
  *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
  * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
@@ -81,7 +84,10 @@ function notWorkbook(): never {
  * name, no relationship, or one of a type that is not a kind of sheet, a target cannot be followed
  * inside the package, or two sheets have one name, character for character.
  */
-export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet[]> {
+export async function readWorkbook(
+  open: OpenPart,
+  names: Meter<"inflatedBytes">,
+): Promise<readonly ListedSheet[]> {
   const root = await readXml(
     open(relationshipsOf(PACKAGE_ROOT)) ?? notWorkbook(),
     relationshipsVisitor(),
@@ -104,6 +110,7 @@ export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet
       const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
       const cells = SHEET_TYPES.get(type);
       if (cells === undefined) refuse(UNRELATED, { sheet: name });
+      names.charge(workbook.length + (target?.length ?? 0));
       const part = resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet: name });
       parts.set(relationship, cells ? partName(part, "worksheet") : undefined);
     }
