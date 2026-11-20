@@ -311,7 +311,15 @@ describe("the sheet list", () => {
         "_rels/.rels": relationships(relationship("rId1", `${TRANSITIONAL}/thumbnail`, "a.png")),
       }),
       book({
+        "_rels/.rels": relationships(
+          relationship("rId1", "http://example.invalid/officeDocument", "xl/workbook.xml"),
+        ),
+      }),
+      book({
         "xl/workbook.xml": `<w:document xmlns:w="urn:word"><w:body/></w:document>`,
+      }),
+      book({
+        "xl/workbook.xml": `<Workbook xmlns="${MAIN}" xmlns:r="${TRANSITIONAL}"><sheets>${sheet("Orders", "rId1")}</sheets></Workbook>`,
       }),
     ];
     for (const parts of packages) expect(await outcome(parts)).toBe("NOT_XLSX");
@@ -353,10 +361,12 @@ describe("a relationships part", () => {
   const worksheet = relationship("rId1", WORKSHEET, "worksheets/sheet1.xml");
 
   it("is refused when its root is anything but Relationships", async () => {
-    const parts = book({
-      "xl/_rels/workbook.xml.rels": `<Relations xmlns="${PACKAGE}">${worksheet}</Relations>`,
-    });
-    expect(await outcome(parts)).toBe("INVALID_WORKBOOK");
+    for (const root of ["Relations", "relationships"]) {
+      const parts = book({
+        "xl/_rels/workbook.xml.rels": `<${root} xmlns="${PACKAGE}">${worksheet}</${root}>`,
+      });
+      expect(await outcome(parts), root).toBe("INVALID_WORKBOOK");
+    }
   });
 
   it("is refused when it holds anything but relationships directly inside its root", async () => {
@@ -424,7 +434,7 @@ describe("a relationship's target", () => {
     expect(
       (await list(targeting("worksheets/sheet1.xml", ' TargetMode="Internal"'))).sheets,
     ).toEqual([["Orders", "xl/worksheets/sheet1.xml"]]);
-    for (const mode of ["External", "external", ""]) {
+    for (const mode of ["External", "external", "internal", "INTERNAL", ""]) {
       const parts = targeting("worksheets/sheet1.xml", ` TargetMode="${mode}"`);
       expect(await outcome(parts), mode).toBe("INVALID_WORKBOOK");
     }
