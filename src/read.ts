@@ -74,9 +74,9 @@ export interface OpenedWorkbook {
  */
 export async function openXlsx(
   file: Uint8Array | ArrayBuffer | Blob,
-  options: ReadOptions = {},
+  options?: ReadOptions,
 ): Promise<OpenedWorkbook> {
-  const { book } = resolveLimits(options.limits);
+  const { book } = resolveLimits(options?.limits);
   const pkg = await openPackage(file, book.parts, book.structure);
   const listed = await readWorkbook((name) =>
     pkg.open(partName(name, "structure"), book.structure),
