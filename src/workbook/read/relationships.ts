@@ -9,10 +9,10 @@ interface Relationship {
 /** A `Map`, so an id from the file never reaches a prototype. */
 type Relationships = ReadonlyMap<string | undefined, Relationship>;
 
-/** Where the refusal is, as `XlsxReadError` takes it: the sheet it is about, if any. */
-type Detail = ConstructorParameters<typeof XlsxReadError>[2];
-
-export function refuse(message: string, detail?: Detail): never {
+export function refuse(
+  message: string,
+  detail?: ConstructorParameters<typeof XlsxReadError>[2],
+): never {
   throw new XlsxReadError("INVALID_WORKBOOK", message, detail);
 }
 
@@ -21,11 +21,7 @@ export function relationshipsOf(part: string): string {
   return `${part.slice(0, folder)}_rels/${part.slice(folder)}.rels`;
 }
 
-/**
- * The part holds `Relationship` elements directly inside its root and nothing else, as the schema
- * says: anything else is refused, never skipped. An id stated twice is refused, since a sheet names
- * its relationship by id.
- */
+/** An id stated twice is refused, since a sheet names its relationship by id. */
 export function relationshipsVisitor(): XmlVisitor<never, Relationships> {
   const relationships = new Map<string | undefined, Relationship>();
   return {
@@ -49,9 +45,8 @@ export function relationshipsVisitor(): XmlVisitor<never, Relationships> {
 }
 
 /**
- * The part a target names inside the package, from the folder of `source`, or `undefined` when it
- * names none. A target holding a character another reader could take another way names none: `%`
- * decoded or not, `?` and `#` cut off or not, `\` as a folder or not, `:` as a scheme.
+ * A target holding a character another reader could take another way names no part: `%` decoded
+ * or not, `?` and `#` cut off or not, `\` as a folder or not, `:` as a scheme.
  */
 export function resolveTarget(source: string, target: string | undefined): string | undefined {
   if (target === undefined) return undefined;

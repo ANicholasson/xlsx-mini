@@ -5,8 +5,7 @@
  * relationship.
  *
  * Elements are matched by where they stand, since the tokenizer drops prefixes and looks at no
- * namespace: the root's local name, then the path down from it. On that path an element the schema
- * does not allow is refused, never skipped: skipped, it could hide a sheet another reader lists.
+ * namespace: the root's local name, then the path down from it.
  */
 import { XlsxReadError } from "../errors/read.js";
 import { type PartName, partName } from "../opc/read.js";
@@ -111,9 +110,8 @@ interface SheetEntry {
 }
 
 /**
- * Inside the sheet list the schema allows `sheet` and nothing in it. Markup compatibility lets an
- * application take a `sheets` or a `sheet` from below an `AlternateContent` anywhere, so one there is
- * refused too.
+ * Markup compatibility lets an application take a `sheets` or a `sheet` from below an
+ * `AlternateContent` anywhere, so one there is refused.
  */
 function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
   const names = new Set<string>();
@@ -144,7 +142,6 @@ function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
     },
     close(xml) {
       if (xml.depth === alternate) alternate = 0;
-      return undefined;
     },
     end() {
       if (!sheets?.length) refuse("the workbook lists no sheets");

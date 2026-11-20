@@ -69,7 +69,6 @@ const NOT_BUILT = new Error("reading the rows of a worksheet is not built yet");
 
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-/** A package of the three parts the sheet list is read from. */
 function workbookOf(sheets: string, relationships: string): Promise<Uint8Array> {
   const parts = {
     "_rels/.rels": `<Relationships><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
@@ -106,7 +105,7 @@ describe("openXlsx", () => {
   it("reads null options as no options, as it reads a value that is not an object", async () => {
     const names = ["Orders & Returns", "Ærlig <oversikt>", "Empty"];
     for (const options of [null, 5, "limits"]) {
-      // @ts-expect-error: a caller without types can pass anything as the options.
+      // @ts-expect-error: the types refuse these values, which a caller without types can pass.
       const book = await openXlsx(fixture("multi-sheet.xlsx"), options);
       expect(book.sheets, String(options)).toEqual(names);
     }

@@ -52,10 +52,7 @@ const hosts: readonly Host[] = [
   { name: "Vercel edge runtime", method: 0, run: runInEdgeVM },
 ];
 
-/**
- * Runs an entry in a separate process, writes `input` to its standard input, and parses the one
- * JSON line it prints.
- */
+/** Runs an entry in a separate process and parses the one JSON line it prints. */
 async function spawn<Report = HostReport>(
   command: Command,
   args: readonly string[],
@@ -84,8 +81,8 @@ interface Reader {
 }
 
 /**
- * The packages go in as JSON on standard input: on Windows a `.cmd` shim runs through cmd.exe, whose
- * command line holds 8 191 characters.
+ * Not on the command line: on Windows a `.cmd` shim runs through cmd.exe, whose command line holds
+ * 8 191 characters.
  */
 const readers: readonly Reader[] = [
   {
