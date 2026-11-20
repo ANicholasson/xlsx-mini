@@ -11,6 +11,7 @@ const STRICT_MAIN = "http://purl.oclc.org/ooxml/spreadsheetml/main";
 const STRICT = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 const MACRO_SHEET = "http://schemas.microsoft.com/office/2006/relationships";
 const PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
+const COMPATIBILITY = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const WORKSHEET = `${TRANSITIONAL}/worksheet`;
 const CHART_SHEET = `${TRANSITIONAL}/chartsheet`;
 
@@ -22,6 +23,8 @@ const sheet = (name: string, id: string, more = "") =>
   `<sheet name="${name}" sheetId="1" r:id="${id}"${more}/>`;
 const workbook = (inner: string, main = MAIN, related = TRANSITIONAL) =>
   `<workbook xmlns="${main}" xmlns:r="${related}">${inner}</workbook>`;
+const alternate = (requires: string, choice: string, fallback: string) =>
+  `<mc:AlternateContent xmlns:mc="${COMPATIBILITY}"><mc:Choice Requires="${requires}">${choice}</mc:Choice><mc:Fallback>${fallback}</mc:Fallback></mc:AlternateContent>`;
 
 type Parts = Readonly<Record<string, string | undefined>>;
 
@@ -254,9 +257,50 @@ describe("the sheet list", () => {
   it("takes a sheet only from directly inside the sheet list", async () => {
     const inner =
       `<bookViews>${sheet("Before", "rId1")}</bookViews>` +
-      `<sheets><group>${sheet("Nested", "rId1")}</group>${sheet("Orders", "rId1")}` +
-      `<sheetx name="Other" sheetId="2" r:id="rId1"/></sheets>` +
+      `<sheets>${sheet("Orders", "rId1")}</sheets>` +
       `<extLst>${sheet("After", "rId1")}</extLst>`;
+    expect((await list(shaped(inner))).sheets).toEqual([["Orders", "xl/worksheets/sheet1.xml"]]);
+  });
+
+  it("refuses a sheet list that holds anything but sheets, rather than list fewer sheets", async () => {
+    const [beta, gamma] = [sheet("Beta", "rId1"), sheet("Gamma", "rId1")];
+    const held = [
+      alternate("r", beta, gamma),
+      `<mc:AlternateContent xmlns:mc="${COMPATIBILITY}"><mc:Choice xmlns:zz="urn:zz" Requires="zz">${beta}</mc:Choice><mc:Fallback>${gamma}</mc:Fallback></mc:AlternateContent>`,
+      alternate("x14", beta, gamma),
+      `<group>${beta}</group>`,
+      `<sheetx name="Beta" sheetId="2" r:id="rId1"/>`,
+      `<Sheet name="Beta" sheetId="2" r:id="rId1"/>`,
+      `<sheet name="Beta" sheetId="2" r:id="rId1"><extLst/></sheet>`,
+      `<sheet name="Beta" sheetId="2" r:id="rId1">${gamma}</sheet>`,
+    ];
+    for (const inner of held) {
+      expect(await outcome(listing(sheet("Alpha", "rId1") + inner)), inner).toBe(
+        "INVALID_WORKBOOK",
+      );
+    }
+  });
+
+  it("refuses a sheet list or a sheet that stands below an AlternateContent anywhere in the part", async () => {
+    const [alpha, beta, gamma] = [
+      sheet("Alpha", "rId1"),
+      sheet("Beta", "rId1"),
+      sheet("Gamma", "rId1"),
+    ];
+    const workbooks = [
+      `<sheets>${alpha}</sheets>${alternate("r", `<sheets>${beta}</sheets>`, `<sheets>${gamma}</sheets>`)}`,
+      `${alternate("r", `<sheets>${beta}</sheets>`, `<sheets>${gamma}</sheets>`)}<sheets>${alpha}</sheets>`,
+      `<sheets>${alpha}</sheets>${alternate("r", beta, gamma)}`,
+      `<sheets>${alpha}</sheets><extLst><ext uri="x">${alternate("r", "", beta)}</ext></extLst>`,
+    ];
+    for (const inner of workbooks) {
+      expect(await outcome(shaped(inner)), inner).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("lists the sheets of a workbook whose AlternateContent holds no sheet, as Excel writes one", async () => {
+    const path = `<x15ac:absPath xmlns:x15ac="urn:x15ac" url="/books/"/>`;
+    const inner = `<workbookPr/>${alternate("x15", path, "")}<sheets>${sheet("Orders", "rId1")}</sheets>`;
     expect((await list(shaped(inner))).sheets).toEqual([["Orders", "xl/worksheets/sheet1.xml"]]);
   });
 
@@ -315,10 +359,13 @@ describe("a relationships part", () => {
     expect(await outcome(parts)).toBe("INVALID_WORKBOOK");
   });
 
-  it("states a relationship only directly inside its root, by that name", async () => {
+  it("is refused when it holds anything but relationships directly inside its root", async () => {
     const parts = [
       `<group>${worksheet}</group>`,
       '<Relation Id="rId1" Type="' + WORKSHEET + '" Target="worksheets/sheet1.xml"/>',
+      `${worksheet}<extra/>`,
+      worksheet.replace("/>", "><extra/></Relationship>"),
+      worksheet + alternate("r", relationship("rId2", WORKSHEET, "worksheets/sheet2.xml"), ""),
     ];
     for (const inner of parts) {
       const rels = `<Relationships xmlns="${PACKAGE}">${inner}</Relationships>`;
@@ -326,6 +373,11 @@ describe("a relationships part", () => {
         "INVALID_WORKBOOK",
       );
     }
+    const root = relationships(
+      relationship("rId1", `${TRANSITIONAL}/officeDocument`, "xl/workbook.xml"),
+      "<extra/>",
+    );
+    expect(await outcome(book({ "_rels/.rels": root }))).toBe("INVALID_WORKBOOK");
   });
 
   it("is refused when a relationship has no id, or the id of another", async () => {
