@@ -97,6 +97,12 @@ describe("openXlsx", () => {
     expect((await openXlsx(fixture("hidden.xlsx"))).sheets).toEqual(["Lists", "Orders", "Notes"]);
   });
 
+  it("gives the sheet names as a list that no holder can change", async () => {
+    const book = await openXlsx(fixture("multi-sheet.xlsx"));
+    expect(Object.isFrozen(book.sheets)).toBe(true);
+    expect(book.sheets).toEqual(["Orders & Returns", "Ærlig <oversikt>", "Empty"]);
+  });
+
   it("opens from an ArrayBuffer and from a Blob as from bytes", async () => {
     const bytes = fixture("multi-sheet.xlsx");
     const names = ["Orders & Returns", "Ærlig <oversikt>", "Empty"];
