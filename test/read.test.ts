@@ -103,6 +103,15 @@ describe("openXlsx", () => {
     expect(book.sheets).toEqual(["Orders & Returns", "Ærlig <oversikt>", "Empty"]);
   });
 
+  it("reads null options as no options, as it reads a value that is not an object", async () => {
+    const names = ["Orders & Returns", "Ærlig <oversikt>", "Empty"];
+    for (const options of [null, 5, "limits"]) {
+      // @ts-expect-error: a caller without types can pass anything as the options.
+      const book = await openXlsx(fixture("multi-sheet.xlsx"), options);
+      expect(book.sheets, String(options)).toEqual(names);
+    }
+  });
+
   it("opens from an ArrayBuffer and from a Blob as from bytes", async () => {
     const bytes = fixture("multi-sheet.xlsx");
     const names = ["Orders & Returns", "Ærlig <oversikt>", "Empty"];
