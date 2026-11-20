@@ -57,8 +57,9 @@ export interface OpenedWorkbook {
 /**
  * Opens an `.xlsx` file for reading its values: reads the package's directory and the sheet list,
  * and nothing else. A `Blob` is read in slices and never whole; bytes are not copied, so they must
- * not change while the workbook is in use. Parts the reader has no use for, such as pictures, are
- * never read.
+ * not change while the workbook is in use. A part the reader has no use for, such as a picture, is
+ * never inflated. The search for the end of the file reads its last 64 KiB, which in a small file
+ * holds other parts' bytes too.
  *
  * Built for files from strangers: every refusal is an `XlsxReadError` with a code from
  * `ReadErrorCode`, and a damaged workbook is refused, never repaired and never read as an empty one.
