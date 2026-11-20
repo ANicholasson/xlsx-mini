@@ -83,7 +83,7 @@ export async function openXlsx(
   );
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
   return {
-    sheets: listed.map(({ name }) => name),
+    sheets: Object.freeze(listed.map(({ name }) => name)),
     rows(sheet) {
       const found = typeof sheet === "number" ? listed[sheet] : named.get(sheet);
       if (found === undefined) {
