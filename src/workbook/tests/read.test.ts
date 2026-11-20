@@ -341,6 +341,26 @@ describe("the sheet list", () => {
     expect(gamma!.worksheet).not.toBe(alpha!.worksheet);
   });
 
+  it("charges the part name of every relationship it follows, so a long folder cannot be copied for each", async () => {
+    const folder = "f".repeat(60_000);
+    const under = (count: number): Parts => {
+      const ids = Array.from({ length: count }, (_, index) => `r${index}`);
+      return book({
+        "_rels/.rels": relationships(
+          relationship("rId1", `${TRANSITIONAL}/officeDocument`, `${folder}/workbook.xml`),
+        ),
+        [`${folder}/workbook.xml`]: workbook(
+          `<sheets>${ids.map((id) => sheet(id, id)).join("")}</sheets>`,
+        ),
+        [`${folder}/_rels/workbook.xml.rels`]: relationships(
+          ids.map((id) => relationship(id, WORKSHEET, `${id}.xml`)).join(""),
+        ),
+      });
+    };
+    expect((await list(under(3))).sheets[2]).toEqual(["r2", `${folder}/r2.xml`]);
+    expect(await outcome(under(2_000))).toBe("LIMIT_EXCEEDED");
+  });
+
   it("lists the sheets of a workbook whose AlternateContent holds no sheet, as Excel writes one", async () => {
     const path = `<x15ac:absPath xmlns:x15ac="urn:x15ac" url="/books/"/>`;
     const inner = `<workbookPr/>${alternate("x15", path, "")}<sheets>${sheet("Orders", "rId1")}</sheets>`;
