@@ -3,7 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { XlsxReadError, resolveLimits } from "../../errors/read.js";
 import { createPackage, store } from "../../opc/index.js";
 import { openPackage, partName } from "../../opc/read.js";
-import { readWorkbook } from "../read.js";
+import { type ListedSheet, readWorkbook } from "../read.js";
 
 const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const TRANSITIONAL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -64,7 +64,9 @@ interface Listed {
   readonly opened: readonly string[];
 }
 
-async function list(parts: Parts | Uint8Array): Promise<Listed> {
+async function read(
+  parts: Parts | Uint8Array,
+): Promise<{ readonly sheets: readonly ListedSheet[]; readonly opened: readonly string[] }> {
   const encoder = new TextEncoder();
   const bytes =
     parts instanceof Uint8Array
@@ -82,6 +84,11 @@ async function list(parts: Parts | Uint8Array): Promise<Listed> {
     opened.push(name);
     return pkg.open(partName(name, "structure"), meters.structure);
   });
+  return { sheets, opened };
+}
+
+async function list(parts: Parts | Uint8Array): Promise<Listed> {
+  const { sheets, opened } = await read(parts);
   return { sheets: sheets.map(({ name, worksheet }) => [name, worksheet?.name ?? null]), opened };
 }
 
@@ -321,6 +328,17 @@ describe("the sheet list", () => {
     for (const inner of workbooks) {
       expect(await outcome(shaped(inner)), inner).toBe("INVALID_WORKBOOK");
     }
+  });
+
+  it("gives sheets that share one relationship one part, resolved once", async () => {
+    const sheets = sheet("Alpha", "rId1") + sheet("Beta", "rId1") + sheet("Gamma", "rId2");
+    const rels =
+      relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+      relationship("rId2", WORKSHEET, "worksheets/sheet1.xml");
+    const [alpha, beta, gamma] = (await read(listing(sheets, rels))).sheets;
+    expect(alpha!.worksheet).toBeDefined();
+    expect(beta!.worksheet).toBe(alpha!.worksheet);
+    expect(gamma!.worksheet).not.toBe(alpha!.worksheet);
   });
 
   it("lists the sheets of a workbook whose AlternateContent holds no sheet, as Excel writes one", async () => {
