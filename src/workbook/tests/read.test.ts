@@ -316,6 +316,7 @@ describe("the sheet list", () => {
       `${alternate("r", `<sheets>${beta}</sheets>`, `<sheets>${gamma}</sheets>`)}<sheets>${alpha}</sheets>`,
       `<sheets>${alpha}</sheets>${alternate("r", beta, gamma)}`,
       `<sheets>${alpha}</sheets><extLst><ext uri="x">${alternate("r", "", beta)}</ext></extLst>`,
+      `<sheets>${alpha}</sheets>${alternate("r", alternate("r", "", ""), `<sheets>${gamma}</sheets>`)}`,
     ];
     for (const inner of workbooks) {
       expect(await outcome(shaped(inner)), inner).toBe("INVALID_WORKBOOK");
@@ -399,6 +400,10 @@ describe("a relationships part", () => {
       '<Relation Id="rId1" Type="' + WORKSHEET + '" Target="worksheets/sheet1.xml"/>',
       `${worksheet}<extra/>`,
       worksheet.replace("/>", "><extra/></Relationship>"),
+      worksheet.replace(
+        "/>",
+        `>${relationship("rId2", WORKSHEET, "worksheets/sheet2.xml")}</Relationship>`,
+      ),
       worksheet + alternate("r", relationship("rId2", WORKSHEET, "worksheets/sheet2.xml"), ""),
     ];
     for (const inner of parts) {
