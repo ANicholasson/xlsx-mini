@@ -67,6 +67,22 @@ async function rowsOf(book: OpenedWorkbook, sheet: string | number): Promise<unk
 
 const NOT_BUILT = new Error("reading the rows of a worksheet is not built yet");
 
+const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/** A package of the three parts the sheet list is read from. */
+function workbookOf(sheets: string, relationships: string): Promise<Uint8Array> {
+  const parts = {
+    "_rels/.rels": `<Relationships><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}"><sheets>${sheets}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships>${relationships}</Relationships>`,
+  };
+  const encoder = new TextEncoder();
+  return createPackage(
+    Object.entries(parts).map(([path, text]) => ({ path, data: encoder.encode(text) })),
+    store,
+  );
+}
+
 describe("openXlsx", () => {
   it("lists the sheets of every golden fixture in order, hidden ones too, from the writer's input", async () => {
     expect(
@@ -167,6 +183,19 @@ describe("rows", () => {
     }
   });
 
+  it("finds each of 100 000 sheets by its name within a second", async () => {
+    const names = Array.from({ length: 100_000 }, (_, at) => `Sheet ${at}`);
+    const book = await openXlsx(
+      await workbookOf(
+        names.map((name) => `<sheet name="${name}" sheetId="1" r:id="rId1"/>`).join(""),
+        `<Relationship Id="rId1" Type="${RELATIONSHIPS}/worksheet" Target="worksheets/sheet1.xml"/>`,
+      ),
+    );
+    const started = performance.now();
+    for (const name of names) book.rows(name);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   it("reads nothing until the rows are iterated", async () => {
     const blob = new WatchedBlob([fixture("multi-sheet.xlsx")]);
     const book = await openXlsx(blob);
@@ -186,17 +215,10 @@ describe("rows", () => {
   });
 
   it("gives a chart sheet no rows, every time it is iterated", async () => {
-    const encoder = new TextEncoder();
-    const relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-    const parts = {
-      "_rels/.rels": `<Relationships><Relationship Id="rId1" Type="${relationships}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-      "xl/workbook.xml": `<workbook xmlns:r="${relationships}"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/><sheet name="Chart" sheetId="2" r:id="rId2"/></sheets></workbook>`,
-      "xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Type="${relationships}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${relationships}/chartsheet" Target="chartsheets/sheet1.xml"/></Relationships>`,
-    };
     const book = await openXlsx(
-      await createPackage(
-        Object.entries(parts).map(([path, text]) => ({ path, data: encoder.encode(text) })),
-        store,
+      await workbookOf(
+        '<sheet name="Data" sheetId="1" r:id="rId1"/><sheet name="Chart" sheetId="2" r:id="rId2"/>',
+        `<Relationship Id="rId1" Type="${RELATIONSHIPS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RELATIONSHIPS}/chartsheet" Target="chartsheets/sheet1.xml"/>`,
       ),
     );
     expect(book.sheets).toEqual(["Data", "Chart"]);
