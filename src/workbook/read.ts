@@ -71,6 +71,9 @@ function notWorkbook(): never {
  * Reads the sheet list from three parts, opened through `open` one after the other, and nothing
  * else.
  *
+ * A relationship is followed once, however many sheets name it: a workbook may point every sheet
+ * at one long target, and resolving it per sheet would hold a copy of the path for each.
+ *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
  * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
  * workbooks, a part is missing or damaged, the sheet list is missing, empty, stated twice or holds
@@ -95,12 +98,16 @@ export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet
     open(relationshipsOf(workbook)) ?? refuse("the workbook's relationships are missing"),
     relationshipsVisitor(),
   );
+  const parts = new Map<string | undefined, PartName<"worksheet"> | undefined>();
   return listed.map(({ name, relationship }) => {
-    const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
-    const cells = SHEET_TYPES.get(type);
-    if (cells === undefined) refuse(UNRELATED, { sheet: name });
-    const part = resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet: name });
-    return { name, worksheet: cells ? partName(part, "worksheet") : undefined };
+    if (!parts.has(relationship)) {
+      const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
+      const cells = SHEET_TYPES.get(type);
+      if (cells === undefined) refuse(UNRELATED, { sheet: name });
+      const part = resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet: name });
+      parts.set(relationship, cells ? partName(part, "worksheet") : undefined);
+    }
+    return { name, worksheet: parts.get(relationship) };
   });
 }
 
