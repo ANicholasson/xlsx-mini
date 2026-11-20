@@ -81,11 +81,11 @@ export async function openXlsx(
   const listed = await readWorkbook((name) =>
     pkg.open(partName(name, "structure"), book.structure),
   );
+  const named = new Map(listed.map((listing) => [listing.name, listing] as const));
   return {
     sheets: listed.map(({ name }) => name),
     rows(sheet) {
-      const found =
-        typeof sheet === "number" ? listed[sheet] : listed.find(({ name }) => name === sheet);
+      const found = typeof sheet === "number" ? listed[sheet] : named.get(sheet);
       if (found === undefined) {
         throw new XlsxReadError("UNKNOWN_SHEET", "the workbook has no such sheet");
       }
