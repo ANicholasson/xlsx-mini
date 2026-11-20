@@ -1,5 +1,6 @@
 import { resolveLimits } from "../../dist/errors/read.js";
 import { openPackage, partName } from "../../dist/opc/read.js";
+import { openXlsx } from "../../dist/read.js";
 
 const sheet = "xl/worksheets/sheet1.xml";
 
@@ -13,7 +14,7 @@ async function outcome(base64) {
     for (let chunk = await part.read(); chunk !== undefined; chunk = await part.read()) {
       for (const byte of chunk) binary += String.fromCharCode(byte);
     }
-    return { sheet: btoa(binary) };
+    return { sheet: btoa(binary), sheets: (await openXlsx(bytes)).sheets };
   } catch (error) {
     return { refused: error.code ?? String(error) };
   }

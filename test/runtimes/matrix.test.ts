@@ -209,6 +209,7 @@ describe("runtime matrix", () => {
         cut,
         readFileSync(join(hostile, "empty-stream-then-gzip-member.zip")),
         readFileSync(join(hostile, "stream-trailer-then-gzip-member.zip")),
+        readFileSync(join(root, "src", "workbook", "tests", "fixtures", "libreoffice-names.xlsx")),
       ].map((bytes) => Buffer.from(bytes).toString("base64"));
     });
 
@@ -220,8 +221,15 @@ describe("runtime matrix", () => {
       }, 60_000);
 
       it("reads a deflated sheet as an independent reader does", () => {
-        expect(outcomes[0]).toEqual({
+        expect(outcomes[0]).toMatchObject({
           sheet: Buffer.from(readPartOf(written, sheet)).toString("base64"),
+        });
+      });
+
+      it("opens a workbook and lists its sheets as the file states them", () => {
+        expect(outcomes[0]).toMatchObject({ sheets: workbook.sheets.map(({ name }) => name) });
+        expect(outcomes[4]).toMatchObject({
+          sheets: ["\u212a", "k", "\u212b", "\u00e5", "\u0130", "i\u0307", "\u00e9", "e\u0301"],
         });
       });
 
@@ -230,7 +238,7 @@ describe("runtime matrix", () => {
       });
 
       it("refuses a sheet whose deflate stream ends early and is followed by a gzip member", () => {
-        expect(outcomes.slice(2)).toEqual([
+        expect(outcomes.slice(2, 4)).toEqual([
           { refused: "INVALID_PACKAGE" },
           { refused: "INVALID_PACKAGE" },
         ]);
