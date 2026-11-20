@@ -5,7 +5,8 @@
  * relationship.
  *
  * Elements are matched by where they stand, since the tokenizer drops prefixes and looks at no
- * namespace: the root's local name, then the path down from it.
+ * namespace: the root's local name, then the path down from it. On that path an element the schema
+ * does not allow is refused, never skipped: skipped, it could hide a sheet another reader lists.
  */
 import { XlsxReadError } from "../errors/read.js";
 import { type PartName, partName } from "../opc/read.js";
@@ -71,9 +72,10 @@ function notWorkbook(): never {
  *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
  * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
- * workbooks, a part is missing or damaged, the sheet list is missing, empty or stated twice, a sheet
- * has no name, no relationship, or one of a type that is not a kind of sheet, a target cannot be
- * followed inside the package, or two sheets have one name, character for character.
+ * workbooks, a part is missing or damaged, the sheet list is missing, empty, stated twice or holds
+ * anything but sheets, a sheet list or a sheet stands below an `AlternateContent`, a sheet has no
+ * name, no relationship, or one of a type that is not a kind of sheet, a target cannot be followed
+ * inside the package, or two sheets have one name, character for character.
  */
 export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet[]> {
   const root = await readXml(
@@ -106,27 +108,42 @@ interface SheetEntry {
   readonly relationship: string | undefined;
 }
 
+/**
+ * Inside the sheet list the schema allows `sheet` and nothing in it. Markup compatibility lets an
+ * application take a `sheets` or a `sheet` from below an `AlternateContent` anywhere, so one there is
+ * refused too.
+ */
 function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
   const names = new Set<string>();
   let sheets: SheetEntry[] | undefined;
   let list: SheetEntry[] | undefined;
+  let alternate = 0;
   return {
     open(xml) {
       if (xml.depth === 1 && xml.name !== "workbook") notWorkbook();
+      if (alternate === 0 && xml.name === "AlternateContent") alternate = xml.depth;
+      if (alternate !== 0 && (xml.name === "sheets" || xml.name === "sheet")) {
+        refuse("a sheet stands below an AlternateContent");
+      }
       if (xml.depth === 2) {
         list = undefined;
         if (xml.name !== "sheets") return;
         if (sheets !== undefined) refuse("the workbook lists its sheets twice");
         list = sheets = [];
+        return;
       }
-      if (xml.depth !== 3 || list === undefined || xml.name !== "sheet") return;
+      if (list === undefined) return;
+      if (xml.depth !== 3 || xml.name !== "sheet") refuse("the sheet list holds more than sheets");
       const name = xml.attribute("name");
       if (!name) refuse("a sheet has no name");
       if (names.has(name)) refuse("two sheets have one name");
       names.add(name);
       list.push({ name, relationship: xml.attribute("id") });
     },
-    close: () => undefined,
+    close(xml) {
+      if (xml.depth === alternate) alternate = 0;
+      return undefined;
+    },
     end() {
       if (!sheets?.length) refuse("the workbook lists no sheets");
       return sheets;

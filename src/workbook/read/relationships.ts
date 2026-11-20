@@ -18,15 +18,20 @@ export function relationshipsOf(part: string): string {
   return `${part.slice(0, folder)}_rels/${part.slice(folder)}.rels`;
 }
 
-/** An id stated twice is refused, since a sheet names its relationship by id. */
+/**
+ * The part holds `Relationship` elements directly inside its root and nothing else, as the schema
+ * says: anything else is refused, never skipped. An id stated twice is refused, since a sheet names
+ * its relationship by id.
+ */
 export function relationshipsVisitor(): XmlVisitor<never, Relationships> {
   const relationships = new Map<string | undefined, Relationship>();
   return {
     open(xml) {
-      if (xml.depth === 1 && xml.name !== "Relationships") {
+      const root = xml.depth === 1;
+      if (xml.depth > 2 || xml.name !== (root ? "Relationships" : "Relationship")) {
         refuse("a relationships part is damaged");
       }
-      if (xml.depth !== 2 || xml.name !== "Relationship") return;
+      if (root) return;
       const id = xml.attribute("Id");
       if (id === undefined || relationships.has(id)) refuse("a relationship has no id of its own");
       const mode = xml.attribute("TargetMode");
