@@ -9,8 +9,11 @@ interface Relationship {
 /** A `Map`, so an id from the file never reaches a prototype. */
 type Relationships = ReadonlyMap<string | undefined, Relationship>;
 
-export function refuse(message: string): never {
-  throw new XlsxReadError("INVALID_WORKBOOK", message);
+/** Where the refusal is, as `XlsxReadError` takes it: the sheet it is about, if any. */
+type Detail = ConstructorParameters<typeof XlsxReadError>[2];
+
+export function refuse(message: string, detail?: Detail): never {
+  throw new XlsxReadError("INVALID_WORKBOOK", message, detail);
 }
 
 export function relationshipsOf(part: string): string {
@@ -45,23 +48,21 @@ export function relationshipsVisitor(): XmlVisitor<never, Relationships> {
   };
 }
 
-const UNFOLLOWED = "a relationship does not name a part of the package";
-
 /**
- * A target holding a character another reader could take another way is refused: `%` decoded or
- * not, `?` and `#` cut off or not, `\` as a folder or not, `:` as a scheme.
+ * The part a target names inside the package, from the folder of `source`, or `undefined` when it
+ * names none. A target holding a character another reader could take another way names none: `%`
+ * decoded or not, `?` and `#` cut off or not, `\` as a folder or not, `:` as a scheme.
  */
-export function resolveTarget(source: string, target: string | undefined): string {
-  if (target === undefined) refuse(UNFOLLOWED);
-  for (const character of "%?#\\:") if (target.includes(character)) refuse(UNFOLLOWED);
+export function resolveTarget(source: string, target: string | undefined): string | undefined {
+  if (target === undefined) return undefined;
+  for (const character of "%?#\\:") if (target.includes(character)) return undefined;
   const absolute = target.startsWith("/");
   const steps = absolute ? [] : source.split("/").slice(0, -1);
   const path = target.slice(absolute ? 1 : 0).split("/");
   for (const step of path) {
-    if (step === "" || (step === ".." && steps.pop() === undefined)) refuse(UNFOLLOWED);
+    if (step === "" || (step === ".." && steps.pop() === undefined)) return undefined;
     if (step !== "." && step !== "..") steps.push(step);
   }
   const last = path[path.length - 1];
-  if (last === "." || last === "..") refuse(UNFOLLOWED);
-  return steps.join("/");
+  return last === "." || last === ".." ? undefined : steps.join("/");
 }

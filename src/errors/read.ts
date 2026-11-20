@@ -105,7 +105,10 @@ interface ReadErrorDetail {
 export class XlsxReadError extends Error {
   override readonly name = "XlsxReadError";
   readonly code: ReadErrorCode;
-  /** The name of the sheet being read, when the refusal happened inside one. */
+  /**
+   * The name of the sheet the refusal is about, when it is about one: a sheet being read, a sheet
+   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for.
+   */
   readonly sheet: string | undefined;
   /** The reference of the cell, such as `C41`, when the refusal is about one cell. */
   readonly cell: string | undefined;

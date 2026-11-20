@@ -60,6 +60,8 @@ const WORKBOOK_TYPES = new Set<string | undefined>([
 
 const UNRELATED = "a sheet's relationship is missing or not to a sheet";
 
+const UNFOLLOWED = "a relationship does not name a part of the package";
+
 const PACKAGE_ROOT = "";
 
 function notWorkbook(): never {
@@ -85,7 +87,7 @@ export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet
   const [document, another] = [...root.values()].filter(({ type }) => WORKBOOK_TYPES.has(type));
   if (document === undefined) notWorkbook();
   if (another !== undefined) refuse("the package holds two workbooks");
-  const workbook = resolveTarget(PACKAGE_ROOT, document.target);
+  const workbook = resolveTarget(PACKAGE_ROOT, document.target) ?? refuse(UNFOLLOWED);
   const listed = await readXml(
     open(workbook) ?? refuse("the workbook part is missing"),
     workbookVisitor(),
@@ -95,10 +97,10 @@ export async function readWorkbook(open: OpenPart): Promise<readonly ListedSheet
     relationshipsVisitor(),
   );
   return listed.map(({ name, relationship }) => {
-    const { type, target } = related.get(relationship) ?? refuse(UNRELATED);
+    const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
     const cells = SHEET_TYPES.get(type);
-    if (cells === undefined) refuse(UNRELATED);
-    const part = resolveTarget(workbook, target);
+    if (cells === undefined) refuse(UNRELATED, { sheet: name });
+    const part = resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet: name });
     return { name, worksheet: cells ? partName(part, "worksheet") : undefined };
   });
 }
@@ -136,7 +138,7 @@ function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
       if (xml.depth !== 3 || xml.name !== "sheet") refuse("the sheet list holds more than sheets");
       const name = xml.attribute("name");
       if (!name) refuse("a sheet has no name");
-      if (names.has(name)) refuse("two sheets have one name");
+      if (names.has(name)) refuse("two sheets have one name", { sheet: name });
       names.add(name);
       list.push({ name, relationship: xml.attribute("id") });
     },

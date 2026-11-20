@@ -87,7 +87,11 @@ export async function openXlsx(
     rows(sheet) {
       const found = typeof sheet === "number" ? listed[sheet] : named.get(sheet);
       if (found === undefined) {
-        throw new XlsxReadError("UNKNOWN_SHEET", "the workbook has no such sheet");
+        throw new XlsxReadError(
+          "UNKNOWN_SHEET",
+          "the workbook has no such sheet",
+          typeof sheet === "string" ? { sheet } : {},
+        );
       }
       return {
         async *[Symbol.asyncIterator]() {
