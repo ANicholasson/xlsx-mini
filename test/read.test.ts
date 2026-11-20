@@ -176,7 +176,10 @@ describe("rows", () => {
         thrown = error;
       }
       expect(thrown, String(sheet)).toBeInstanceOf(XlsxReadError);
-      expect(thrown).toMatchObject({ code: "UNKNOWN_SHEET" });
+      expect(thrown).toMatchObject({
+        code: "UNKNOWN_SHEET",
+        sheet: typeof sheet === "string" ? sheet : undefined,
+      });
     }
     for (const sheet of ["Empty", "Ærlig <oversikt>", 0, 2, -0]) {
       expect(() => book.rows(sheet), String(sheet)).not.toThrow();

@@ -229,6 +229,30 @@ describe("the sheet list", () => {
     }
   });
 
+  it("names the sheet a refusal is about, and none when it is about the workbook", async () => {
+    const aboutOrders = [
+      listing(sheet("Orders", "rId1") + sheet("Orders", "rId1")),
+      listing(sheet("Orders", "rId2")),
+      listing(sheet("Orders", "rId1"), relationship("rId1", `${TRANSITIONAL}/styles`, "s.xml")),
+      targeting("../../sheet1.xml"),
+    ];
+    for (const parts of aboutOrders) {
+      await expect(list(parts)).rejects.toMatchObject({
+        code: "INVALID_WORKBOOK",
+        sheet: "Orders",
+      });
+    }
+    const workbookOutside = book({
+      "_rels/.rels": relationships(
+        relationship("rId1", `${TRANSITIONAL}/officeDocument`, "../xl/workbook.xml"),
+      ),
+    });
+    await expect(list(workbookOutside)).rejects.toMatchObject({
+      code: "INVALID_WORKBOOK",
+      sheet: undefined,
+    });
+  });
+
   it("refuses a sheet without a name, with an empty one, or without a relationship", async () => {
     const sheets = [
       '<sheet sheetId="1" r:id="rId1"/>',
