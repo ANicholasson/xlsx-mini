@@ -52,21 +52,30 @@ const hosts: readonly Host[] = [
   { name: "Vercel edge runtime", method: 0, run: runInEdgeVM },
 ];
 
-/** Runs an entry in a separate process and parses the one JSON line it prints. */
+/**
+ * Runs an entry in a separate process, writes `input` to its standard input, and parses the one
+ * JSON line it prints.
+ */
 async function spawn<Report = HostReport>(
   command: Command,
   args: readonly string[],
+  input = "",
 ): Promise<Report> {
-  const { stdout } = await execFile(command.file, [...args], {
+  const running = execFile(command.file, [...args], {
     cwd: root,
     encoding: "utf8",
     shell: command.shell,
   });
+  running.child.stdin?.end(input);
+  const { stdout } = await running;
   return JSON.parse(stdout) as Report;
 }
 
 interface ReadReport {
-  readonly outcomes: readonly ({ readonly sheet: string } | { readonly refused: string })[];
+  readonly outcomes: readonly (
+    | { readonly sheet: string; readonly sheets: readonly string[] }
+    | { readonly refused: string }
+  )[];
 }
 
 interface Reader {
@@ -74,16 +83,28 @@ interface Reader {
   readonly run: (packages: readonly string[]) => Promise<ReadReport>;
 }
 
+/**
+ * The packages go in as JSON on standard input: on Windows a `.cmd` shim runs through cmd.exe, whose
+ * command line holds 8 191 characters.
+ */
 const readers: readonly Reader[] = [
-  { name: "Node", run: (packages) => spawn(node, ["test/runtimes/read.mjs", ...packages]) },
+  {
+    name: "Node",
+    run: (packages) => spawn(node, ["test/runtimes/read.mjs"], JSON.stringify(packages)),
+  },
   {
     name: "Bun",
-    run: (packages) => spawn(binary("bun"), ["run", "test/runtimes/read.mjs", ...packages]),
+    run: (packages) =>
+      spawn(binary("bun"), ["run", "test/runtimes/read.mjs"], JSON.stringify(packages)),
   },
   {
     name: "Deno",
     run: (packages) =>
-      spawn(binary("deno"), ["run", "--quiet", "--no-lock", "test/runtimes/read.mjs", ...packages]),
+      spawn(
+        binary("deno"),
+        ["run", "--quiet", "--no-lock", "test/runtimes/read.mjs"],
+        JSON.stringify(packages),
+      ),
   },
 ];
 
@@ -194,11 +215,16 @@ describe("runtime matrix", () => {
   describe("the package reader", () => {
     const sheet = "xl/worksheets/sheet1.xml";
     const hostile = join(root, "src", "opc", "tests", "fixtures");
+    const sheetOf = (bytes: Uint8Array) => Buffer.from(readPartOf(bytes, sheet)).toString("base64");
     let written: Uint8Array;
+    let libreOffice: Uint8Array;
     let packages: readonly string[];
 
     beforeAll(async () => {
       written = await writeXlsx(workbook);
+      libreOffice = new Uint8Array(
+        readFileSync(join(root, "src", "workbook", "tests", "fixtures", "libreoffice-names.xlsx")),
+      );
       const data = unzip(written).find(({ name }) => name === sheet)!.data;
       const cut = await createPackage([{ path: sheet, data }], {
         method: 8,
@@ -209,7 +235,7 @@ describe("runtime matrix", () => {
         cut,
         readFileSync(join(hostile, "empty-stream-then-gzip-member.zip")),
         readFileSync(join(hostile, "stream-trailer-then-gzip-member.zip")),
-        readFileSync(join(root, "src", "workbook", "tests", "fixtures", "libreoffice-names.xlsx")),
+        libreOffice,
       ].map((bytes) => Buffer.from(bytes).toString("base64"));
     });
 
@@ -220,15 +246,16 @@ describe("runtime matrix", () => {
         ({ outcomes } = await host.run(packages));
       }, 60_000);
 
-      it("reads a deflated sheet as an independent reader does", () => {
-        expect(outcomes[0]).toMatchObject({
-          sheet: Buffer.from(readPartOf(written, sheet)).toString("base64"),
+      it("reads a deflated sheet as an independent reader does, and lists the workbook's sheets", () => {
+        expect(outcomes[0]).toEqual({
+          sheet: sheetOf(written),
+          sheets: workbook.sheets.map(({ name }) => name),
         });
       });
 
-      it("opens a workbook and lists its sheets as the file states them", () => {
-        expect(outcomes[0]).toMatchObject({ sheets: workbook.sheets.map(({ name }) => name) });
-        expect(outcomes[4]).toMatchObject({
+      it("opens a workbook LibreOffice wrote and lists its sheets as the file states them", () => {
+        expect(outcomes[4]).toEqual({
+          sheet: sheetOf(libreOffice),
           sheets: ["\u212a", "k", "\u212b", "\u00e5", "\u0130", "i\u0307", "\u00e9", "e\u0301"],
         });
       });

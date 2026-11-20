@@ -20,7 +20,12 @@ async function outcome(base64) {
   }
 }
 
-const packages = globalThis.Deno?.args ?? process.argv.slice(2);
+const decoder = new TextDecoder();
+let input = "";
+for await (const chunk of globalThis.Deno?.stdin.readable ?? process.stdin) {
+  input += decoder.decode(chunk, { stream: true });
+}
+const packages = JSON.parse(input + decoder.decode());
 const outcomes = [];
 for (const base64 of packages) outcomes.push(await outcome(base64));
 console.log(JSON.stringify({ outcomes }));
