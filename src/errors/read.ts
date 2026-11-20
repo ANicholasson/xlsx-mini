@@ -105,7 +105,10 @@ interface ReadErrorDetail {
 export class XlsxReadError extends Error {
   override readonly name = "XlsxReadError";
   readonly code: ReadErrorCode;
-  /** The name of the sheet being read, when the refusal happened inside one. */
+  /**
+   * The name of the sheet the refusal is about, when it is about one: a sheet being read, a sheet
+   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for.
+   */
   readonly sheet: string | undefined;
   /** The reference of the cell, such as `C41`, when the refusal is about one cell. */
   readonly cell: string | undefined;
@@ -198,9 +201,9 @@ interface BookMeters {
   /** One charge per entry of the package's directory, before the entry is kept. */
   readonly parts: Meter<"parts">;
   /**
-   * For a part that becomes a list in memory (relationships, the sheet list, styles) and for the
-   * package's directory: an eighth of `inflatedBytes`, because a list item can cost twenty times
-   * its XML.
+   * For a part that becomes a list in memory (relationships, the sheet list, styles), for the
+   * package's directory and for the part names the relationships resolve to: an eighth of
+   * `inflatedBytes`, because a list item can cost twenty times its XML.
    */
   readonly structure: PartMeter<"structure">;
   /** For the shared-string table's part. */

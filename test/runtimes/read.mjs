@@ -1,5 +1,6 @@
 import { resolveLimits } from "../../dist/errors/read.js";
 import { openPackage, partName } from "../../dist/opc/read.js";
+import { openXlsx } from "../../dist/read.js";
 
 const sheet = "xl/worksheets/sheet1.xml";
 
@@ -13,13 +14,18 @@ async function outcome(base64) {
     for (let chunk = await part.read(); chunk !== undefined; chunk = await part.read()) {
       for (const byte of chunk) binary += String.fromCharCode(byte);
     }
-    return { sheet: btoa(binary) };
+    return { sheet: btoa(binary), sheets: (await openXlsx(bytes)).sheets };
   } catch (error) {
     return { refused: error.code ?? String(error) };
   }
 }
 
-const packages = globalThis.Deno?.args ?? process.argv.slice(2);
+const decoder = new TextDecoder();
+let input = "";
+for await (const chunk of globalThis.Deno?.stdin.readable ?? process.stdin) {
+  input += decoder.decode(chunk, { stream: true });
+}
+const packages = JSON.parse(input + decoder.decode());
 const outcomes = [];
 for (const base64 of packages) outcomes.push(await outcome(base64));
 console.log(JSON.stringify({ outcomes }));
