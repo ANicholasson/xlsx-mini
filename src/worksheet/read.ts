@@ -5,17 +5,23 @@
  */
 import { type Meter, type RowMeter, XlsxReadError } from "../errors/read.js";
 import { type SharedStrings, createStringItem } from "../shared-strings/read.js";
+import type { DateStyles } from "../styles/read.js";
 import { type XmlCursor, type XmlVisitor, detach } from "../xml/read.js";
 import { MAX_COLUMNS, MAX_ROWS } from "./lib/cell-ref.js";
 import { columnOfReference, referenceOf } from "./read/cell-reference.js";
-import { DATE, INLINE_STRING, UNKNOWN, cellKindOf, cellValue } from "./read/cell-value.js";
+import { DATE, INLINE_STRING, NUMBER, UNKNOWN, cellKindOf, cellValue } from "./read/cell-value.js";
 import type { ReadRow, ReadValue } from "./read/model.js";
+import { dateFromSerial } from "./read/serial-date.js";
 
 export type { ReadRow, ReadValue } from "./read/model.js";
 
 /** What one `rows` iteration reads a worksheet with. */
 export interface WorksheetContext {
   readonly strings: SharedStrings;
+  /** Which cell styles show a date, by index, or `undefined` when none does. */
+  readonly dates: DateStyles | undefined;
+  /** Whether serials count from 1904. */
+  readonly date1904: boolean;
   readonly positions: Meter<"cellPositions">;
   readonly rowText: RowMeter<"rowCharacters">;
 }
@@ -26,7 +32,8 @@ const REFERENCE = "a cell reference is malformed or out of order";
 const KIND = "a cell is of an unknown type";
 const SHAPE = "a row or a cell holds what it cannot hold";
 const VALUE = "a cell's value is not of its type or names no shared string";
-const DATE_TEXT = "a date stored as text is not read yet";
+const DATE_TEXT = "a date stored as text is malformed or out of range";
+const STYLE = "a cell names a style the workbook does not have";
 
 const LONGEST_REFERENCE = referenceOf(MAX_COLUMNS, MAX_ROWS).length;
 
@@ -59,13 +66,20 @@ function written(xml: XmlCursor, start: number): string {
  * cell names it, and an inline string run by run as its runs are read. Nothing is sized from what
  * the file states: `dimension` and `spans` are not read.
  *
+ * A number whose style shows a date is given as a `Date` when the writer can write it, and a date
+ * stored as text always is: the type says it is a date, whatever the style (ECMA-376 part 1,
+ * 18.18.11). A cell's style is read only where it can change the value: in a cell of type number,
+ * when some style shows a date, one attribute and one array read. Elsewhere it is not read.
+ *
  * Refuses, never repairs: `INVALID_WORKBOOK` when the sheet data cannot be found, is stated twice,
  * or holds anything but rows, and when a `sheetData` or a `row` stands anywhere else; `INVALID_CELL`,
- * with the place in the sheet, for whatever is wrong in a row or a cell, a date stored as text
- * included. Hidden rows and columns read like visible ones.
+ * with the place in the sheet, for whatever is wrong in a row or a cell: a date stored as text that
+ * is malformed or that the writer cannot write, and, in a cell that holds a number where its style
+ * is read, a style index that is not decimal or names no style. Hidden rows and columns read like
+ * visible ones.
  */
 export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow, void> {
-  const { strings, positions, rowText } = context;
+  const { strings, dates, date1904, positions, rowText } = context;
   const item = createStringItem(5);
   let pathDepth = 0;
   let skippedDepth = 0;
@@ -75,6 +89,7 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
   let cells: ReadValue[] = [];
   let column = 0;
   let kind = 0;
+  let style: number | undefined = 0;
   let inline = false;
   let stored: string | undefined;
 
@@ -99,13 +114,18 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
     column = next;
     kind = cellKindOf(xml.buffer, xml.valueStart("t"), xml.valueEnd);
     if (kind === UNKNOWN) refuse(KIND, at(column));
+    style = dates === undefined || kind !== NUMBER ? 0 : dates[Math.max(xml.index("s"), 0)];
     stored = undefined;
   }
 
   function closeCell(): void {
-    const value = cellValue(kind, stored, strings);
+    let value = cellValue(kind, stored, strings);
     if (value === undefined) refuse(kind === DATE ? DATE_TEXT : VALUE, at(column));
     if (value === null) return;
+    if (style !== 0 && typeof value === "number") {
+      if (style === undefined) refuse(STYLE, at(column));
+      value = dateFromSerial(value, date1904);
+    }
     positions.charge(column - cells.length);
     if (typeof value === "string" && kind !== INLINE_STRING) rowText.charge(value.length);
     while (cells.length < column - 1) cells.push(null);

@@ -67,6 +67,8 @@ interface Listed {
 async function read(parts: Parts | Uint8Array): Promise<{
   readonly sheets: readonly ListedSheet[];
   readonly sharedStrings: string | undefined;
+  readonly styles: string | undefined;
+  readonly date1904: boolean;
   readonly opened: readonly string[];
 }> {
   const encoder = new TextEncoder();
@@ -82,11 +84,11 @@ async function read(parts: Parts | Uint8Array): Promise<{
   const { book: meters } = resolveLimits(undefined);
   const pkg = await openPackage(bytes, meters.parts, meters.structure);
   const opened: string[] = [];
-  const { sheets, sharedStrings } = await readWorkbook((name) => {
+  const { sheets, sharedStrings, styles, date1904 } = await readWorkbook((name) => {
     opened.push(name);
     return pkg.open(partName(name, "structure"), meters.structure);
   }, meters.structure);
-  return { sheets, sharedStrings: sharedStrings?.name, opened };
+  return { sheets, sharedStrings: sharedStrings?.name, styles: styles?.name, date1904, opened };
 }
 
 async function list(parts: Parts | Uint8Array): Promise<Listed> {
@@ -196,6 +198,64 @@ describe("the sheet list", () => {
       expect(await outcome(tables(target)), target).toBe("INVALID_WORKBOOK");
     }
     expect(await outcome(tables("a.xml"))).toBe("listed");
+  });
+
+  it("names the styles part its relationships name, in both families, and none when there is none", async () => {
+    const withStyles = (...related: string[]) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          related.map((type, at) => relationship(`s${at}`, type, `styles${at}.xml`)).join(""),
+      );
+    expect((await read(withStyles(`${TRANSITIONAL}/styles`))).styles).toBe("xl/styles0.xml");
+    expect((await read(withStyles(`${STRICT}/styles`))).styles).toBe("xl/styles0.xml");
+    expect((await read(withStyles(`${TRANSITIONAL}/style`))).styles).toBe(undefined);
+    expect((await read(book())).styles).toBe(undefined);
+    expect(await outcome(withStyles(`${TRANSITIONAL}/styles`, `${STRICT}/styles`))).toBe(
+      "INVALID_WORKBOOK",
+    );
+    const unfollowed = listing(
+      sheet("Orders", "rId1"),
+      relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+        relationship("rId2", `${TRANSITIONAL}/styles`, "../../styles.xml"),
+    );
+    expect(await outcome(unfollowed)).toBe("INVALID_WORKBOOK");
+  });
+
+  it("reads the date system from date1904 of the workbook's properties: 1 and true are 1904, 0, false and none are 1900", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    const system = async (properties: string) => (await read(shaped(properties + sheets))).date1904;
+    for (const spelling of ["1", "true"]) {
+      expect(await system(`<workbookPr date1904="${spelling}"/>`), spelling).toBe(true);
+    }
+    for (const spelling of ["0", "false"]) {
+      expect(await system(`<workbookPr date1904="${spelling}"/>`), spelling).toBe(false);
+    }
+    expect(await system("<workbookPr/>")).toBe(false);
+    expect(await system("")).toBe(false);
+    expect((await read(shaped(`${sheets}<workbookPr date1904="1"/>`))).date1904).toBe(true);
+  });
+
+  it("refuses any other spelling of date1904, which LibreOffice and openpyxl read in different ways or XML Schema does not have", async () => {
+    const spellings = ["TRUE", "True", "t", "on", "off", "yes", "2", "-1", "01", " 1", "1 ", ""];
+    for (const spelling of spellings) {
+      const inner = `<workbookPr date1904="${spelling}"/><sheets>${sheet("Orders", "rId1")}</sheets>`;
+      expect(await outcome(shaped(inner)), spelling).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("refuses the workbook's properties stated twice or below an AlternateContent, and passes over one in an extension", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    for (const properties of [
+      '<workbookPr date1904="1"/><workbookPr date1904="0"/>',
+      '<workbookPr date1904="0"/><workbookPr/>',
+      alternate("x15", '<workbookPr date1904="1"/>', '<workbookPr date1904="0"/>'),
+      `<workbookPr/>${alternate("x15", "", '<workbookPr date1904="1"/>')}`,
+    ]) {
+      expect(await outcome(shaped(properties + sheets)), properties).toBe("INVALID_WORKBOOK");
+    }
+    const extension = `<extLst><ext uri="x"><x15:workbookPr xmlns:x15="urn:x15" date1904="1"/></ext></extLst>`;
+    expect((await read(shaped(sheets + extension))).date1904).toBe(false);
   });
 
   it("reads a workbook of the Strict family", async () => {
