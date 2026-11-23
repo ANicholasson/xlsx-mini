@@ -15,8 +15,6 @@ export type DateStyles = Uint8Array;
 
 const NUMBER_FORMATS = 1;
 const CELL_STYLES = 2;
-/** The last id the standard gives a built-in format, in its Thai table, 59 to 81. */
-const LAST_BUILT_IN = 81;
 
 function damaged(): never {
   throw new XlsxReadError("INVALID_WORKBOOK", "the styles part is damaged");
@@ -28,17 +26,18 @@ function damaged(): never {
  * the `numFmts` before it gives an id its code, and a code replaces a built-in id. The decision is
  * kept, not the code: each code is read once, however many styles name it, and the last `numFmt` of
  * an id wins, as LibreOffice and openpyxl read it. `applyNumberFormat` and the named styles of
- * `cellStyleXfs` change nothing, as in both. A built-in id the part does not define is the format
- * the standard gives it, or `General`.
+ * `cellStyleXfs` change nothing, as in both. An id the part does not define is the format the
+ * standard gives a built-in id, or `General`, past the built-in ids too: openpyxl reads ids 82 to
+ * 163 so. LibreOffice showed a number for such an id in three of four parts made by hand, and a
+ * date in the fourth, which also had a `numFmts` and gave the id a date code in a differential
+ * format after the cell styles. Gives `undefined` when no cell style shows a date.
  *
  * Refuses with `INVALID_WORKBOOK`, never repairs: a root that is not `styleSheet`; a `numFmts` or a
  * `cellXfs` stated twice, out of order or standing anywhere else, below an `AlternateContent`
  * included: LibreOffice takes the first `cellXfs` of two and openpyxl the last, and LibreOffice takes
  * a `numFmts` from the fallback of an `AlternateContent`, which openpyxl does not; anything in a
  * `numFmts` but a `numFmt` that holds nothing; anything directly in a `cellXfs` but an `xf`, and an
- * `xf` deeper in one; a `numFmt` without an id or a code; an id that is not a decimal integer; a
- * style that names an id past the built-in ones that `numFmts` does not define, for which
- * LibreOffice takes the code of a differential format in `dxfs` and openpyxl reads `General`.
+ * `xf` deeper in one; a `numFmt` without an id or a code; an id that is not a decimal integer.
  */
 export function stylesVisitor(): XmlVisitor<never, DateStyles | undefined> {
   const custom = new Map<number, boolean>();
@@ -69,14 +68,13 @@ export function stylesVisitor(): XmlVisitor<never, DateStyles | undefined> {
         damaged();
       } else if (section === CELL_STYLES && depth === 3) {
         const id = Math.max(xml.index("numFmtId"), 0);
-        const date = custom.get(id);
-        if (Number.isNaN(id) || (date === undefined && id > LAST_BUILT_IN)) damaged();
+        if (Number.isNaN(id)) damaged();
         if (count === dates.length) {
           const grown = new Uint8Array(count * 2);
           grown.set(dates);
           dates = grown;
         }
-        const shows = date ?? isBuiltInDate(id);
+        const shows = custom.get(id) ?? isBuiltInDate(id);
         dates[count++] = shows ? 1 : 0;
         dated ||= shows;
       }
