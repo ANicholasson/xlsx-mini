@@ -40,7 +40,7 @@ export interface SizeResult {
  * The most gzipped bytes each bundle may take. Only a feature that needs the bytes raises it, in its
  * own pull request and in ADR 0021.
  */
-export const SIZE_BUDGET = { writeXlsx: 19_000, everything: 22_000, read: 8_000 } as const;
+export const SIZE_BUDGET = { writeXlsx: 19_000, everything: 22_000, read: 12_000 } as const;
 
 const ENTRY = "\0entry";
 

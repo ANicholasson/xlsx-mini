@@ -101,12 +101,21 @@ export const ATTRIBUTE = 2;
 type Reading = typeof TEXT | typeof CDATA | typeof ATTRIBUTE;
 
 /**
+ * Pieces of a text joined before they are copied into one string. A string grown by `+` one piece
+ * at a time is a chain of one node per piece in V8 and JavaScriptCore until it is read: 30 and 60
+ * bytes for each character `decode` replaces.
+ */
+export const JOINED_PIECES = 1024;
+
+/**
  * `text[start, end)` as XML 1.0 reads it: references decoded except in CDATA (4.1), line ends
  * (2.11), and in an attribute value the normalization of section 3.3.3. The result may be a slice
  * of `text`.
  */
 export function decode(text: string, start: number, end: number, reading: Reading): string {
   let out = "";
+  let joined = "";
+  let pieces = 0;
   let copiedUpTo = start;
   for (let at = start; at < end; at++) {
     const code = text.charCodeAt(at);
@@ -123,11 +132,16 @@ export function decode(text: string, start: number, end: number, reading: Readin
     } else {
       continue;
     }
-    out += text.slice(copiedUpTo, at) + read;
+    joined += text.slice(copiedUpTo, at) + read;
+    if (++pieces === JOINED_PIECES) {
+      out += detach(joined);
+      joined = "";
+      pieces = 0;
+    }
     copiedUpTo = next;
     at = next - 1;
   }
-  return out + text.slice(copiedUpTo, end);
+  return out + joined + text.slice(copiedUpTo, end);
 }
 
 const PAD = "\u0001";

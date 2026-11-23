@@ -17,6 +17,16 @@ import {
   resolveTarget,
 } from "./read/relationships.js";
 
+/** What opening a workbook reads: its sheets and where its shared-string table is. */
+export interface ListedWorkbook {
+  readonly sheets: readonly ListedSheet[];
+  /**
+   * The shared-string table's part, or `undefined` for a workbook without one. Whether the package
+   * holds the part is known only when it is opened.
+   */
+  readonly sharedStrings: PartName<"sharedStrings"> | undefined;
+}
+
 export interface ListedSheet {
   readonly name: string;
   /**
@@ -57,6 +67,11 @@ const WORKBOOK_TYPES = new Set<string | undefined>([
   `${STRICT}officeDocument`,
 ]);
 
+const STRING_TYPES = new Set<string | undefined>([
+  `${TRANSITIONAL}sharedStrings`,
+  `${STRICT}sharedStrings`,
+]);
+
 const UNRELATED = "a sheet's relationship is missing or not to a sheet";
 
 const UNFOLLOWED = "a relationship does not name a part of the package";
@@ -69,7 +84,7 @@ function notWorkbook(): never {
 
 /**
  * Reads the sheet list from three parts, opened through `open` one after the other, and nothing
- * else.
+ * else; the workbook's relationships also name its shared-string table.
  *
  * A relationship is followed once, however many sheets name it: a workbook may point every sheet
  * at one long target, and resolving it per sheet would hold a copy of the path for each. The part
@@ -79,15 +94,16 @@ function notWorkbook(): never {
  *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
  * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
- * workbooks, a part is missing or damaged, the sheet list is missing, empty, stated twice or holds
- * anything but sheets, a sheet list or a sheet stands below an `AlternateContent`, a sheet has no
- * name, no relationship, or one of a type that is not a kind of sheet, a target cannot be followed
- * inside the package, or two sheets have one name, character for character.
+ * workbooks or two shared-string tables, a part is missing or damaged, the sheet list is missing,
+ * empty, stated twice or holds anything but sheets, a sheet list or a sheet stands below an
+ * `AlternateContent`, a sheet has no name, no relationship, or one of a type that is not a kind of
+ * sheet, a target cannot be followed inside the package, or two sheets have one name, character for
+ * character.
  */
 export async function readWorkbook(
   open: OpenPart,
   names: Meter<"inflatedBytes">,
-): Promise<readonly ListedSheet[]> {
+): Promise<ListedWorkbook> {
   const root = await readXml(
     open(relationshipsOf(PACKAGE_ROOT)) ?? notWorkbook(),
     relationshipsVisitor(),
@@ -104,18 +120,27 @@ export async function readWorkbook(
     open(relationshipsOf(workbook)) ?? refuse("the workbook's relationships are missing"),
     relationshipsVisitor(),
   );
+  const follow = (target: string | undefined, sheet?: string): string => {
+    names.charge(workbook.length + (target?.length ?? 0));
+    return resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet });
+  };
+  const [strings, second] = [...related.values()].filter(({ type }) => STRING_TYPES.has(type));
+  if (second !== undefined) refuse("the workbook holds two shared-string tables");
   const parts = new Map<string | undefined, PartName<"worksheet"> | undefined>();
-  return listed.map(({ name, relationship }) => {
-    if (!parts.has(relationship)) {
-      const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
-      const cells = SHEET_TYPES.get(type);
-      if (cells === undefined) refuse(UNRELATED, { sheet: name });
-      names.charge(workbook.length + (target?.length ?? 0));
-      const part = resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet: name });
-      parts.set(relationship, cells ? partName(part, "worksheet") : undefined);
-    }
-    return { name, worksheet: parts.get(relationship) };
-  });
+  return {
+    sheets: listed.map(({ name, relationship }) => {
+      if (!parts.has(relationship)) {
+        const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
+        const cells = SHEET_TYPES.get(type);
+        if (cells === undefined) refuse(UNRELATED, { sheet: name });
+        const part = follow(target, name);
+        parts.set(relationship, cells ? partName(part, "worksheet") : undefined);
+      }
+      return { name, worksheet: parts.get(relationship) };
+    }),
+    sharedStrings:
+      strings === undefined ? undefined : partName(follow(strings.target), "sharedStrings"),
+  };
 }
 
 interface SheetEntry {

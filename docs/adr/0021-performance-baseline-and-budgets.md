@@ -155,6 +155,14 @@ The reader (ADR 0032) is an entry of its own, `xlsx-mini/read`, and has a budget
 
 The reader's bundle is its error class alone so far: nothing reads a file yet, so nothing the entry exports reaches the limits' meters.
 
+### The reader's budget raised for the rows of a sheet, 2026-11-23
+
+| Bundle           | Before the rows | With them | Budget, before | Budget, now |
+| ---------------- | --------------: | --------: | -------------: | ----------: |
+| `xlsx-mini/read` |         7 280 B |   9 323 B |        8 000 B |    12 000 B |
+
+The rows of a sheet cost 2 043 bytes gzipped and 5 529 bytes minified. By the minified bytes the source map gives each file, the first 5 067 are the worksheet visitor 1 678, the shared-string table and the string items inline strings share with it 1 390, the value of a cell by its type 947, the entry's tables and the sheet's name on a refusal 410 more than before, the table's relationship in the workbook reader 279 more, a cell reference read in place 195, and the writer's column letters and sheet bounds 161. The other 298 came with a second round of review: the worksheet visitor cuts a refused reference to ten characters (125), a string item and `decode` join their pieces in batches of 1 024 (79 and 42), and the entry keeps every field and the stack of a refusal it names the sheet of (53). A third round added 164, measured commit by commit: the tokenizer joins the runs of a text that comments split in batches of 1 024 (76), so does `decodeEscapes` with its escapes (42), and the cut of a refused reference stops before half of a surrogate pair (46). They buy what a caller opens a workbook for. The package and XML layers below had taken 7 280 of the first budget's 8 000 bytes, so the rows alone pass it. The new budget leaves room for dates and for objects by declared columns, which are still to come.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.

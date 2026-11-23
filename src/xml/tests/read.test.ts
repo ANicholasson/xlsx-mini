@@ -153,16 +153,34 @@ describe("the text of an element", () => {
     expect(await textOf("a\r\nb\rc\nd\r\r\ne\n\rf")).toBe("a\nb\nc\nd\n\ne\n\nf");
     expect(await textOf("a&#13;b&#13;&#10;c&#xD;\n")).toBe("a\rb\r\nc\r\n");
     expect(await textOf("\r")).toBe("\n");
+    const lines = Array.from({ length: 1500 }, (_, line) => line);
+    expect(await textOf(lines.map((line) => `${line}\r\n&lt;\r`).join(""))).toBe(
+      lines.map((line) => `${line}\n<\n`).join(""),
+    );
   });
 
   it("takes a CDATA section as it is written, but for its line ends", async () => {
     expect(await textOf("<![CDATA[<b> & &amp; ]] ]> \r\n\r]]>")).toBe("<b> & &amp; ]] ]> \n\n");
     expect(await textOf("a<![CDATA[]]>b<![CDATA[c]]><![CDATA[]]]]><![CDATA[>]]>")).toBe("abc]]>");
+    const lines = Array.from({ length: 1500 }, (_, line) => line);
+    expect(await textOf(`<![CDATA[${lines.map((line) => `&${line}\r`).join("")}]]>`)).toBe(
+      lines.map((line) => `&${line}\n`).join(""),
+    );
   });
 
   it("joins the character data on both sides of a comment, an instruction and a CDATA section", async () => {
     expect(await textOf("a<!-- b -->c<?d e?>f&amp;<![CDATA[g]]>\r<!---->h")).toBe("acf&g\nh");
     expect(await textOf("<!-- only a comment -->")).toBe("");
+    const runs = Array.from({ length: 2_500 }, (_, run) => `${run}`);
+    expect(await textOf(runs.join("<!---->"))).toBe(runs.join(""));
+    expect(await tokensOf(`<a>${runs.join("<?p?>")}<b>x</b><c/></a>`)).toEqual([
+      ["open", "a", 1, {}],
+      ["open", "b", 2, {}],
+      ["close", "b", 2, "x"],
+      ["open", "c", 2, {}],
+      ["close", "c", 2, ""],
+      ["close", "a", 1, ""],
+    ]);
     expect(await tokensOf("<a>x<!-- y --><b/>z<![CDATA[w]]></a>")).toEqual([
       ["open", "a", 1, {}],
       ["open", "b", 2, {}],
@@ -208,6 +226,10 @@ describe("the attributes of an open tag", () => {
     expect(await valueOf(`"a\tb\nc\rd\r\ne\r\r\nf"`)).toBe("a b c d e  f");
     expect(await valueOf(`"a&#9;b&#10;c&#13;d&#13;&#10;e"`)).toBe("a\tb\nc\rd\r\ne");
     expect(await valueOf(`" two  spaces "`)).toBe(" two  spaces ");
+    const words = Array.from({ length: 1500 }, (_, word) => word);
+    expect(await valueOf(`"${words.map((word) => `${word}\t&amp;\r\n`).join("")}"`)).toBe(
+      words.map((word) => `${word} & `).join(""),
+    );
   });
 
   it("are given as an index without a string being made", async () => {
@@ -465,6 +487,9 @@ describe("refused with INVALID_XML", () => {
     await expectRefused(`<t>${half}<?p?>${half}<?p?>x</t>`);
     await expectRefused(`<t>${half}<?p?>${half}x<?p?></t>`);
     await expectRead(`<t>${half}<?p?>${half}<a/>${half}</t>`, "text that a child element ends");
+    const runs = `${"x".repeat(2_048)}<!---->`.repeat(2_048);
+    expect(await textOf(runs)).toHaveLength(4_194_304);
+    await expectRefused(`<t>${runs}x</t>`);
   }, 60_000);
 
   it("content after the root", async () => {

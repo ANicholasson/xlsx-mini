@@ -15,7 +15,7 @@ import { textChunks } from "./read/text.js";
 import { CLOSE, NEED, OPEN, createTokenizer } from "./read/tokenizer.js";
 
 export type { ByteChunks, XmlCursor, XmlVisitor } from "./read/contract.js";
-export { parseIndex } from "./read/text.js";
+export { JOINED_PIECES, detach, parseIndex } from "./read/text.js";
 
 /**
  * Drives one part through its visitor, lazily: tokens are read synchronously, one `await` is paid

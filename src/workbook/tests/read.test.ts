@@ -64,9 +64,11 @@ interface Listed {
   readonly opened: readonly string[];
 }
 
-async function read(
-  parts: Parts | Uint8Array,
-): Promise<{ readonly sheets: readonly ListedSheet[]; readonly opened: readonly string[] }> {
+async function read(parts: Parts | Uint8Array): Promise<{
+  readonly sheets: readonly ListedSheet[];
+  readonly sharedStrings: string | undefined;
+  readonly opened: readonly string[];
+}> {
   const encoder = new TextEncoder();
   const bytes =
     parts instanceof Uint8Array
@@ -80,11 +82,11 @@ async function read(
   const { book: meters } = resolveLimits(undefined);
   const pkg = await openPackage(bytes, meters.parts, meters.structure);
   const opened: string[] = [];
-  const sheets = await readWorkbook((name) => {
+  const { sheets, sharedStrings } = await readWorkbook((name) => {
     opened.push(name);
     return pkg.open(partName(name, "structure"), meters.structure);
   }, meters.structure);
-  return { sheets, opened };
+  return { sheets, sharedStrings: sharedStrings?.name, opened };
 }
 
 async function list(parts: Parts | Uint8Array): Promise<Listed> {
@@ -158,6 +160,42 @@ describe("the sheet list", () => {
       ["Sheet 6", null],
       ["Sheet 7", null],
     ]);
+  });
+
+  it("names the shared-string table its relationships name, in both families, and none when there is none", async () => {
+    const withTable = (type: string, target: string) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          relationship("rId9", type, target),
+      );
+    expect(
+      (await read(withTable(`${TRANSITIONAL}/sharedStrings`, "strings.xml"))).sharedStrings,
+    ).toBe("xl/strings.xml");
+    expect(
+      (await read(withTable(`${STRICT}/sharedStrings`, "/text/table.xml"))).sharedStrings,
+    ).toBe("text/table.xml");
+    expect(
+      (await read(withTable(`${TRANSITIONAL}/sharedString`, "strings.xml"))).sharedStrings,
+    ).toBe(undefined);
+    expect((await read(book())).sharedStrings).toBe(undefined);
+  });
+
+  it("refuses two shared-string tables, and one whose target cannot be followed inside the package", async () => {
+    const tables = (...targets: string[]) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          targets
+            .map((target, at) => relationship(`s${at}`, `${TRANSITIONAL}/sharedStrings`, target))
+            .join(""),
+      );
+    expect(await outcome(tables("a.xml", "b.xml"))).toBe("INVALID_WORKBOOK");
+    expect(await outcome(tables("a.xml", "a.xml"))).toBe("INVALID_WORKBOOK");
+    for (const target of ["../../a.xml", "a.xml?x", "strings/"]) {
+      expect(await outcome(tables(target)), target).toBe("INVALID_WORKBOOK");
+    }
+    expect(await outcome(tables("a.xml"))).toBe("listed");
   });
 
   it("reads a workbook of the Strict family", async () => {
