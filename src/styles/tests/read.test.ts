@@ -107,6 +107,9 @@ const CODES: readonly (readonly [code: string, date: boolean, source: string, ot
   ["[>100]yyyy;0", true, "openpyxl", "LibreOffice: a number shown as a year"],
   ["[<1]h:mm;yyyy-mm-dd", false, "LibreOffice"],
   ["[Red 0", false, "LibreOffice", "openpyxl: a date, from the d of Red"],
+  ["[[h]]:mm", false, "LibreOffice"],
+  ["yyyy[[h]]", true, "LibreOffice", "openpyxl: a duration"],
+  ["[[Red]]yyyy", false, "LibreOffice", "openpyxl: a date"],
   // Elapsed time: a time, which stays a number, unless a date stands beside it.
   ["[h]:mm", false, "excel/type-matrix.xlsx"],
   ["[h]:mm:ss", false, "18.8.31"],
@@ -120,7 +123,10 @@ const CODES: readonly (readonly [code: string, date: boolean, source: string, ot
   ["[hhm]:ss", false, "LibreOffice"],
   ["[hs]:mm", true, "openpyxl", "LibreOffice: a number"],
   ["[mh]", false, "openpyxl", "LibreOffice: a date"],
-  // m: a minute after an hour or before a second, a month otherwise.
+  ["[ss]:m", false, "LibreOffice"],
+  ["h[ss]m", false, "LibreOffice"],
+  ["h[mm]m", true, "LibreOffice", "openpyxl: a duration"],
+  // m: a minute after an hour or a second, or before a second, and a month otherwise.
   ["h:mm", false, "18.8.31"],
   ["hh:mm:ss", false, "18.8.31"],
   ["mm:ss", false, "18.8.31"],
@@ -130,6 +136,8 @@ const CODES: readonly (readonly [code: string, date: boolean, source: string, ot
   ['h" "mm', false, "18.8.31"],
   ["h mm", false, "18.8.31"],
   ["mm ss", false, "18.8.31"],
+  ["s m", false, "LibreOffice"],
+  ["ss mm", false, "LibreOffice"],
   ["h:mm d", true, "18.8.31"],
   ["h:[Red]mm", false, "18.8.31"],
   ["mm h", true, "18.8.31"],
