@@ -1,10 +1,7 @@
-// Run by read-memory.test.ts in a process of its own, with a heap limit. Prints one line of JSON, a
-// `Report`.
 import { getHeapStatistics } from "node:v8";
 import { type StreamedPart, selectStreamCompression, streamPackage } from "../src/opc/index.js";
 import { XlsxReadError, openXlsx } from "../src/read.js";
 
-/** Three sheets of one row each, read at once: how each read ended. */
 export interface Reading {
   readonly row: string;
   readonly sheetBytes: number;
@@ -36,7 +33,6 @@ function columnName(column: number): string {
  */
 const text = (length: number) => encoder.encode(`Ā${"a".repeat(length - 1)}`);
 
-/** The worksheet as chunks made as they are pulled, so the process never holds it whole. */
 function sheet(pieces: () => Generator<Uint8Array>): {
   readonly body: () => ReadableStream<Uint8Array>;
   readonly bytes: number;
@@ -61,11 +57,15 @@ function sheet(pieces: () => Generator<Uint8Array>): {
 const head = encoder.encode(`<worksheet xmlns="${MAIN}"><sheetData><row r="1">`);
 const tail = encoder.encode("</row></sheetData></worksheet>");
 
-/** 16 384 formula results of 7 600 characters each: every position of the row, each token short. */
+const LAST_COLUMN = 16_384;
+const CELL_CHARACTERS = 7_600;
+const RUN_CHARACTERS = 4_000_000;
+const RUNS = 31;
+
 function* cells(): Generator<Uint8Array> {
-  const value = text(7_600);
+  const value = text(CELL_CHARACTERS);
   yield head;
-  for (let column = 1; column <= 16_384; column++) {
+  for (let column = 1; column <= LAST_COLUMN; column++) {
     yield encoder.encode(`<c r="${columnName(column)}1" t="str"><v>`);
     yield value;
     yield encoder.encode("</v></c>");
@@ -73,12 +73,11 @@ function* cells(): Generator<Uint8Array> {
   yield tail;
 }
 
-/** One inline string of 31 runs of 4 000 000 characters each, in one position. */
 function* runs(): Generator<Uint8Array> {
-  const value = text(4_000_000);
+  const value = text(RUN_CHARACTERS);
   yield head;
   yield encoder.encode('<c r="A1" t="inlineStr"><is>');
-  for (let run = 0; run < 31; run++) {
+  for (let run = 0; run < RUNS; run++) {
     yield encoder.encode("<r><t>");
     yield value;
     yield encoder.encode("</t></r>");

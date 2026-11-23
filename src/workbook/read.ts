@@ -17,7 +17,7 @@ import {
   resolveTarget,
 } from "./read/relationships.js";
 
-/** What opening a workbook reads: its sheets, and where the parts every sheet shares are. */
+/** What opening a workbook reads: its sheets and where its shared-string table is. */
 export interface ListedWorkbook {
   readonly sheets: readonly ListedSheet[];
   /**

@@ -2,10 +2,7 @@ import { type SharedStrings, decodeEscapes } from "../../shared-strings/read.js"
 import { parseIndex } from "../../xml/read.js";
 import type { ReadValue } from "./model.js";
 
-/**
- * The type of a cell, from its `t` attribute, as a small number compared once per cell. The five
- * that a single letter names are numbered by the letter's place in `ONE_LETTER`.
- */
+/** The type of a cell, from its `t` attribute, as a small number compared once per cell. */
 const NUMBER = 0;
 const SHARED_STRING = 1;
 const BOOLEAN = 2;

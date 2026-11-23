@@ -97,8 +97,7 @@ export async function openXlsx(
   );
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
 
-  // Started by the first iteration of a worksheet and awaited by it at once, never by a sheet
-  // without cells: a promise nobody awaits would make a refusal an unhandled rejection.
+  // A rejected promise that nothing awaits ends the process as an unhandled rejection.
   let strings: Promise<SharedStrings> | undefined;
   async function readStrings(): Promise<SharedStrings> {
     if (sharedStrings === undefined) return [];
@@ -122,7 +121,6 @@ export async function openXlsx(
       return {
         async *[Symbol.asyncIterator]() {
           if (worksheet === undefined) return;
-          // Awaited outside the `try`: a refusal of the table is the workbook's, not this sheet's.
           const table = await (strings ??= readStrings());
           const meters = limits.rows();
           try {

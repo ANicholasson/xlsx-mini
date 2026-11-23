@@ -2,12 +2,10 @@ import type { Cell, Coerce, Sheet } from "../../src/index.js";
 
 type Expected = string | number | boolean | null;
 
-/** A row as the reader is expected to give it: its number, then its values from column A. */
-export type ExpectedRow = readonly [number, ...Expected[]];
+export type ExpectedRow = readonly [number: number, ...cells: Expected[]];
 
 const DAY = 86_400_000;
-/** Days from 1899-12-30 to 1970-01-01. */
-const UNIX_EPOCH = 25_569;
+const UNIX_EPOCH_SERIAL = 25_569;
 
 /**
  * Whole days since 1899-12-30 and the fraction of the day. Before 1 March 1900 a day less, since
@@ -15,7 +13,7 @@ const UNIX_EPOCH = 25_569;
  */
 function serial(millis: number): number {
   const days = Math.floor(millis / DAY);
-  const day = days + UNIX_EPOCH;
+  const day = days + UNIX_EPOCH_SERIAL;
   return (day < 61 ? day - 1 : day) + (millis - days * DAY) / DAY;
 }
 
@@ -74,11 +72,7 @@ function cellOf(cell: Cell, coerce: Coerce | undefined): Expected {
   return valueOf(cell, coerce);
 }
 
-/**
- * The rows the reader gives for a sheet the writer was given, derived from the writer's input:
- * dates as their serial until dates are read, a formula as its cached value or nothing, a picture
- * as nothing, text without what XML cannot carry, and a row without a value left out.
- */
+/** The rows the reader gives for a sheet the writer was given, derived from the input alone. */
 export function expectedRows(sheet: Sheet, coerce?: Coerce): ExpectedRow[] {
   const rows: ExpectedRow[] = [];
   let number = 0;

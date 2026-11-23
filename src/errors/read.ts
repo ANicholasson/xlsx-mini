@@ -14,8 +14,7 @@
  *   share a name.
  * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a cell is of an
  *   unknown type or holds what its type does not, a number is not decimal, a shared string does not
- *   exist. A date stored as text (`t="d"`) is refused too, until dates are read. `sheet` and `cell`
- *   say where.
+ *   exist, a date is stored as text (`t="d"`). `sheet` and `cell` say where.
  * - `LIMIT_EXCEEDED`: the file asks for more than a limit allows. `limit` names the key of
  *   `ReadLimits` to raise.
  * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.

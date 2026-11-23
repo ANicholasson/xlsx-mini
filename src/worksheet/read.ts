@@ -2,10 +2,6 @@
  * The read side of the worksheet: from the tokens of a worksheet part to rows of values. Owns the
  * rules of the sheet data: where it stands, the order of rows and cells, references, and what each
  * type of cell stores.
- *
- * Elements are matched by where they stand, since the tokenizer drops prefixes and looks at no
- * namespace: the root, `sheetData` under it, `row` under that, `c` under a row, and `v` or `is`
- * under a cell.
  */
 import { type Meter, type RowMeter, XlsxReadError } from "../errors/read.js";
 import { type SharedStrings, createStringItem } from "../shared-strings/read.js";
@@ -20,9 +16,7 @@ export type { ReadRow, ReadValue } from "./read/model.js";
 /** What one `rows` iteration reads a worksheet with. */
 export interface WorksheetContext {
   readonly strings: SharedStrings;
-  /** Charged the positions a value adds to its row, the gap before it included. */
   readonly positions: Meter<"cellPositions">;
-  /** Charged the length of each text a row holds; started again for every row. */
   readonly rowText: RowMeter<"rowCharacters">;
 }
 
@@ -51,20 +45,16 @@ function refuse(message: string, cell: string | undefined): never {
  * cell names it, and an inline string run by run as its runs are read. Nothing is sized from what
  * the file states: `dimension` and `spans` are not read.
  *
- * Refuses, never repairs. `INVALID_WORKBOOK` when the root is not `worksheet`, holds no `sheetData`
- * or two, or holds a `sheetData` or a `row` anywhere else, such as below a markup-compatibility
- * block, and when the sheet data holds anything but rows. `INVALID_CELL` for a row whose number is
- * not above the one before it or is past the last row; a cell reference that is malformed, names
- * another row, or is not right of the cell before it; an unknown type; anything in a row but cells
- * and extensions, in a cell but one `v` or one `is` as its type asks, a formula and extensions, and
- * an element in a `v`; and a value that is not of its type. A row or a cell without a reference
- * follows the one before it. Hidden rows and columns read like visible ones.
+ * Refuses, never repairs: `INVALID_WORKBOOK` when the sheet data cannot be found, is stated twice,
+ * or holds anything but rows, and when a `sheetData` or a `row` stands anywhere else; `INVALID_CELL`,
+ * with the place in the sheet, for whatever is wrong in a row or a cell, a date stored as text
+ * included. Hidden rows and columns read like visible ones.
  */
 export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow, void> {
   const { strings, positions, rowText } = context;
   const item = createStringItem(5);
-  let path = 0;
-  let skipped = 0;
+  let pathDepth = 0;
+  let skippedDepth = 0;
   let found = false;
   let previous = 0;
   let row = 0;
@@ -103,24 +93,20 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
     if (value === undefined) refuse(kind === DATE ? DATE_TEXT : VALUE, at(column));
     if (value === null) return;
     positions.charge(column - cells.length);
-    // An inline string was charged run by run as it was read.
     if (typeof value === "string" && kind !== INLINE_STRING) rowText.charge(value.length);
     while (cells.length < column - 1) cells.push(null);
     cells.push(value);
   }
 
-  // `path` is the depth of the deepest open element of `worksheet > sheetData > row > c > v | is`,
-  // and `skipped` the depth of an element passed over with all it holds. Outside such an element
-  // every element opens at `path + 1`, so where it stands is `path`.
   return {
     open(xml) {
       const name = xml.name;
-      if (skipped === 0 && path === 1 && name !== "sheetData") skipped = 2;
-      if (skipped !== 0) {
+      if (skippedDepth === 0 && pathDepth === 1 && name !== "sheetData") skippedDepth = 2;
+      if (skippedDepth !== 0) {
         if (name === "sheetData" || name === "row") damaged();
         return;
       }
-      switch (path) {
+      switch (pathDepth) {
         case 0:
           if (name !== "worksheet") damaged();
           break;
@@ -135,14 +121,14 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
         case 3:
           if (name !== "c") {
             if (name !== "extLst") refuse(SHAPE, at(column + 1));
-            skipped = 4;
+            skippedDepth = 4;
             return;
           }
           openCell(xml);
           break;
         case 4:
           if (name === "f" || name === "extLst") {
-            skipped = 5;
+            skippedDepth = 5;
             return;
           }
           inline = name === "is";
@@ -158,19 +144,19 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
           if (!inline || !item.open(xml)) refuse(SHAPE, at(column));
           return;
       }
-      path++;
+      pathDepth++;
     },
     close(xml) {
       const depth = xml.depth;
-      if (skipped !== 0) {
-        if (depth === skipped) skipped = 0;
+      if (skippedDepth !== 0) {
+        if (depth === skippedDepth) skippedDepth = 0;
         return undefined;
       }
-      if (depth > path) {
+      if (depth > pathDepth) {
         rowText.charge(item.close(xml));
         return undefined;
       }
-      path--;
+      pathDepth--;
       if (depth === 5) stored = inline ? item.take() : xml.text();
       else if (depth === 4) closeCell();
       else if (depth === 3 && cells.length > 0) {

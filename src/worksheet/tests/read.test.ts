@@ -20,7 +20,6 @@ const worksheet = (inner: string) => `<worksheet xmlns="${MAIN}">${inner}</works
 const data = (rows: string) => worksheet(`<sheetData>${rows}</sheetData>`);
 const alternate = (inner: string) =>
   `<mc:AlternateContent xmlns:mc="${COMPATIBILITY}"><mc:Choice Requires="x14">${inner}</mc:Choice></mc:AlternateContent>`;
-/** One cell in A1 of one row. */
 const cell = (attributes: string, inner: string) =>
   data(`<row r="1"><c r="A1"${attributes}>${inner}</c></row>`);
 
@@ -41,7 +40,6 @@ async function rowsOf(part: string, { strings = [], limits }: Reading = {}): Pro
   return rows;
 }
 
-/** The rows, or the code of the refusal with its cell or its limit. */
 async function outcomeOf(part: string, reading?: Reading): Promise<Rows | string> {
   try {
     return await rowsOf(part, reading);
@@ -313,6 +311,7 @@ describe("the rows of a worksheet part", () => {
       '<row r="1"><c r="A1"><v>1</v><v>2</v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><v>1<b/>2</v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><v><t>5</t></v></c></row>': "INVALID_CELL A1",
+      '<row r="1"><c r="A1" t="str"><v><t>5</t></v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><x>5</x></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1" t="inlineStr"><v>text</v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><is><t>text</t></is></c></row>': "INVALID_CELL A1",

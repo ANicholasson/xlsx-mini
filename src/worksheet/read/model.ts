@@ -2,8 +2,8 @@
  * The value of a cell as the file stores it:
  *
  * - text is a `string`, as stored and untrimmed, with rich text as its plain text;
- * - a number is a `number`, never `NaN` or an infinity. A date or a time is the number the file
- *   stores, its serial: days since 1899-12-30, with the time of day as the fraction;
+ * - a number is a `number`, never `NaN` or an infinity. A date or a time is the serial the file
+ *   stores, a number of days with the time of day as the fraction;
  * - a boolean is a `boolean`;
  * - an error cell is its text, such as `"#DIV/0!"`;
  * - a formula is its stored result, or `null` when the file stores none: nothing is calculated;

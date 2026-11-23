@@ -1,15 +1,13 @@
 /**
- * The read side of shared strings: the table's part, and the rules of a string item, which an
- * inline string in a worksheet shares. Text is given as stored: nothing is trimmed, and only the
- * format's `_xHHHH_` escapes are decoded, as `escapeText` writes them and the applications read
- * them.
+ * The read side of shared strings: the table, and the rules of a string item, which an inline
+ * string in a worksheet shares. Text is given as stored: nothing is trimmed.
  */
 import { type Meter, XlsxReadError } from "../errors/read.js";
 import type { XmlCursor, XmlVisitor } from "../xml/read.js";
 
 /**
- * The text of every entry of the table, by index; an empty entry is `""`. Every cell that names an
- * entry is given this one string.
+ * The text of every entry of the table, by index; an empty entry is `""`. A cell that names an
+ * entry is given the entry's string itself, never a copy.
  */
 export type SharedStrings = readonly string[];
 
@@ -18,8 +16,7 @@ function damaged(): never {
 }
 
 /**
- * The visitor of the shared-string table's part. Every entry is charged to `count` before it is
- * kept, so the count the table states is never read.
+ * Every entry is charged to `count` before it is kept, so the count the table states is never read.
  *
  * Refuses with `INVALID_WORKBOOK` a part whose root is not `sst`, and anything under the root but
  * an `si` and the extensions of `extLst`, which may hold no `si`: an entry in a markup-compatibility
@@ -81,7 +78,6 @@ interface StringItem {
   take(): string;
 }
 
-/** What an item has held so far: its own `t`, a run, and a `t` in the run that is open. */
 const ITEM_TEXT = 1;
 const RUN = 2;
 const RUN_TEXT = 4;
@@ -93,24 +89,31 @@ export function createStringItem(depth: number): StringItem {
   let skipped = 0;
   let seen = 0;
   return {
-    // Below the item's children only a run's can open: a `t` takes no child and the others are
-    // passed over, so a `t` or an `rPr` two levels down stands in a run.
     open(xml) {
       if (skipped !== 0) return true;
       if (inText !== 0) return false;
-      const child = xml.depth - depth === 1;
       const name = xml.name;
-      if (name === "t") {
-        if ((seen & (child ? ITEM_TEXT | RUN : RUN_TEXT)) !== 0) return false;
-        seen |= child ? ITEM_TEXT : RUN_TEXT;
-        inText = xml.depth;
-      } else if (child ? name === "rPh" || name === "phoneticPr" : name === "rPr") {
-        skipped = xml.depth;
-      } else if (child && name === "r") {
-        seen = (seen | RUN) & ~RUN_TEXT;
+      const ownChild = xml.depth - depth === 1;
+      if (ownChild) {
+        if (name === "r") {
+          seen = (seen | RUN) & ~RUN_TEXT;
+          return true;
+        }
+        if (name === "rPh" || name === "phoneticPr") {
+          skipped = xml.depth;
+          return true;
+        }
+        if (name !== "t" || (seen & (ITEM_TEXT | RUN)) !== 0) return false;
+        seen |= ITEM_TEXT;
       } else {
-        return false;
+        if (name === "rPr") {
+          skipped = xml.depth;
+          return true;
+        }
+        if (name !== "t" || (seen & RUN_TEXT) !== 0) return false;
+        seen |= RUN_TEXT;
       }
+      inText = xml.depth;
       return true;
     },
     close(xml) {
@@ -167,7 +170,6 @@ export function decodeEscapes(text: string): string {
   return out + text.slice(copiedUpTo);
 }
 
-/** The code unit of the escape at `at`, which starts with `_x`, or -1 when it is none. */
 function escapeAt(text: string, at: number): number {
   if (text.charCodeAt(at + 6) !== UNDERSCORE || text.charCodeAt(at + 1) !== LOWER_X) return -1;
   let code = 0;
@@ -179,7 +181,6 @@ function escapeAt(text: string, at: number): number {
   return text.charCodeAt(at) === UNDERSCORE ? code : -1;
 }
 
-/** The value of a hexadecimal digit of either case, or -1. */
 function hexDigit(code: number): number {
   if (code >= 48 && code <= 57) return code - 48;
   const letter = code | 32;

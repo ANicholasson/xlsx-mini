@@ -65,7 +65,6 @@ async function readRows(book: OpenedWorkbook, sheet: string | number): Promise<R
   return rows;
 }
 
-/** The rows read, or the refusal they ended in with where it says it was. */
 async function outcomeOf(book: OpenedWorkbook, sheet: string | number): Promise<Rows | object> {
   try {
     return await readRows(book, sheet);
@@ -104,7 +103,6 @@ function workbookOf(
   );
 }
 
-/** Two worksheets that name every string of a shared-string table, and a chart sheet. */
 function sharingWorkbook(table: string): Promise<Uint8Array> {
   const rows = '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>';
   return workbookOf(
@@ -382,7 +380,6 @@ describe("rows", () => {
     const texts = Array.from({ length: 4_000 }, (_, at) => `text number ${at}`);
     const bytes = await sharingWorkbook(tablePart(...texts));
     const table = unzip(bytes).find(({ name }) => name === "xl/sharedStrings.xml")!;
-    // The opening's own parts take far less than half the table: it fits once, and not twice.
     const once = Math.floor(table.uncompressedSize * 1.5);
     for (const order of [
       ["One", "Two", "One"],
