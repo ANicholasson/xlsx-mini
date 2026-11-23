@@ -43,9 +43,9 @@ describe("the shared-string table", () => {
       "<si><t>plain</t></si>": "plain",
       "<si><t>a</t><r><t>b</t></r></si>": "ab",
       '<si><r><t>x</t></r><rPh sb="0" eb="1"><t>PHON</t></rPh><phoneticPr fontId="1"/></si>': "x",
-      "<si><t>t1</t><t>t2</t></si>": "t1t2",
       "<si><r><rPr><b/></rPr><t>run</t></r><r><t>two</t></r></si>": "runtwo",
       "<si><r><rPr><t>inrpr</t></rPr><t>r</t></r></si>": "r",
+      "<si><t>a</t><r><rPr/></r><r><t>c</t></r></si>": "ac",
       "<si><r><t>_x00</t></r><r><t>41_</t></r></si>": "_x0041_",
       "<si><t>_x0041_</t></si>": "A",
       "<si><t>_x00e6_|_x00E6_|_X0041_|_x41_|_xZZZZ_</t></si>": "æ|æ|_X0041_|_x41_|_xZZZZ_",
@@ -53,10 +53,10 @@ describe("the shared-string table", () => {
       "<si><t>_x0041_x0042_</t></si>": "Ax0042_",
       "<si><t>_x_x0041_</t></si>": "_xA",
       "<si><t>_x005F_x0041_</t></si>": "_x0041_",
+      "<si><t>__x0078_0041_</t></si>": "_x0041_",
       "<si/>": "",
       "<si><t></t></si>": "",
       "<si>abc</si>": "",
-      "<si><r>abc</r><t>d</t></si>": "d",
       '<si><t xml:space="preserve">  sp  </t></si>': "  sp  ",
       "<si><t>  nsp  </t></si>": "  nsp  ",
       "<si><t>a&#13;b\r\nc&amp;</t></si>": "a\rb\nc&",
@@ -103,7 +103,7 @@ describe("the shared-string table", () => {
     );
   });
 
-  it("refuses with INVALID_WORKBOOK a root that is not sst, and anything under it but an entry or extensions", async () => {
+  it("refuses with INVALID_WORKBOOK a root that is not sst, and anything under it but an entry or extensions without one", async () => {
     const parts = [
       `<sheet>${"<si><t>a</t></si>"}</sheet>`,
       sst("<si><t>a</t></si><item><t>b</t></item>"),
@@ -111,13 +111,14 @@ describe("the shared-string table", () => {
         `<si><t>zero</t></si><mc:AlternateContent xmlns:mc="${COMPATIBILITY}"><mc:Choice Requires="x"><si><t>hidden</t></si></mc:Choice></mc:AlternateContent><si><t>one</t></si>`,
       ),
       sst("<sst><si><t>a</t></si></sst>"),
+      sst(
+        '<si><t>a</t></si><extLst><ext uri="x"><si><t>b</t></si></ext></extLst><si><t>c</t></si>',
+      ),
     ];
     for (const part of parts) expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
     expect(
       await outcomeOf(
-        sst(
-          '<si><t>a</t></si><extLst><ext uri="x"><si><t>b</t></si></ext></extLst><si><t>c</t></si>',
-        ),
+        sst('<si><t>a</t></si><extLst><ext uri="x"><x:t>b</x:t></ext></extLst><si><t>c</t></si>'),
       ),
     ).toEqual(["a", "c"]);
   });
@@ -135,6 +136,20 @@ describe("the shared-string table", () => {
       "<si><r><rPh><t>a</t></rPh></r></si>",
     ];
     for (const item of items) expect(await outcomeOf(sst(item)), item).toBe("INVALID_WORKBOOK");
+  });
+
+  it("refuses an entry that LibreOffice and openpyxl read in two ways: a second text of its own or of a run, its own text after a run", async () => {
+    const items = [
+      "<si><t>t1</t><t>t2</t></si>",
+      "<si><r><t>a</t><t>b</t></r><r><t>c</t></r></si>",
+      "<si><r><t>a</t></r><t>b</t></si>",
+      "<si><r>abc</r><t>d</t></si>",
+    ];
+    for (const item of items) expect(await outcomeOf(sst(item)), item).toBe("INVALID_WORKBOOK");
+    expect(await outcomeOf(sst("<si><t>a</t></si><si><t>b</t><r><t>c</t></r></si>"))).toEqual([
+      "a",
+      "bc",
+    ]);
   });
 
   it("charges every entry to sharedStrings before it keeps it, and never reads the count the table states", async () => {

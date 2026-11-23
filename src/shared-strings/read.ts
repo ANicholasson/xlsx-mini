@@ -13,13 +13,18 @@ import type { XmlCursor, XmlVisitor } from "../xml/read.js";
  */
 export type SharedStrings = readonly string[];
 
+function damaged(): never {
+  throw new XlsxReadError("INVALID_WORKBOOK", "the shared-string table is damaged");
+}
+
 /**
  * The visitor of the shared-string table's part. Every entry is charged to `count` before it is
  * kept, so the count the table states is never read.
  *
  * Refuses with `INVALID_WORKBOOK` a part whose root is not `sst`, and anything under the root but
- * an `si` and the extensions of `extLst`: a markup-compatibility block holding an `si` is counted by
- * one reader and passed over by another, and every index after it would name another string.
+ * an `si` and the extensions of `extLst`, which may hold no `si`: an entry in a markup-compatibility
+ * block or an extension is counted by one reader and passed over by another, and every index after
+ * it would name another string.
  */
 export function sharedStringsVisitor(
   count: Meter<"sharedStrings">,
@@ -29,15 +34,16 @@ export function sharedStringsVisitor(
   let skipped = 0;
   return {
     open(xml) {
-      if (skipped !== 0) return;
       const depth = xml.depth;
       const name = xml.name;
-      if (depth > 2 ? item.open(xml) : depth === 1 ? name === "sst" : name === "si") {
+      if (skipped !== 0) {
+        if (name === "si") damaged();
+      } else if (depth > 2 ? item.open(xml) : depth === 1 ? name === "sst" : name === "si") {
         if (depth === 2) count.charge(1);
       } else if (depth === 2 && name === "extLst") {
         skipped = 2;
       } else {
-        throw new XlsxReadError("INVALID_WORKBOOK", "the shared-string table is damaged");
+        damaged();
       }
     },
     close(xml) {
@@ -64,7 +70,9 @@ export function sharedStringsVisitor(
 interface StringItem {
   /**
    * An element opens below the item's own. False when an item cannot hold it there: anything but
-   * the elements above, and any element inside a `t`, whose text would then lose characters.
+   * the elements above; any element inside a `t`, whose text would then lose characters; and a
+   * second `t` in the item or in a run, or a `t` of the item after a run, which LibreOffice and
+   * openpyxl read in different ways.
    */
   open(xml: XmlCursor): boolean;
   /** An element closes below the item's own. Returns the number of characters it added. */
@@ -73,24 +81,34 @@ interface StringItem {
   take(): string;
 }
 
+/** What an item has held so far: its own `t`, a run, and a `t` in the run that is open. */
+const ITEM_TEXT = 1;
+const RUN = 2;
+const RUN_TEXT = 4;
+
 /** A string item whose own element stands at `depth`. */
-function createStringItem(depth: number): StringItem {
+export function createStringItem(depth: number): StringItem {
   let text = "";
   let inText = 0;
   let skipped = 0;
+  let seen = 0;
   return {
     // Below the item's children only a run's can open: a `t` takes no child and the others are
     // passed over, so a `t` or an `rPr` two levels down stands in a run.
     open(xml) {
       if (skipped !== 0) return true;
       if (inText !== 0) return false;
-      const below = xml.depth - depth;
+      const child = xml.depth - depth === 1;
       const name = xml.name;
       if (name === "t") {
+        if ((seen & (child ? ITEM_TEXT | RUN : RUN_TEXT)) !== 0) return false;
+        seen |= child ? ITEM_TEXT : RUN_TEXT;
         inText = xml.depth;
-      } else if (below === 1 ? name === "rPh" || name === "phoneticPr" : name === "rPr") {
+      } else if (child ? name === "rPh" || name === "phoneticPr" : name === "rPr") {
         skipped = xml.depth;
-      } else if (below !== 1 || name !== "r") {
+      } else if (child && name === "r") {
+        seen = (seen | RUN) & ~RUN_TEXT;
+      } else {
         return false;
       }
       return true;
@@ -110,6 +128,7 @@ function createStringItem(depth: number): StringItem {
     take() {
       const taken = text;
       text = "";
+      seen = 0;
       return taken;
     },
   };

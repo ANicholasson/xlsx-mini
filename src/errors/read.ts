@@ -9,10 +9,13 @@
  *   size than declared, a wrong CRC-32, a compression method other than stored or deflate.
  * - `INVALID_XML`: a part is not well-formed XML in UTF-8, holds a DOCTYPE, nests deeper or holds
  *   a longer token than any workbook does.
- * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list or a sheet's data cannot
- *   be found, a relationship leaves the package, two sheets share a name.
- * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a number is not
- *   decimal, a shared string or a style does not exist. `sheet` and `cell` say where.
+ * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list, a sheet's data or the
+ *   shared strings cannot be found or are damaged, a relationship leaves the package, two sheets
+ *   share a name.
+ * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a cell is of an
+ *   unknown type or holds what its type does not, a number is not decimal, a shared string does not
+ *   exist. A date stored as text (`t="d"`) is refused too, until dates are read. `sheet` and `cell`
+ *   say where.
  * - `LIMIT_EXCEEDED`: the file asks for more than a limit allows. `limit` names the key of
  *   `ReadLimits` to raise.
  * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.
@@ -82,10 +85,10 @@ type ReadLimit = keyof ReadLimits;
 
 /** Where a refusal happened, as far as the code that refuses knows. */
 interface ReadErrorDetail {
-  readonly sheet?: string;
-  readonly cell?: string;
-  readonly limit?: ReadLimit;
-  readonly header?: string;
+  readonly sheet?: string | undefined;
+  readonly cell?: string | undefined;
+  readonly limit?: ReadLimit | undefined;
+  readonly header?: string | undefined;
 }
 
 /**
@@ -110,7 +113,12 @@ export class XlsxReadError extends Error {
    * the opening refuses, and for `UNKNOWN_SHEET` the name asked for.
    */
   readonly sheet: string | undefined;
-  /** The reference of the cell, such as `C41`, when the refusal is about one cell. */
+  /**
+   * Where in the sheet an `INVALID_CELL` is, such as `C41`: the cell; its reference as the file
+   * writes it when that reference is refused; for a row, the first cell of the row; for what stands
+   * in a row outside a cell, the position after the row's last cell. `undefined` when the place has
+   * no reference, as for a row whose number is not a number.
+   */
   readonly cell: string | undefined;
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
   readonly limit: ReadLimit | undefined;
@@ -191,7 +199,7 @@ export interface PartMeter<in out Use extends PartUse> extends Meter<(typeof PAR
 }
 
 /** A meter that starts again for every row: what one row may hold, not what a sheet may. */
-interface RowMeter<Limit extends ReadLimit> extends Meter<Limit> {
+export interface RowMeter<Limit extends ReadLimit> extends Meter<Limit> {
   /** Starts the next row: what is left returns to the whole allowance. */
   next(): void;
 }
