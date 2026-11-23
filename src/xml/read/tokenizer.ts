@@ -1,5 +1,15 @@
 import type { XmlCursor } from "./contract.js";
-import { ATTRIBUTE, CDATA, TEXT, decode, detach, parseIndex, referenced, refuse } from "./text.js";
+import {
+  ATTRIBUTE,
+  CDATA,
+  JOINED_PIECES,
+  TEXT,
+  decode,
+  detach,
+  parseIndex,
+  referenced,
+  refuse,
+} from "./text.js";
 
 export const NEED = 0;
 export const OPEN = 1;
@@ -117,7 +127,9 @@ export function createTokenizer(): Tokenizer {
 
   let leaf = false;
   let textful = false;
+  let copied = "";
   let joined = "";
+  let pieces = 0;
   let runStart = 0;
   let runEnd = 0;
   let runPlain = true;
@@ -170,8 +182,13 @@ export function createTokenizer(): Tokenizer {
     joined += detach(
       (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)) + more,
     );
+    if (++pieces === JOINED_PIECES) {
+      copied += detach(joined);
+      joined = "";
+      pieces = 0;
+    }
     runEnd = runStart;
-    if (joined.length > MAX_TOKEN_LENGTH) refuse(TOO_LONG);
+    if (copied.length + joined.length > MAX_TOKEN_LENGTH) refuse(TOO_LONG);
   }
 
   function attributeAt(key: string): number {
@@ -250,7 +267,10 @@ export function createTokenizer(): Tokenizer {
       while ((kindOf(code) & SPACE) !== 0) code = text.charCodeAt(++end);
       if (code !== GREATER_THAN) return stuck(end, MISMATCHED);
       next = end + 1;
-      if (next - at > MAX_TOKEN_LENGTH || joined.length + runEnd - runStart > MAX_TOKEN_LENGTH) {
+      if (
+        next - at > MAX_TOKEN_LENGTH ||
+        copied.length + joined.length + runEnd - runStart > MAX_TOKEN_LENGTH
+      ) {
         refuse(TOO_LONG);
       }
       cursor.name = locals[depth - 1]!;
@@ -453,7 +473,8 @@ export function createTokenizer(): Tokenizer {
     rooted = true;
     selfClosing = empty;
     leaf = true;
-    joined = "";
+    copied = joined = "";
+    pieces = 0;
     runEnd = runStart;
     position = next;
     return OPEN;
@@ -488,7 +509,9 @@ export function createTokenizer(): Tokenizer {
       if (!textful) return "";
       const text = cursor.buffer;
       return detach(
-        joined + (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)),
+        copied +
+          joined +
+          (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)),
       );
     },
 
@@ -503,7 +526,8 @@ export function createTokenizer(): Tokenizer {
       }
       if (textful) {
         textful = false;
-        joined = "";
+        copied = joined = "";
+        pieces = 0;
         runEnd = runStart;
       }
       if (fed.length < awaited && !ended) return NEED;
