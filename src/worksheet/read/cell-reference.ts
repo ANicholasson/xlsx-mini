@@ -12,13 +12,13 @@ const ZERO = 48;
 
 /**
  * The column, from 1, that the reference `buffer[start, end)` names in row `row`, or 0 when it is
- * not one to three capital letters and then exactly the digits of `row`, without a leading zero,
- * or names a column past the sheet's last.
+ * not capital letters and then exactly the digits of `row`, without a leading zero, or names a
+ * column past the sheet's last.
  */
 export function columnOfReference(buffer: string, start: number, end: number, row: number): number {
   let column = 0;
   let at = start;
-  for (let code = buffer.charCodeAt(at); code >= A && code <= Z && at - start < 3;) {
+  for (let code = buffer.charCodeAt(at); code >= A && code <= Z;) {
     column = column * 26 + code - (A - 1);
     code = buffer.charCodeAt(++at);
   }

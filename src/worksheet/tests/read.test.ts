@@ -201,8 +201,28 @@ describe("the rows of a worksheet part", () => {
     await expect(rowsOf(cell(' t="d"', "<v>2024-01-15</v>"))).rejects.toThrow(
       "a date stored as text is not read yet",
     );
-    for (const type of ["x", "", "S", "N", "inlinestr", "string", "&#110;", "nn", "str "]) {
-      expect(await outcomeOf(cell(` t="${type}"`, "<v>1</v>")), type).toBe("INVALID_CELL A1");
+    const types = [
+      "x",
+      "",
+      "S",
+      "N",
+      "inlinestr",
+      "inlineStx",
+      "inlineString",
+      "string",
+      "&#110;",
+      "nn",
+      "str ",
+    ];
+    for (const type of types) {
+      for (const inner of ["<v>1</v>", "", "<f>1</f>"]) {
+        const part = cell(` t="${type}"`, inner);
+        await expect(rowsOf(part), `${type} ${inner}`).rejects.toMatchObject({
+          code: "INVALID_CELL",
+          cell: "A1",
+          message: "a cell is of an unknown type",
+        });
+      }
     }
   });
 
@@ -270,6 +290,8 @@ describe("the rows of a worksheet part", () => {
       '<row r="1"><c r="A1"><foo><v>1</v></foo></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><v>1</v><v>2</v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><v>1<b/>2</v></c></row>': "INVALID_CELL A1",
+      '<row r="1"><c r="A1"><v><t>5</t></v></c></row>': "INVALID_CELL A1",
+      '<row r="1"><c r="A1"><x>5</x></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1" t="inlineStr"><v>text</v></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1"><is><t>text</t></is></c></row>': "INVALID_CELL A1",
       '<row r="1"><c r="A1" t="s"><is><t>text</t></is></c></row>': "INVALID_CELL A1",

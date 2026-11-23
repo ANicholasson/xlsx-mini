@@ -102,7 +102,6 @@ function numberOf(text: string): number | undefined {
   if ((code | SPACE) === LOWER_E) {
     code = text.charCodeAt(++at);
     if (code === PLUS || code === MINUS) code = text.charCodeAt(++at);
-    if (!isDigit(code)) return undefined;
     while (isDigit(code)) code = text.charCodeAt(++at);
   }
   const value = Number(text);

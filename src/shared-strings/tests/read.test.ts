@@ -111,6 +111,7 @@ describe("the shared-string table", () => {
         `<si><t>zero</t></si><mc:AlternateContent xmlns:mc="${COMPATIBILITY}"><mc:Choice Requires="x"><si><t>hidden</t></si></mc:Choice></mc:AlternateContent><si><t>one</t></si>`,
       ),
       sst("<sst><si><t>a</t></si></sst>"),
+      `<extLst xmlns="${MAIN}"><ext uri="x"/></extLst>`,
       sst(
         '<si><t>a</t></si><extLst><ext uri="x"><si><t>b</t></si></ext></extLst><si><t>c</t></si>',
       ),
