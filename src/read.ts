@@ -57,9 +57,10 @@ export interface OpenedWorkbook {
    * and every later iteration of a worksheet repeats it.
    *
    * One iteration holds one row and the text of the part around it. In trials with the default
-   * limits, the most one iteration reached was 90 MiB of heap on Node, for a row of six cells that
+   * limits, the most one iteration reached was 106 MiB of heap on Node, for a row of six cells that
    * each hold the longest text of character references, and 309 MiB resident on Bun, for 30 rows
-   * that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds.
+   * that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds, and
+   * they move with when the engine collects: that row reached 88 to 106 MiB over 19 runs.
    * Iterations at the same time each hold their own, and the file decides how many sheets there
    * are.
    *
