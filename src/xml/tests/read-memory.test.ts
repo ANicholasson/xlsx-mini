@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
+import type { DecodeReport } from "./read-decode.child.ts";
 import type { Flood, Report } from "./read-memory.child.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -18,6 +19,32 @@ const REFUSAL_MILLISECONDS = 2_000;
 const TOKEN_FLOOD_BYTES = 2 * 4_194_304 + 2 * 16_384;
 const FLOOD_HEAP_BYTES = 64 * MEBIBYTE;
 const KEPT_HEAP_BYTES = 2 * MEBIBYTE;
+const DECODE_HEAP_MEBIBYTES = 64;
+
+/** Runs a child of this folder in a process of its own and parses the line of JSON it prints. */
+async function childReport(child: string, heapMebibytes: number): Promise<unknown> {
+  const directory = mkdtempSync(join(tmpdir(), "xlsx-mini-xml-"));
+  try {
+    // The child is TypeScript, which Node 20 does not run: bundled, it is one file it does.
+    const build = await rolldown({
+      input: join(here, child),
+      platform: "node",
+      logLevel: "silent",
+    });
+    const { output } = await build.generate({ format: "esm" });
+    await build.close();
+    const script = join(directory, "child.mjs");
+    writeFileSync(script, output[0].code);
+    const { stdout } = await promisify(execFile)(
+      process.execPath,
+      [`--max-old-space-size=${heapMebibytes}`, "--expose-gc", script],
+      { encoding: "utf8" },
+    );
+    return JSON.parse(stdout);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
 
 describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
   let report: Report;
@@ -26,27 +53,7 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     report.floods.filter((flood) => flood.name === name);
 
   beforeAll(async () => {
-    const directory = mkdtempSync(join(tmpdir(), "xlsx-mini-xml-"));
-    try {
-      // The child is TypeScript, which Node 20 does not run: bundled, it is one file it does.
-      const build = await rolldown({
-        input: join(here, "read-memory.child.ts"),
-        platform: "node",
-        logLevel: "silent",
-      });
-      const { output } = await build.generate({ format: "esm" });
-      await build.close();
-      const script = join(directory, "child.mjs");
-      writeFileSync(script, output[0].code);
-      const { stdout } = await promisify(execFile)(
-        process.execPath,
-        [`--max-old-space-size=${HEAP_MEBIBYTES}`, "--expose-gc", script],
-        { encoding: "utf8" },
-      );
-      report = JSON.parse(stdout) as Report;
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+    report = (await childReport("read-memory.child.ts", HEAP_MEBIBYTES)) as Report;
   }, 120_000);
 
   it("runs with that limit, and every flood is as large as a part may be under the default limits", () => {
@@ -149,5 +156,54 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     const sliced = report.kept[3]!;
     expect(sliced.what).toBe("a slice of the buffer, which a visitor must not keep");
     expect(sliced.heapGrowth).toBeGreaterThan(report.partBytes / 2);
+  });
+});
+
+describe("decoding in a process whose heap is held to 64 MiB", () => {
+  let report: DecodeReport;
+
+  beforeAll(async () => {
+    report = (await childReport("read-decode.child.ts", DECODE_HEAP_MEBIBYTES)) as DecodeReport;
+  }, 120_000);
+
+  it("reads a token of the longest length made only of what XML replaces, as it reads one of letters", () => {
+    const longest = report.tokenCharacters - 64;
+    expect(report.decoded).toEqual([
+      { name: "letters in a text", outcome: "read", characters: longest, wrong: 0 },
+      { name: "carriage returns in a text", outcome: "read", characters: longest, wrong: 0 },
+      { name: "CR LF pairs in a text", outcome: "read", characters: longest / 2, wrong: 0 },
+      {
+        name: "carriage returns in a CDATA section",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "character references in a text",
+        outcome: "read",
+        characters: Math.floor(longest / 5),
+        wrong: 0,
+      },
+      {
+        name: "entity references in a text",
+        outcome: "read",
+        characters: longest / 4,
+        wrong: 0,
+      },
+      { name: "tabs in an attribute value", outcome: "read", characters: longest, wrong: 0 },
+      { name: "line feeds in an attribute value", outcome: "read", characters: longest, wrong: 0 },
+      {
+        name: "CR LF pairs in an attribute value",
+        outcome: "read",
+        characters: longest / 2,
+        wrong: 0,
+      },
+      {
+        name: "character references in an attribute value",
+        outcome: "read",
+        characters: longest / 4,
+        wrong: 0,
+      },
+    ]);
   });
 });
