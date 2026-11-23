@@ -14,6 +14,7 @@ import type { ReadRow, ReadValue } from "./read/model.js";
 import { dateFromSerial } from "./read/serial-date.js";
 
 export type { ReadRow, ReadValue } from "./read/model.js";
+export { type ReadColumn, type ReadObject, objectsFromRows } from "./read/objects.js";
 
 /** What one `rows` iteration reads a worksheet with. */
 export interface WorksheetContext {
