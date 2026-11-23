@@ -14,8 +14,9 @@
  * XML cannot carry: `_x0000_` reads as U+0000, and so do `_x0001_`, `_xFFFE_` and `_xFFFF_` as
  * theirs. LibreOffice drops such a character, and openpyxl leaves the escape as written. The one
  * exception is half of a surrogate pair, which reads as written unless it is the first half and
- * the escape of the second comes right after it. The text of an error cell is given as stored,
- * with no escape decoded.
+ * the escape of the second comes right after it. An escape is decoded within one run of rich
+ * text: an escape, or a pair of them, that two runs split reads as written. The text of an error
+ * cell is given as stored, with no escape decoded.
  *
  * Each of these types is one the writer accepts in a cell, but not every value read is written back
  * as it was: the writer refuses text longer than the 32 767 characters a cell holds in Excel, which
