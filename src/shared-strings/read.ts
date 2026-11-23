@@ -161,6 +161,8 @@ const LOWER_X = 120;
  */
 export function decodeEscapes(text: string): string {
   let out = "";
+  let joined = "";
+  let pieces = 0;
   let copiedUpTo = 0;
   for (let at = text.indexOf("_x"); at >= 0; at = text.indexOf("_x", at)) {
     const code = escapeAt(text, at);
@@ -170,13 +172,18 @@ export function decodeEscapes(text: string): string {
       at += 2;
       continue;
     }
-    out +=
+    joined +=
       text.slice(copiedUpTo, at) +
       String.fromCharCode(code) +
       (paired ? String.fromCharCode(low) : "");
+    if (++pieces === JOINED_PIECES) {
+      out += detach(joined);
+      joined = "";
+      pieces = 0;
+    }
     copiedUpTo = at += paired ? 14 : 7;
   }
-  return copiedUpTo === 0 ? text : detach(out + text.slice(copiedUpTo));
+  return copiedUpTo === 0 ? text : detach(out + joined + text.slice(copiedUpTo));
 }
 
 function escapeAt(text: string, at: number): number {
