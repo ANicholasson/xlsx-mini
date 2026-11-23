@@ -9,10 +9,13 @@ import {
   objectsFromRows,
 } from "../read.js";
 
+// About thirty times what the lookup below takes on a 2026 laptop, under coverage or not; a search
+// of the header row for each column took 900 ms there.
+const LINEAR_BOUND_MS = 250;
+
 type Rows = readonly (readonly [number, ...ReadValue[]])[];
 
-/** Rows as `rows` yields them, iterable again, with what each iteration did written to `log`. */
-function sheet(rows: Rows) {
+function loggedRows(rows: Rows) {
   const log: string[] = [];
   return {
     log,
@@ -67,7 +70,7 @@ const missing = (header: string | undefined) => ({
 describe("objectsFromRows", () => {
   it("takes the first row as the header row whatever its number, and gives every later row every declared key in the order of the columns, null where the row ends before a column", async () => {
     const placed = new Date(Date.UTC(2026, 0, 2, 9, 30));
-    const rows = sheet([
+    const rows = loggedRows([
       [2, "Order", "Total", "Placed", "Note"],
       [3, "A-1", 10.5],
       [7, "A-2", null, placed, "late"],
@@ -91,7 +94,9 @@ describe("objectsFromRows", () => {
   });
 
   it("gives nothing for a header row without rows below it", async () => {
-    expect(await readObjects(sheet([[1, "Order"]]), [{ key: "id", header: "Order" }])).toEqual([]);
+    expect(await readObjects(loggedRows([[1, "Order"]]), [{ key: "id", header: "Order" }])).toEqual(
+      [],
+    );
   });
 
   it("matches a header cell only when it holds the declared text exactly: not by case or white space, and never a number, a boolean, a date or an empty cell", async () => {
@@ -108,11 +113,11 @@ describe("objectsFromRows", () => {
       [null, ""],
     ];
     for (const [cell, header] of unmatched) {
-      expect(await outcomeOf(sheet([[1, cell, "Other"]]), [{ key: "a", header }])).toEqual(
+      expect(await outcomeOf(loggedRows([[1, cell, "Other"]]), [{ key: "a", header }])).toEqual(
         missing(header),
       );
     }
-    const header = sheet([
+    const header = loggedRows([
       [1, 2024, "2024", true, "true", null, ""],
       [2, 1, 2, 3, 4, 5, 6],
     ]);
@@ -126,7 +131,7 @@ describe("objectsFromRows", () => {
   });
 
   it("gives a column the first of two cells with its header, and a second column with that header the second cell; a header the caller did not declare is ignored", async () => {
-    const rows = sheet([
+    const rows = loggedRows([
       [1, "Total", "Extra", "Total", "__proto__", "Total"],
       [2, 1, 2, 3, 4, 5],
     ]);
@@ -145,7 +150,7 @@ describe("objectsFromRows", () => {
   });
 
   it("gives a key declared twice the value of its first column, and still needs the header of the second", async () => {
-    const rows = sheet([
+    const rows = loggedRows([
       [1, "Gross", "Net"],
       [2, 125, 100],
     ]);
@@ -164,7 +169,7 @@ describe("objectsFromRows", () => {
   });
 
   it("throws MISSING_HEADER with the header text of the first declared column the header row lacks, and closes the rows", async () => {
-    const rows = sheet([
+    const rows = loggedRows([
       [4, "Order", "Total"],
       [5, "A-1", 10.5],
     ]);
@@ -181,16 +186,16 @@ describe("objectsFromRows", () => {
   });
 
   it("throws MISSING_HEADER with the first column's header when the rows have no header row, or no header when no column is declared", async () => {
-    expect(await outcomeOf(sheet([]), [{ key: "id", header: "Order" }, { key: "total" }])).toEqual(
-      missing("Order"),
-    );
-    expect(await outcomeOf(sheet([]), [{ key: "id" }])).toEqual(missing("id"));
-    expect(await outcomeOf(sheet([]), [])).toEqual(missing(undefined));
-    expect(await readObjects(sheet([[1, "Order"], [2]]), [])).toEqual([[2, {}]]);
+    expect(
+      await outcomeOf(loggedRows([]), [{ key: "id", header: "Order" }, { key: "total" }]),
+    ).toEqual(missing("Order"));
+    expect(await outcomeOf(loggedRows([]), [{ key: "id" }])).toEqual(missing("id"));
+    expect(await outcomeOf(loggedRows([]), [])).toEqual(missing(undefined));
+    expect(await readObjects(loggedRows([[1, "Order"], [2]]), [])).toEqual([[2, {}]]);
   });
 
   it("throws at the first step of an iteration, not at the call, and reads nothing before it is iterated", async () => {
-    const rows = sheet([]);
+    const rows = loggedRows([]);
     const objects = objectsFromRows(rows, [{ key: "id", header: "Order" }]);
     const iterator = objects[Symbol.asyncIterator]();
     expect(rows.log).toEqual([]);
@@ -228,7 +233,7 @@ describe("objectsFromRows", () => {
   });
 
   it("ends the iteration of the rows when the loop is left early, by a break or a throw", async () => {
-    const rows = sheet([
+    const rows = loggedRows([
       [1, "Order"],
       [2, "A-1"],
       [3, "A-2"],
@@ -250,7 +255,7 @@ describe("objectsFromRows", () => {
   });
 
   it("iterates the rows again from their start on every iteration, with new objects", async () => {
-    const rows = sheet([
+    const rows = loggedRows([
       [1, "Order"],
       [2, "A-1"],
     ]);
@@ -273,7 +278,7 @@ describe("objectsFromRows", () => {
     const before = snapshot();
     const placed = new Date(Date.UTC(2026, 0, 2));
     const names = ["__proto__", "constructor", "toString", "hasOwnProperty", "valueOf"];
-    const rows = sheet([
+    const rows = loggedRows([
       [1, ...names, "id"],
       [2, placed, "a", "b", "c", "d", "A-1"],
     ]);
@@ -303,7 +308,7 @@ describe("objectsFromRows", () => {
 
   it("gives an object that JSON.stringify, structuredClone and a spread copy, that Object.assign does not, and that String cannot convert", async () => {
     const placed = new Date(Date.UTC(2026, 0, 2));
-    const rows = sheet([
+    const rows = loggedRows([
       [1, "__proto__", "Total"],
       [2, placed, 10.5],
     ]);
@@ -368,7 +373,7 @@ describe("objectsFromRows", () => {
     ] as const) {
       const started = performance.now();
       const read = await readObjects(
-        sheet([
+        loggedRows([
           [1, ...header],
           [2, ...values],
         ]),
@@ -378,9 +383,7 @@ describe("objectsFromRows", () => {
       const found = Object.entries(read[0]![1]);
       expect(found).toHaveLength(width);
       expect(found.filter(([key, value]) => key !== `k${String(value)}`)).toEqual([]);
-      // About thirty times what this takes on a 2026 laptop, under coverage or not; a search of the
-      // header row for each column took 900 ms there.
-      expect(took).toBeLessThan(250);
+      expect(took).toBeLessThan(LINEAR_BOUND_MS);
     }
   });
 });
@@ -392,7 +395,7 @@ describe("the types of objectsFromRows", () => {
     readonly total: number;
     readonly tags: readonly string[];
   }
-  const rows = sheet([
+  const rows = loggedRows([
     [1, "Order", "Placed", "total", "Tags", "id"],
     [2, "A-1", null, 10.5, "a, b", "A-1"],
   ]);

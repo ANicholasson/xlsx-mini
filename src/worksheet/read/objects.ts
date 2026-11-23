@@ -1,7 +1,3 @@
-/**
- * Objects by declared columns: the mirror of `sheetFromObjects`. Keys come from the caller and
- * never from the file: what the header row holds keys a `Map` and never names a property.
- */
 import { XlsxReadError } from "../../errors/read.js";
 import type { ReadRow, ReadValue } from "./model.js";
 
@@ -40,8 +36,9 @@ export interface ReadObject<Key extends string> {
    * `null` where the row ends before that column. A new object for every row, with no prototype: a
    * key named `__proto__` or `constructor` is a value like any other, and the object inherits no
    * `toString` or `hasOwnProperty`, so `String(values)` throws. `JSON.stringify`, `structuredClone`
-   * and a spread copy every key as a value. `Object.assign` sets each key on its target instead, so on
-   * Node and Bun a key named `__proto__` sets the prototype of the target.
+   * and a spread copy every key as a value. `Object.assign` sets each key on its target instead, so a
+   * key named `__proto__` sets the prototype of the target wherever `Object.prototype.__proto__`
+   * exists: on Node and Bun, not on Deno.
    */
   readonly values: { readonly [K in Key]: ReadValue };
 }
@@ -58,28 +55,21 @@ function missing(column: ReadColumn<string> | undefined): never {
   });
 }
 
-/** A declared key and the position of its value in a row, from 0. */
 type Field = readonly [key: string, position: number];
 
-/**
- * Where each key's value stands in a row, read from the header row once. Only text is declared, so
- * a cell that holds anything else finds no column. Columns take the cells that hold their header
- * from the left, so the k-th column declared with a header takes the k-th cell that holds it, and a
- * list with one header twice reads back what the writer wrote from it. Of two columns with one key,
- * the first gives the value.
- */
+/** Where each key's value stands in a row, from the header row. */
 function fieldsOf(header: readonly ReadValue[], columns: readonly ReadColumn<string>[]): Field[] {
-  const found = new Map<ReadValue | undefined, number[]>();
+  const leftmostOnTop = new Map<ReadValue | undefined, number[]>();
   for (let position = header.length - 1; position >= 0; position--) {
     const cell = header[position];
-    const positions = found.get(cell);
-    if (positions === undefined) found.set(cell, [position]);
-    else positions.push(position);
+    const stack = leftmostOnTop.get(cell);
+    if (stack === undefined) leftmostOnTop.set(cell, [position]);
+    else stack.push(position);
   }
   const keys = new Set<string>();
   const fields: Field[] = [];
   for (const column of columns) {
-    const position = found.get(headerOf(column))?.pop();
+    const position = leftmostOnTop.get(headerOf(column))?.pop();
     if (position === undefined) missing(column);
     if (keys.has(column.key)) continue;
     keys.add(column.key);
