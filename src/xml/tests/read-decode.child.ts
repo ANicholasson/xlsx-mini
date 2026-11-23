@@ -21,15 +21,12 @@ const encoder = new TextEncoder();
 const TOKEN_CHARACTERS = 4_194_304;
 const CHUNK_BYTES = 16_384;
 
-/**
- * `head`, then `unit` as often as one token may hold `counted` characters of each, then `tail`, in
- * chunks of about 16 KiB.
- */
-function part(head: string, unit: string, tail: string, counted: number): ByteChunks {
+/** `head`, then `unit` as often as one token may hold it, then `tail`, in chunks of 16 KiB. */
+function part(head: string, unit: string, tail: string, charactersPerUnit: number): ByteChunks {
   const unitBytes = encoder.encode(unit).length;
   const perChunk = Math.floor(CHUNK_BYTES / unitBytes);
   const body = encoder.encode(unit.repeat(perChunk));
-  let left = Math.floor((TOKEN_CHARACTERS - 64) / counted);
+  let left = Math.floor((TOKEN_CHARACTERS - 64) / charactersPerUnit);
   const ends = [encoder.encode(head), encoder.encode(tail)];
   return {
     read() {
@@ -43,14 +40,13 @@ function part(head: string, unit: string, tail: string, counted: number): ByteCh
   };
 }
 
-/** A unit counts all its characters toward a token, or with `split`, only the one it reads as. */
 const cases: [
   name: string,
   head: string,
   unit: string,
   tail: string,
   read: string,
-  split?: true,
+  splitByMarkup?: true,
 ][] = [
   ["letters in a text", "<a>", "a", "</a>", "a"],
   ["carriage returns in a text", "<a>", "\r", "</a>", "\n"],
@@ -69,10 +65,10 @@ const cases: [
 ];
 
 const decoded: Decoded[] = [];
-for (const [name, head, unit, tail, read, split] of cases) {
+for (const [name, head, unit, tail, read, splitByMarkup] of cases) {
   collect();
   let text = "";
-  const outcome = await readXml(part(head, unit, tail, split ? 1 : unit.length), {
+  const outcome = await readXml(part(head, unit, tail, splitByMarkup ? 1 : unit.length), {
     open(xml) {
       text = xml.attribute("b") ?? "";
     },
