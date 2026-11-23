@@ -171,6 +171,16 @@ describe("the text of an element", () => {
   it("joins the character data on both sides of a comment, an instruction and a CDATA section", async () => {
     expect(await textOf("a<!-- b -->c<?d e?>f&amp;<![CDATA[g]]>\r<!---->h")).toBe("acf&g\nh");
     expect(await textOf("<!-- only a comment -->")).toBe("");
+    const runs = Array.from({ length: 2_500 }, (_, run) => `${run}`);
+    expect(await textOf(runs.join("<!---->"))).toBe(runs.join(""));
+    expect(await tokensOf(`<a>${runs.join("<?p?>")}<b>x</b><c/></a>`)).toEqual([
+      ["open", "a", 1, {}],
+      ["open", "b", 2, {}],
+      ["close", "b", 2, "x"],
+      ["open", "c", 2, {}],
+      ["close", "c", 2, ""],
+      ["close", "a", 1, ""],
+    ]);
     expect(await tokensOf("<a>x<!-- y --><b/>z<![CDATA[w]]></a>")).toEqual([
       ["open", "a", 1, {}],
       ["open", "b", 2, {}],
@@ -477,6 +487,9 @@ describe("refused with INVALID_XML", () => {
     await expectRefused(`<t>${half}<?p?>${half}<?p?>x</t>`);
     await expectRefused(`<t>${half}<?p?>${half}x<?p?></t>`);
     await expectRead(`<t>${half}<?p?>${half}<a/>${half}</t>`, "text that a child element ends");
+    const runs = `${"x".repeat(2_048)}<!---->`.repeat(2_048);
+    expect(await textOf(runs)).toHaveLength(4_194_304);
+    await expectRefused(`<t>${runs}x</t>`);
   }, 60_000);
 
   it("content after the root", async () => {
