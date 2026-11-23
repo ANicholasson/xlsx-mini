@@ -286,6 +286,22 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
   errors: async (snippet) => {
     expect(await (snippet["default"] as Fn<string>)()).toBe("INVALID_SHEET_NAME at sheets[0].name");
   },
+  "read-objects": async (snippet) => {
+    const exportOrders = snippet["exportOrders"] as (orders: unknown[]) => Promise<Uint8Array>;
+    const importOrders = snippet["importOrders"] as (file: Uint8Array) => Promise<unknown[]>;
+    const orders = [
+      { id: "A-1", total: 10.5, placed: new Date(Date.UTC(2026, 0, 1)) },
+      { id: "A-2", total: 1249.9, placed: new Date(Date.UTC(2026, 1, 28, 14, 30)) },
+    ];
+    const bytes = await exportOrders(orders);
+    isWorkbook(bytes);
+    expect(readPart(bytes, "xl/sharedStrings.xml")).toContain("<t>Placed</t>");
+    expect(await importOrders(bytes)).toEqual(orders);
+    const free = { id: "A-3", total: "free", placed: new Date(Date.UTC(2026, 2, 1)) };
+    await expect(importOrders(await exportOrders([...orders, free]))).rejects.toThrow(
+      "Row 4 is not an order",
+    );
+  },
 };
 
 describe("README snippets", () => {

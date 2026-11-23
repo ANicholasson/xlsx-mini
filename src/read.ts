@@ -12,7 +12,13 @@ import { type ReadRow, worksheetVisitor } from "./worksheet/read.js";
 import { readXml, scanXml } from "./xml/read.js";
 
 export { type ReadErrorCode, type ReadLimits, XlsxReadError } from "./errors/read.js";
-export type { ReadRow, ReadValue } from "./worksheet/read.js";
+export {
+  type ReadColumn,
+  type ReadObject,
+  type ReadRow,
+  type ReadValue,
+  objectsFromRows,
+} from "./worksheet/read.js";
 
 /**
  * How to read, as opposed to what to read.

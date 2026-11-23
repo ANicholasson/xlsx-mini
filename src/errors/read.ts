@@ -18,7 +18,8 @@
  *   write. `sheet` and `cell` say where.
  * - `LIMIT_EXCEEDED`: the file asks for more than a limit allows. `limit` names the key of
  *   `ReadLimits` to raise.
- * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.
+ * - `MISSING_HEADER`: the rows given to `objectsFromRows` have no header row, or one that lacks a
+ *   declared column. `header` is the header of the first declared column it lacks.
  *
  * About the platform or the call:
  * - `NO_INFLATE`: a part is deflated and the platform has no `DecompressionStream`, or one that
@@ -130,7 +131,11 @@ export class XlsxReadError extends Error {
   readonly cell: string | undefined;
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
   readonly limit: ReadLimit | undefined;
-  /** For `MISSING_HEADER`: the header text that the header row lacks. */
+  /**
+   * For `MISSING_HEADER`: the header that the header row lacks, or the key of a column declared
+   * without one. It is the caller's own text, whole, and never text from the file. `undefined` when
+   * the caller declared no column.
+   */
   readonly header: string | undefined;
   /**
    * Starts at the place in the reader that refused. Whether the caller's frames that led there
