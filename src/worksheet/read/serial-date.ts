@@ -17,6 +17,7 @@ export function dateFromSerial(serial: number, date1904: boolean): Date | number
 const DASH = 45;
 const POINT = 46;
 const ZERO = 48;
+const FIVE = 53;
 const COLON = 58;
 const UPPER_T = 84;
 const UPPER_Z = 90;
@@ -35,11 +36,13 @@ function digits(text: string, at: number, count: number): number {
 /**
  * The `Date` the text of a `t="d"` cell names, or `undefined`. Read are the forms of XML Schema's
  * `date` and `dateTime` that ECMA-376 part 1, 18.18.11, names for the type, as `2026-11-17` and
- * `2026-11-17T12:34:56`: a year of four digits, seconds with at most three decimals, and `Z` or no
- * time zone, since the sheet's wall clock is UTC either way. Everything else is `undefined`: an
- * offset, which LibreOffice converts and openpyxl drops; a fourth decimal, which openpyxl drops; a
- * day that does not exist; a date before 1900 or after 9999, which the writer cannot write; white
- * space, `24:00:00`, a lowercase `t` or `z`, and every form XML Schema does not have.
+ * `2026-11-17T12:34:56`, once the white space around them is dropped: a year of four digits, seconds
+ * with any number of decimals, and `Z` or no time zone, since the sheet's wall clock is UTC either
+ * way. Decimals past the third round the time to the millisecond, half up, as the writer rounds a
+ * serial; every decimal is read, so the work is bounded by the cell's text. Everything else is
+ * `undefined`: an offset, which LibreOffice converts and openpyxl drops; a day that does not exist;
+ * a year before 1900 as written, and a time that rounds up into the year 10000, which the writer
+ * cannot write; `24:00:00`, a lowercase `t` or `z`, and every form XML Schema does not have.
  */
 export function dateFromText(text: string): Date | undefined {
   const year = digits(text, 0, 4);
@@ -49,6 +52,7 @@ export function dateFromText(text: string): Date | undefined {
   let minute = 0;
   let second = 0;
   let millisecond = 0;
+  let up = false;
   let at = 10;
   if (text.charCodeAt(at) === UPPER_T) {
     hour = digits(text, 11, 2);
@@ -58,9 +62,11 @@ export function dateFromText(text: string): Date | undefined {
     at = 19;
     if (text.charCodeAt(at) === POINT) {
       const start = ++at;
-      while (at < start + 3 && digits(text, at, 1) >= 0) at++;
-      if (at === start) return undefined;
-      millisecond = digits(text, start, at - start) * 10 ** (3 - at + start);
+      while (digits(text, at, 1) >= 0) at++;
+      const read = Math.min(at - start, 3);
+      if (read === 0) return undefined;
+      millisecond = digits(text, start, read) * 10 ** (3 - read);
+      up = at - start > 3 && text.charCodeAt(start + 3) >= FIVE;
     }
   }
   if (text.charCodeAt(at) === UPPER_Z) at++;
@@ -77,5 +83,7 @@ export function dateFromText(text: string): Date | undefined {
     return undefined;
   }
   const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second, millisecond));
-  return date.getUTCMonth() === month - 1 ? date : undefined;
+  if (date.getUTCMonth() !== month - 1) return undefined;
+  if (up) date.setTime(date.getTime() + 1);
+  return date.getUTCFullYear() < 10_000 ? date : undefined;
 }

@@ -33,7 +33,8 @@ export function cellKindOf(buffer: string, start: number, end: number): number {
  * stored as text too, which LibreOffice and openpyxl read as empty. `undefined` when the text is not
  * a value of that type: a number that is not decimal or not finite, a boolean other than `0` or
  * `1`, an index that names no shared string, each of them empty too, and a date stored as text that
- * `dateFromText` does not read. A number stays a number here, whatever its style.
+ * `dateFromText` does not read once the white space around it is dropped. A number stays a number
+ * here, whatever its style.
  */
 export function cellValue(
   kind: number,
@@ -56,7 +57,7 @@ export function cellValue(
     case INLINE_STRING:
       return stored || null;
     default:
-      return stored === "" ? null : dateFromText(stored);
+      return stored === "" ? null : dateFromText(collapsed(stored));
   }
 }
 
@@ -73,6 +74,15 @@ const LOWER_E = 101;
 
 function isSpace(code: number): boolean {
   return code === SPACE || code === TAB || code === LINE_FEED || code === CARRIAGE_RETURN;
+}
+
+/** `text` without the white space XML Schema collapses around a value. */
+function collapsed(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (isSpace(text.charCodeAt(start))) start++;
+  while (isSpace(text.charCodeAt(end - 1))) end--;
+  return text.slice(start, end);
 }
 
 function isDigit(code: number): boolean {
