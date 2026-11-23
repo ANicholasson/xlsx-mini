@@ -293,6 +293,8 @@ describe("the rows of a worksheet part", () => {
       AAAAAAAAAA1: "AAAAAAAAAA…",
       [`${"\t".repeat(4_194_000)}A1`]: `${"\t".repeat(10)}…`,
       [`A${"&#49;".repeat(20)}`]: "A&#49;&#49…",
+      "AAAAAAAAA\u{1F600}1": "AAAAAAAAA…",
+      "AAAAAAAA\u{1F600}1": "AAAAAAAA\u{1F600}…",
     };
     for (const [reference, written] of Object.entries(long)) {
       const part = data(`<row r="1"><c r="${reference}"><v>1</v></c></row>`);
