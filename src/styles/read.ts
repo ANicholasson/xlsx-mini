@@ -8,13 +8,10 @@ import { isBuiltInDate, showsDate } from "./read/date-format.js";
 
 /**
  * One entry per cell style, by the index a cell's `s` holds: 1 when the style's number format shows
- * a date, 0 when it does not. Never empty: a workbook without cell styles has style 0, which shows
- * none. An index past the end names no style.
+ * a date, 0 when it does not. An index past the end names no style. At least one entry is 1: a
+ * workbook in which no cell style shows a date has no table.
  */
 export type DateStyles = Uint8Array;
-
-/** The table of a workbook without a styles part. */
-export const NO_STYLES: DateStyles = new Uint8Array(1);
 
 const NUMBER_FORMATS = 1;
 const CELL_STYLES = 2;
@@ -43,10 +40,11 @@ function damaged(): never {
  * style that names an id past the built-in ones that `numFmts` does not define, for which
  * LibreOffice takes the code of a differential format in `dxfs` and openpyxl reads `General`.
  */
-export function stylesVisitor(): XmlVisitor<never, DateStyles> {
+export function stylesVisitor(): XmlVisitor<never, DateStyles | undefined> {
   const custom = new Map<number, boolean>();
   let dates: DateStyles = new Uint8Array(64);
   let count = 0;
+  let dated = false;
   let section = 0;
   let seen = 0;
   return {
@@ -78,10 +76,12 @@ export function stylesVisitor(): XmlVisitor<never, DateStyles> {
           grown.set(dates);
           dates = grown;
         }
-        dates[count++] = (date ?? isBuiltInDate(id)) ? 1 : 0;
+        const shows = date ?? isBuiltInDate(id);
+        dates[count++] = shows ? 1 : 0;
+        dated ||= shows;
       }
     },
     close: () => undefined,
-    end: () => dates.slice(0, count || 1),
+    end: () => (dated ? dates.slice(0, count) : undefined),
   };
 }

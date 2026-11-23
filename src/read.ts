@@ -6,7 +6,7 @@
 import { type ReadLimits, XlsxReadError, resolveLimits } from "./errors/read.js";
 import { openPackage, partName } from "./opc/read.js";
 import { type SharedStrings, sharedStringsVisitor } from "./shared-strings/read.js";
-import { type DateStyles, NO_STYLES, stylesVisitor } from "./styles/read.js";
+import { type DateStyles, stylesVisitor } from "./styles/read.js";
 import { readWorkbook } from "./workbook/read.js";
 import { type ReadRow, worksheetVisitor } from "./worksheet/read.js";
 import { readXml, scanXml } from "./xml/read.js";
@@ -55,9 +55,14 @@ export interface OpenedWorkbook {
    * again. The shared strings and the styles are read once, by the first iteration of a worksheet,
    * charged to the opening's `inflatedBytes`, the styles within the eighth of it that the parts
    * which become lists share, and held as long as the workbook: the styles as one byte per cell
-   * style. Leaving the loop early stops the inflate. A refusal of the sheet names it in `sheet`; a refusal of the
-   * shared strings or the styles names none, and every later iteration of a worksheet repeats it.
-   * A date is a `Date` (see `ReadValue`).
+   * style. Leaving the loop early stops the inflate. A refusal of the sheet names it in `sheet`; a
+   * refusal of the shared strings or the styles names none, and every later iteration of a
+   * worksheet repeats it. A date is a `Date` (see `ReadValue`).
+   *
+   * A cell's style is read only where it can change the value: in a cell that holds a number, in a
+   * workbook where some cell style shows a date. There a style that is not written in decimal
+   * digits, or that names no cell style, is refused with `INVALID_CELL`. Anywhere else the style
+   * is not read, so it is not refused: what cannot change a value is not read.
    *
    * One iteration holds one row and the text of the part around it. In trials with the default
    * limits, the most one iteration reached was 106 MiB of heap on Node, for a row of six cells that
@@ -115,8 +120,8 @@ export async function openXlsx(
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
 
   // A rejected promise that nothing awaits ends the process as an unhandled rejection.
-  let tables: Promise<readonly [SharedStrings, DateStyles]> | undefined;
-  async function readTables(): Promise<readonly [SharedStrings, DateStyles]> {
+  let tables: Promise<readonly [SharedStrings, DateStyles | undefined]> | undefined;
+  async function readTables(): Promise<readonly [SharedStrings, DateStyles | undefined]> {
     const strings =
       sharedStrings === undefined
         ? []
@@ -127,7 +132,7 @@ export async function openXlsx(
           );
     const dates =
       styles === undefined
-        ? NO_STYLES
+        ? undefined
         : await readXml(
             pkg.open(styles, book.structure) ?? damaged("the styles part is missing"),
             stylesVisitor(),

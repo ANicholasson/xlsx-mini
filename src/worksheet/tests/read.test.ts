@@ -1,7 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vite-plus/test";
 import { type ReadLimits, XlsxReadError, resolveLimits } from "../../errors/read.js";
-import { NO_STYLES } from "../../styles/read.js";
 import { type ByteChunks, scanXml } from "../../xml/read.js";
 import { serialFromEpochMillis } from "../index.js";
 import { type ReadValue, worksheetVisitor } from "../read.js";
@@ -44,7 +43,7 @@ async function rowsOf(
   const rows: (readonly [number, ...ReadValue[]])[] = [];
   const visitor = worksheetVisitor({
     strings,
-    dates: dates === undefined ? NO_STYLES : Uint8Array.from(dates),
+    dates: dates && Uint8Array.from(dates),
     date1904,
     positions,
     rowText,
@@ -404,7 +403,7 @@ describe("the rows of a worksheet part", () => {
     const { positions, rowText } = resolveLimits(undefined).rows();
     const visitor = worksheetVisitor({
       strings: [],
-      dates: NO_STYLES,
+      dates: undefined,
       date1904: false,
       positions,
       rowText,

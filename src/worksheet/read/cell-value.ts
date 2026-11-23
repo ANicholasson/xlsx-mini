@@ -4,7 +4,7 @@ import type { ReadValue } from "./model.js";
 import { dateFromText } from "./serial-date.js";
 
 /** The type of a cell, from its `t` attribute, as a small number compared once per cell. */
-const NUMBER = 0;
+export const NUMBER = 0;
 const SHARED_STRING = 1;
 const BOOLEAN = 2;
 const ERROR = 3;
