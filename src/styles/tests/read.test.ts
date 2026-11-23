@@ -435,6 +435,14 @@ describe("which cell styles show a date", () => {
     }
   });
 
+  /**
+   * The bound of the two tests below, in milliseconds. Each reads its part in well under a second on
+   * a desk machine and took up to three seconds on a shared runner under coverage. Grown by one
+   * entry at a time, the table of the second test took 52 seconds on the desk machine, and a code
+   * read once per style would read two hundred thousand million characters in the first.
+   */
+  const SLOW_RUNNER = 15_000;
+
   it("reads each code once, however many styles name it", async () => {
     const code = `${"0".repeat(1_000_000)} yyyy`;
     const part = styleSheet(
@@ -442,17 +450,17 @@ describe("which cell styles show a date", () => {
     );
     const started = performance.now();
     const dates = await datesOf(part);
-    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(performance.now() - started).toBeLessThan(SLOW_RUNNER);
     expect(dates).toHaveLength(200_000);
     expect(dates?.every((date) => date === 1)).toBe(true);
-  });
+  }, 60_000);
 
-  it("keeps a table of a million cell styles in a time that grows with their number, not with its square", async () => {
-    const part = styleSheet(`<cellXfs>${"<xf/>".repeat(1_000_000)}${xf(14)}</cellXfs>`);
+  it("keeps a table of two million cell styles in a time that grows with their number, not with its square", async () => {
+    const part = styleSheet(`<cellXfs>${"<xf/>".repeat(2_000_000)}${xf(14)}</cellXfs>`);
     const started = performance.now();
     const dates = await datesOf(part);
-    expect(performance.now() - started).toBeLessThan(2_000);
-    expect(dates).toHaveLength(1_000_001);
+    expect(performance.now() - started).toBeLessThan(SLOW_RUNNER);
+    expect(dates).toHaveLength(2_000_001);
     expect(dates?.at(-1)).toBe(1);
-  });
+  }, 60_000);
 });
