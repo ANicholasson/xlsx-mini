@@ -126,7 +126,8 @@ const CODES: readonly (readonly [code: string, date: boolean, source: string, ot
   ["[ss]:m", false, "LibreOffice"],
   ["h[ss]m", false, "LibreOffice"],
   ["h[mm]m", true, "LibreOffice", "openpyxl: a duration"],
-  // m: a minute after an hour or a second, or before a second, and a month otherwise.
+  // m: a minute after an hour, after a second that no minute stands before, or before a second,
+  // and a month otherwise.
   ["h:mm", false, "18.8.31"],
   ["hh:mm:ss", false, "18.8.31"],
   ["mm:ss", false, "18.8.31"],
@@ -138,6 +139,8 @@ const CODES: readonly (readonly [code: string, date: boolean, source: string, ot
   ["mm ss", false, "18.8.31"],
   ["s m", false, "LibreOffice"],
   ["ss mm", false, "LibreOffice"],
+  ["h:mm:ss m", true, "LibreOffice"],
+  ["m s m", true, "LibreOffice"],
   ["h:mm d", true, "18.8.31"],
   ["h:[Red]mm", false, "18.8.31"],
   ["mm h", true, "18.8.31"],

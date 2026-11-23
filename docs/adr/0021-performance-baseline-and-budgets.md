@@ -167,9 +167,9 @@ The rows of a sheet cost 2 043 bytes gzipped and 5 529 bytes minified. By the mi
 
 | Bundle           | Before dates | With them |   Budget |
 | ---------------- | -----------: | --------: | -------: |
-| `xlsx-mini/read` |      9 323 B |  10 665 B | 12 000 B |
+| `xlsx-mini/read` |      9 323 B |  10 684 B | 12 000 B |
 
-Dates cost 1 342 bytes gzipped and 3 673 minified. By the minified bytes the source map gives each file: what a number format shows 993, a serial or a date stored as text to a `Date` 797, the styles visitor 724, the date system and the styles' relationship in the workbook reader 480, the writer's serial arithmetic 200, the worksheet visitor 195, the value of a cell 138, the entry's styles table 137, and 9 more in the package and XML layers, which dates do not edit. A second round of review changed them by 228, measured commit by commit: white space and any number of decimals in a date stored as text 221, a minute after a second and a bracket inside a bracket 35, a style read only where it can change the value 4 fewer, and an undefined format id read as no date 24 fewer. The budget stays.
+Dates cost 1 361 bytes gzipped and 3 705 minified. By the minified bytes the source map gives each file: what a number format shows 1 025, a serial or a date stored as text to a `Date` 797, the styles visitor 724, the date system and the styles' relationship in the workbook reader 480, the writer's serial arithmetic 200, the worksheet visitor 195, the value of a cell 138, the entry's styles table 137, and 9 more in the package and XML layers, which dates do not edit. A second round of review changed them by 260, measured commit by commit: white space and any number of decimals in a date stored as text 221, a minute after a second that no minute stands before and a bracket inside a bracket 67, a style read only where it can change the value 4 fewer, and an undefined format id read as no date 24 fewer. The budget stays.
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 

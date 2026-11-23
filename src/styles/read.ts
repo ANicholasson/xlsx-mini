@@ -28,8 +28,8 @@ function damaged(): never {
  * an id wins, as LibreOffice and openpyxl read it. `applyNumberFormat` and the named styles of
  * `cellStyleXfs` change nothing, as in both. An id the part does not define is the format the
  * standard gives a built-in id, or `General`, past the built-in ids too: openpyxl reads ids 82 to
- * 163 so. LibreOffice showed a number for such an id in three of four parts made by hand, and a
- * date in the fourth, which also had a `numFmts` and gave the id a date code in a differential
+ * 163 so. LibreOffice showed a number for such an id in every part made by hand but one, and a
+ * date in that one, which also had a `numFmts` and gave the id a date code in a differential
  * format after the cell styles. Gives `undefined` when no cell style shows a date.
  *
  * Refuses with `INVALID_WORKBOOK`, never repairs: a root that is not `styleSheet`; a `numFmts` or a

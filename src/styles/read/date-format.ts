@@ -64,7 +64,8 @@ function elapsedUnit(code: string, start: number, end: number): number {
  *   `[` inside a bracketed section ends what is read, as an unclosed one does: LibreOffice shows
  *   `[[h]]:mm` as a number and `yyyy[[h]]` as a date;
  * - `y` and `d` show a date in either case, and so do `mmm` and longer, the name of a month. `m`
- *   and `mm` are a minute after an hour or a second, or before a second, and a month otherwise;
+ *   and `mm` are a minute after an hour, after a second that no minute stands before, or before
+ *   a second, and a month otherwise: LibreOffice shows `s m` as a time and `h:mm:ss m` as a date;
  * - `General` in any case shows a number, whatever stands beside it; the `M` of `AM/PM` is no
  *   month. Every other letter shows no date, `e`, `g` and `b` included, so the `E` of an exponent
  *   and the letters of `General` are never read as an era.
@@ -73,6 +74,7 @@ export function showsDate(code: string): boolean {
   let date = false;
   let month = false;
   let afterTime = false;
+  let minute = false;
   let at = 0;
   while (at < code.length) {
     const character = code.charCodeAt(at);
@@ -113,9 +115,13 @@ export function showsDate(code: string): boolean {
       at++;
       continue;
     }
-    if (month && unit !== LOWER_S) date = true;
+    if (month) {
+      if (unit === LOWER_S) minute = true;
+      else date = true;
+    }
     month = unit === LOWER_M && !afterTime;
-    afterTime = unit === LOWER_H || unit === LOWER_S;
+    if (unit === LOWER_M && afterTime) minute = true;
+    afterTime = unit === LOWER_H || (unit === LOWER_S && !minute);
     if (unit === LOWER_Y || unit === LOWER_D) date = true;
   }
   return date || month;
