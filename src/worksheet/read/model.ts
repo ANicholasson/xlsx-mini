@@ -16,7 +16,7 @@
  *
  * @example
  * for await (const { cells } of book.rows("Orders")) {
- *   const total: ReadValue = cells[3] ?? null;
+ *   const total: ReadValue = cells[2] ?? null;
  *   if (typeof total === "number") console.log(total.toFixed(2));
  * }
  *
