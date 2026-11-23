@@ -62,34 +62,28 @@ type Field = readonly [key: string, position: number];
 
 /**
  * Where each key's value stands in a row, read from the header row once. Only text is declared, so
- * a cell that holds anything else finds no column. The k-th column declared with a header takes the
- * k-th cell that holds it, so a list with one header twice reads back what the writer wrote from it;
- * of two columns with one key, the first gives the value.
+ * a cell that holds anything else finds no column. Columns take the cells that hold their header
+ * from the left, so the k-th column declared with a header takes the k-th cell that holds it, and a
+ * list with one header twice reads back what the writer wrote from it. Of two columns with one key,
+ * the first gives the value.
  */
 function fieldsOf(header: readonly ReadValue[], columns: readonly ReadColumn<string>[]): Field[] {
-  const declared = new Map<ReadValue, number[]>();
-  for (let index = columns.length - 1; index >= 0; index--) {
-    // index counts down from the last column to the first, so it is in range.
-    const text = headerOf(columns[index]!);
-    const indexes = declared.get(text);
-    if (indexes === undefined) declared.set(text, [index]);
-    else indexes.push(index);
+  const found = new Map<ReadValue | undefined, number[]>();
+  for (let position = header.length - 1; position >= 0; position--) {
+    const cell = header[position];
+    const positions = found.get(cell);
+    if (positions === undefined) found.set(cell, [position]);
+    else positions.push(position);
   }
-  const positions = columns.map(() => -1);
-  header.forEach((cell, position) => {
-    const index = declared.get(cell)?.pop();
-    if (index !== undefined) positions[index] = position;
-  });
   const keys = new Set<string>();
   const fields: Field[] = [];
-  columns.forEach((column, index) => {
-    // positions holds one entry per column.
-    const position = positions[index]!;
-    if (position < 0) missing(column);
-    if (keys.has(column.key)) return;
+  for (const column of columns) {
+    const position = found.get(headerOf(column))?.pop();
+    if (position === undefined) missing(column);
+    if (keys.has(column.key)) continue;
     keys.add(column.key);
     fields.push([column.key, position]);
-  });
+  }
   return fields;
 }
 
@@ -147,7 +141,7 @@ async function* objects(
  *
  * @experimental
  */
-export function objectsFromRows<const Key extends string>(
+export function objectsFromRows<Key extends string>(
   rows: AsyncIterable<ReadRow>,
   columns: readonly ReadColumn<Key>[],
 ): AsyncIterable<ReadObject<Key>> {

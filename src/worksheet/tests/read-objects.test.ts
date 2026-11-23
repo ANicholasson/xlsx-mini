@@ -373,7 +373,7 @@ describe("objectsFromRows", () => {
       const found = Object.entries(read[0]![1]);
       expect(found).toHaveLength(width);
       expect(found.filter(([key, value]) => key !== `k${String(value)}`)).toEqual([]);
-      // About twenty times what this takes on a 2026 laptop, under coverage or not; a search of the
+      // About thirty times what this takes on a 2026 laptop, under coverage or not; a search of the
       // header row for each column took 900 ms there.
       expect(took).toBeLessThan(250);
     }
