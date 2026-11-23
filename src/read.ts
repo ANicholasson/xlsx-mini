@@ -56,6 +56,10 @@ export interface OpenedWorkbook {
    * names it in `sheet`; a refusal of the shared strings names none, and every later iteration of a
    * worksheet repeats it.
    *
+   * One iteration holds one row and the text of the part around it: with the default limits, at
+   * most 38 MiB of heap on Node in trials. Iterations at the same time each hold as much, and the
+   * file decides how many sheets there are.
+   *
    * A sheet is held to its size and its checksum at its last byte, after its rows were yielded:
    * act on what was read once the loop has ended without an error.
    *

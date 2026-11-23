@@ -49,7 +49,7 @@ The reader is handed files by strangers. Other readers have been hurt by prototy
 
 ## Limits
 
-Every limit has a default sized for a file a person uploads. A caller can raise one per `openXlsx` call; no value turns one off. The byte, position and row limits are per read: two sheets read at the same time each have their own, so what a caller holds in memory is the sum of the reads it runs.
+Every limit has a default sized for a file a person uploads. A caller can raise one per `openXlsx` call; no value turns one off. The byte, position and row limits are per read: two sheets read at the same time each have their own, so what a caller holds in memory is the sum of the reads it runs. One read holds one row and the text of its part around it: with the default limits, at most 38 MiB of heap on Node in trials. The file decides how many sheets there are, and any number of them may name one part: a file of 6 KB whose 150 sheets name one part, a row of 4 194 304 characters, exhausted a 512 MiB heap when every sheet was read at once. No limit spans reads; a caller that reads the sheets of a file from a stranger one at a time holds one read's worth.
 
 | Limit               | Default   | What it bounds                                                                                                                            |
 | ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
