@@ -38,10 +38,15 @@ function refuse(message: string, cell: string | undefined): never {
   throw new XlsxReadError("INVALID_CELL", message, { cell });
 }
 
-/** A refused reference as the file writes it, cut after as many characters as the longest has. */
+/**
+ * A refused reference as the file writes it, cut after as many UTF-16 code units as the longest
+ * has, or one fewer where the cut would part the two halves of a surrogate pair.
+ */
 function written(xml: XmlCursor, start: number): string {
-  const end = Math.min(xml.valueEnd, start + LONGEST_REFERENCE);
-  const cut = detach(xml.buffer.slice(start, end));
+  const buffer = xml.buffer;
+  let end = Math.min(xml.valueEnd, start + LONGEST_REFERENCE);
+  if ((buffer.charCodeAt(end - 1) & 0xfc00) === 0xd800) end--;
+  const cut = detach(buffer.slice(start, end));
   return end < xml.valueEnd ? `${cut}…` : cut;
 }
 

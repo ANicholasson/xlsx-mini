@@ -114,11 +114,14 @@ export class XlsxReadError extends Error {
    */
   readonly sheet: string | undefined;
   /**
-   * Where in the sheet an `INVALID_CELL` is, such as `C41`: the cell; its reference as the file
-   * writes it when that reference is refused, cut after ten characters with `…` when it is longer
-   * than the longest reference, `XFD1048576`; for a row, the first cell of the row; for what stands
-   * in a row outside a cell, the position after the row's last cell. `undefined` when the place has
-   * no reference, as for a row whose number is not a number. Never longer than 16 characters.
+   * Where in the sheet an `INVALID_CELL` is, such as `C41`: the cell; for a row, the first cell of
+   * the row; for what stands in a row outside a cell, the position after the row's last cell.
+   * `undefined` when the place has no reference, as for a row whose number is not a number.
+   *
+   * A refused reference is given as the file writes it, not decoded: `A&#49;` stays `A&#49;`. One
+   * longer than the longest reference, `XFD1048576`, is cut after its first ten UTF-16 code units,
+   * or nine when the tenth is the first half of a surrogate pair, and ends in `…`; the cut may fall
+   * inside a character reference. Never longer than 16 code units.
    */
   readonly cell: string | undefined;
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
