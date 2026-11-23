@@ -142,7 +142,7 @@ describe("decoding in a process whose heap is held to 64 MiB", () => {
 
   it("reads a token of the longest length made only of what XML replaces, as it reads one of letters", () => {
     const longest = report.tokenCharacters - 64;
-    expect(report.decoded).toEqual([
+    expect(report.decoded.slice(0, 10)).toEqual([
       { name: "letters in a text", outcome: "read", characters: longest, wrong: 0 },
       { name: "carriage returns in a text", outcome: "read", characters: longest, wrong: 0 },
       { name: "CR LF pairs in a text", outcome: "read", characters: longest / 2, wrong: 0 },
@@ -176,6 +176,36 @@ describe("decoding in a process whose heap is held to 64 MiB", () => {
         name: "character references in an attribute value",
         outcome: "read",
         characters: longest / 4,
+        wrong: 0,
+      },
+    ]);
+  });
+
+  it("reads the longest text that comments, instructions or CDATA sections split into runs of one letter", () => {
+    const longest = report.tokenCharacters - 64;
+    expect(report.decoded.slice(10)).toEqual([
+      {
+        name: "letters between comments in a text",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "letters outside Latin-1 between comments",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "letters between instructions in a text",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "CDATA sections of one letter in a text",
+        outcome: "read",
+        characters: longest,
         wrong: 0,
       },
     ]);
