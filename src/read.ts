@@ -136,11 +136,14 @@ export async function openXlsx(
             );
           } catch (error) {
             if (!(error instanceof XlsxReadError)) throw error;
-            throw new XlsxReadError(error.code, error.message, {
+            const named = new XlsxReadError(error.code, error.message, {
               sheet: name,
               cell: error.cell,
               limit: error.limit,
+              header: error.header,
             });
+            named.stack = error.stack;
+            throw named;
           }
         },
       };

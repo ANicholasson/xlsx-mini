@@ -115,15 +115,21 @@ export class XlsxReadError extends Error {
   readonly sheet: string | undefined;
   /**
    * Where in the sheet an `INVALID_CELL` is, such as `C41`: the cell; its reference as the file
-   * writes it when that reference is refused; for a row, the first cell of the row; for what stands
+   * writes it when that reference is refused, cut after ten characters with `…` when it is longer
+   * than the longest reference, `XFD1048576`; for a row, the first cell of the row; for what stands
    * in a row outside a cell, the position after the row's last cell. `undefined` when the place has
-   * no reference, as for a row whose number is not a number.
+   * no reference, as for a row whose number is not a number. Never longer than 16 characters.
    */
   readonly cell: string | undefined;
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
   readonly limit: ReadLimit | undefined;
   /** For `MISSING_HEADER`: the header text that the header row lacks. */
   readonly header: string | undefined;
+  /**
+   * The place in the reader that refused, then the caller's frames that led there. A refusal that
+   * `rows` names the sheet of keeps the stack it was made with.
+   */
+  declare stack: string;
 
   constructor(code: ReadErrorCode, message: string, detail: ReadErrorDetail = {}) {
     super(message);

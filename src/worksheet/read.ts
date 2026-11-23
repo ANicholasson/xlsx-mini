@@ -5,7 +5,7 @@
  */
 import { type Meter, type RowMeter, XlsxReadError } from "../errors/read.js";
 import { type SharedStrings, createStringItem } from "../shared-strings/read.js";
-import type { XmlCursor, XmlVisitor } from "../xml/read.js";
+import { type XmlCursor, type XmlVisitor, detach } from "../xml/read.js";
 import { MAX_COLUMNS, MAX_ROWS } from "./lib/cell-ref.js";
 import { columnOfReference, referenceOf } from "./read/cell-reference.js";
 import { DATE, INLINE_STRING, UNKNOWN, cellKindOf, cellValue } from "./read/cell-value.js";
@@ -28,12 +28,21 @@ const SHAPE = "a row or a cell holds what it cannot hold";
 const VALUE = "a cell's value is not of its type or names no shared string";
 const DATE_TEXT = "a date stored as text is not read yet";
 
+const LONGEST_REFERENCE = referenceOf(MAX_COLUMNS, MAX_ROWS).length;
+
 function damaged(): never {
   throw new XlsxReadError("INVALID_WORKBOOK", DAMAGED);
 }
 
 function refuse(message: string, cell: string | undefined): never {
   throw new XlsxReadError("INVALID_CELL", message, { cell });
+}
+
+/** A refused reference as the file writes it, cut after as many characters as the longest has. */
+function written(xml: XmlCursor, start: number): string {
+  const end = Math.min(xml.valueEnd, start + LONGEST_REFERENCE);
+  const cut = detach(xml.buffer.slice(start, end));
+  return end < xml.valueEnd ? `${cut}…` : cut;
 }
 
 /**
@@ -80,7 +89,7 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
     const start = xml.valueStart("r");
     const next = start < 0 ? column + 1 : columnOfReference(xml.buffer, start, xml.valueEnd, row);
     if (!(next > column && next <= MAX_COLUMNS)) {
-      refuse(REFERENCE, start < 0 ? at(next) : xml.attribute("r"));
+      refuse(REFERENCE, start < 0 ? at(next) : written(xml, start));
     }
     column = next;
     kind = cellKindOf(xml.buffer, xml.valueStart("t"), xml.valueEnd);
