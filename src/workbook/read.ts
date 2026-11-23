@@ -17,7 +17,10 @@ import {
   resolveTarget,
 } from "./read/relationships.js";
 
-/** What opening a workbook reads: its sheets and where its shared-string table is. */
+/**
+ * What opening a workbook reads: its sheets, its date system, and where its shared-string table and
+ * its styles are.
+ */
 export interface ListedWorkbook {
   readonly sheets: readonly ListedSheet[];
   /**
@@ -25,6 +28,10 @@ export interface ListedWorkbook {
    * holds the part is known only when it is opened.
    */
   readonly sharedStrings: PartName<"sharedStrings"> | undefined;
+  /** The styles part, or `undefined` for a workbook without one; known to be there when opened. */
+  readonly styles: PartName<"structure"> | undefined;
+  /** Whether serials count from 1904-01-01 (`date1904` of `workbookPr`) rather than 1899-12-30. */
+  readonly date1904: boolean;
 }
 
 export interface ListedSheet {
@@ -72,9 +79,13 @@ const STRING_TYPES = new Set<string | undefined>([
   `${STRICT}sharedStrings`,
 ]);
 
+const STYLE_TYPES = new Set<string | undefined>([`${TRANSITIONAL}styles`, `${STRICT}styles`]);
+
 const UNRELATED = "a sheet's relationship is missing or not to a sheet";
 
 const UNFOLLOWED = "a relationship does not name a part of the package";
+
+const DATE_SYSTEM = "the date system is stated twice or is neither true nor false";
 
 const PACKAGE_ROOT = "";
 
@@ -84,7 +95,8 @@ function notWorkbook(): never {
 
 /**
  * Reads the sheet list from three parts, opened through `open` one after the other, and nothing
- * else; the workbook's relationships also name its shared-string table.
+ * else; the workbook part also states its date system, and its relationships name its shared-string
+ * table and its styles.
  *
  * A relationship is followed once, however many sheets name it: a workbook may point every sheet
  * at one long target, and resolving it per sheet would hold a copy of the path for each. The part
@@ -94,11 +106,12 @@ function notWorkbook(): never {
  *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
  * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
- * workbooks or two shared-string tables, a part is missing or damaged, the sheet list is missing,
- * empty, stated twice or holds anything but sheets, a sheet list or a sheet stands below an
- * `AlternateContent`, a sheet has no name, no relationship, or one of a type that is not a kind of
- * sheet, a target cannot be followed inside the package, or two sheets have one name, character for
- * character.
+ * workbooks, two shared-string tables or two styles parts, a part is missing or damaged, the sheet
+ * list is missing, empty, stated twice or holds anything but sheets, a sheet list, a sheet or the
+ * workbook's properties stand below an `AlternateContent`, a sheet has no name, no relationship, or
+ * one of a type that is not a kind of sheet, a target cannot be followed inside the package, two
+ * sheets have one name, character for character, or the properties are stated twice or say
+ * `date1904` in any spelling but `1`, `true`, `0` and `false`.
  */
 export async function readWorkbook(
   open: OpenPart,
@@ -112,7 +125,7 @@ export async function readWorkbook(
   if (document === undefined) notWorkbook();
   if (another !== undefined) refuse("the package holds two workbooks");
   const workbook = resolveTarget(PACKAGE_ROOT, document.target) ?? refuse(UNFOLLOWED);
-  const listed = await readXml(
+  const { entries, date1904 } = await readXml(
     open(workbook) ?? refuse("the workbook part is missing"),
     workbookVisitor(),
   );
@@ -124,11 +137,16 @@ export async function readWorkbook(
     names.charge(workbook.length + (target?.length ?? 0));
     return resolveTarget(workbook, target) ?? refuse(UNFOLLOWED, { sheet });
   };
-  const [strings, second] = [...related.values()].filter(({ type }) => STRING_TYPES.has(type));
-  if (second !== undefined) refuse("the workbook holds two shared-string tables");
+  const only = (types: ReadonlySet<string | undefined>, what: string): string | undefined => {
+    const [first, second] = [...related.values()].filter(({ type }) => types.has(type));
+    if (second !== undefined) refuse(`the workbook holds two ${what}`);
+    return first && follow(first.target);
+  };
+  const strings = only(STRING_TYPES, "shared-string tables");
+  const styles = only(STYLE_TYPES, "styles parts");
   const parts = new Map<string | undefined, PartName<"worksheet"> | undefined>();
   return {
-    sheets: listed.map(({ name, relationship }) => {
+    sheets: entries.map(({ name, relationship }) => {
       if (!parts.has(relationship)) {
         const { type, target } = related.get(relationship) ?? refuse(UNRELATED, { sheet: name });
         const cells = SHEET_TYPES.get(type);
@@ -138,8 +156,9 @@ export async function readWorkbook(
       }
       return { name, worksheet: parts.get(relationship) };
     }),
-    sharedStrings:
-      strings === undefined ? undefined : partName(follow(strings.target), "sharedStrings"),
+    sharedStrings: strings === undefined ? undefined : partName(strings, "sharedStrings"),
+    styles: styles === undefined ? undefined : partName(styles, "structure"),
+    date1904,
   };
 }
 
@@ -148,31 +167,55 @@ interface SheetEntry {
   readonly relationship: string | undefined;
 }
 
+interface WorkbookEntries {
+  readonly entries: readonly SheetEntry[];
+  readonly date1904: boolean;
+}
+
+const DATE_SYSTEMS = new Map([
+  ["1", true],
+  ["true", true],
+  ["0", false],
+  ["false", false],
+  [undefined, false],
+]);
+
 /**
- * Markup compatibility lets an application take a `sheets` or a `sheet` from below an
- * `AlternateContent` anywhere, so one there is refused.
+ * Markup compatibility lets an application take a `sheets`, a `sheet` or a `workbookPr` from below
+ * an `AlternateContent` anywhere, so one there is refused. A `workbookPr` deeper than the root's
+ * own, as in an extension, states nothing about this workbook.
  */
-function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
+function workbookVisitor(): XmlVisitor<never, WorkbookEntries> {
   const names = new Set<string>();
   let sheets: SheetEntry[] | undefined;
   let list: SheetEntry[] | undefined;
+  let date1904: boolean | undefined;
   let alternate = 0;
   return {
     open(xml) {
-      if (xml.depth === 1 && xml.name !== "workbook") notWorkbook();
-      if (alternate === 0 && xml.name === "AlternateContent") alternate = xml.depth;
-      if (alternate !== 0 && (xml.name === "sheets" || xml.name === "sheet")) {
-        refuse("a sheet stands below an AlternateContent");
+      const element = xml.name;
+      if (xml.depth === 1 && element !== "workbook") notWorkbook();
+      if (alternate === 0 && element === "AlternateContent") alternate = xml.depth;
+      if (
+        alternate !== 0 &&
+        (element === "sheets" || element === "sheet" || element === "workbookPr")
+      ) {
+        refuse("a sheet or the date system stands below an AlternateContent");
       }
       if (xml.depth === 2) {
         list = undefined;
-        if (xml.name !== "sheets") return;
+        if (element === "workbookPr") {
+          const first = date1904 === undefined;
+          date1904 = DATE_SYSTEMS.get(xml.attribute("date1904"));
+          if (!first || date1904 === undefined) refuse(DATE_SYSTEM);
+        }
+        if (element !== "sheets") return;
         if (sheets !== undefined) refuse("the workbook lists its sheets twice");
         list = sheets = [];
         return;
       }
       if (list === undefined) return;
-      if (xml.depth !== 3 || xml.name !== "sheet") refuse("the sheet list holds more than sheets");
+      if (xml.depth !== 3 || element !== "sheet") refuse("the sheet list holds more than sheets");
       const name = xml.attribute("name");
       if (!name) refuse("a sheet has no name");
       if (names.has(name)) refuse("two sheets have one name", { sheet: name });
@@ -184,7 +227,7 @@ function workbookVisitor(): XmlVisitor<never, readonly SheetEntry[]> {
     },
     end() {
       if (!sheets?.length) refuse("the workbook lists no sheets");
-      return sheets;
+      return { entries: sheets, date1904: date1904 ?? false };
     },
   };
 }

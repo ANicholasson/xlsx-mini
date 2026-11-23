@@ -182,7 +182,7 @@ describe("openXlsx", () => {
     }
   });
 
-  it("charges the directory, the three parts of the sheet list and the part names of each sheet and the shared strings to an eighth of inflatedBytes, and nothing more", async () => {
+  it("charges the directory, the three parts of the sheet list and the part names of each sheet, the shared strings and the styles to an eighth of inflatedBytes, and nothing more", async () => {
     const bytes = await writeXlsx(imagesWorkbook);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const directory = view.getUint32(bytes.length - 22 + 12, true);
@@ -192,9 +192,10 @@ describe("openXlsx", () => {
       .reduce(
         (total, entry) => total + entry.uncompressedSize,
         directory +
-          2 * "xl/workbook.xml".length +
+          3 * "xl/workbook.xml".length +
           "worksheets/sheet1.xml".length +
-          "sharedStrings.xml".length,
+          "sharedStrings.xml".length +
+          "styles.xml".length,
       );
     const opened = await openXlsx(bytes, { limits: { inflatedBytes: 8 * charged } });
     expect(opened.sheets).toEqual(["Catalogue"]);
