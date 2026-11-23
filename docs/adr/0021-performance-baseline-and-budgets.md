@@ -159,9 +159,9 @@ The reader's bundle is its error class alone so far: nothing reads a file yet, s
 
 | Bundle           | Before the rows | With them | Budget, before | Budget, now |
 | ---------------- | --------------: | --------: | -------------: | ----------: |
-| `xlsx-mini/read` |         7 280 B |   9 035 B |        8 000 B |    12 000 B |
+| `xlsx-mini/read` |         7 280 B |   9 118 B |        8 000 B |    12 000 B |
 
-The rows of a sheet cost 1 755 bytes gzipped and 4 786 bytes minified. By the minified bytes the source map gives each file: the worksheet visitor 1 678, the shared-string table and the string items inline strings share with it 1 129, the value of a cell by its type 927, the entry's tables and the sheet's name on a refusal 410 more than before, the table's relationship in the workbook reader 279 more, a cell reference read in place 195, and the writer's column letters and sheet bounds 161. They buy what a caller opens a workbook for. The package and XML layers below had taken 7 280 of the first budget's 8 000 bytes, so the rows alone pass it. The new budget leaves room for dates and for objects by declared columns, which are still to come.
+The rows of a sheet cost 1 838 bytes gzipped and 5 067 bytes minified. By the minified bytes the source map gives each file: the worksheet visitor 1 678, the shared-string table and the string items inline strings share with it 1 390, the value of a cell by its type 947, the entry's tables and the sheet's name on a refusal 410 more than before, the table's relationship in the workbook reader 279 more, a cell reference read in place 195, and the writer's column letters and sheet bounds 161. They buy what a caller opens a workbook for. The package and XML layers below had taken 7 280 of the first budget's 8 000 bytes, so the rows alone pass it. The new budget leaves room for dates and for objects by declared columns, which are still to come.
 
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
