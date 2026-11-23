@@ -104,6 +104,8 @@ describe("objectsFromRows", () => {
     const unmatched: readonly (readonly [ReadValue, string])[] = [
       ["total", "Total"],
       [" Total", "Total"],
+      ["Total", " Total"],
+      ["Total", "Total "],
       [2024, "2024"],
       [1.5, "1.5"],
       [true, "true"],
@@ -359,7 +361,7 @@ describe("objectsFromRows", () => {
     expect(read).toEqual(["16383", "0", "16383", "0"]);
   });
 
-  it("finds 16 384 columns in a header row of 16 384 long texts in time linear in the text, also when every header is the same", async () => {
+  it("finds 16 384 columns in a header row of 16 384 long texts without a search of the row per column, also when every header is the same", async () => {
     const width = 16_384;
     const prefix = "Quantity per week and store, ".repeat(8);
     const distinct = Array.from({ length: width }, (_, at) => `${prefix}${at}`);

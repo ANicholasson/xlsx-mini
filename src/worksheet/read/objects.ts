@@ -37,8 +37,8 @@ export interface ReadObject<Key extends string> {
    * key named `__proto__` or `constructor` is a value like any other, and the object inherits no
    * `toString` or `hasOwnProperty`, so `String(values)` throws. `JSON.stringify`, `structuredClone`
    * and a spread copy every key as a value. `Object.assign` sets each key on its target instead, so a
-   * key named `__proto__` sets the prototype of the target wherever `Object.prototype.__proto__`
-   * exists: on Node and Bun, not on Deno.
+   * key named `__proto__` sets the prototype of the target where the `__proto__` setter works: on
+   * Node and Bun, and on Deno only with `--unstable-unsafe-proto`.
    */
   readonly values: { readonly [K in Key]: ReadValue };
 }
@@ -119,10 +119,11 @@ async function* objects(
  * sheet they are. An error of the rows passes through as it is.
  *
  * Nothing is read until the result is iterated, and each iteration iterates the rows anew, so
- * `rows` reads the sheet again from its start. Leaving the loop early ends the iteration of the
- * rows, which for `rows` stops the inflate. The header row is read once per iteration; every later
- * row makes one object for `values` and reads the row once per declared key, however wide the
- * sheet. What a value must be stays with the caller.
+ * `rows` reads the sheet again from its start; rows that can be iterated only once, such as a
+ * generator, give a second iteration no header row, which is `MISSING_HEADER`. Leaving the loop
+ * early ends the iteration of the rows, which for `rows` stops the inflate. The header row is read
+ * once per iteration; every later row makes one object for `values` and reads the row once per
+ * declared key, however wide the sheet. What a value must be stays with the caller.
  *
  * @example
  * const columns = [{ key: "id", header: "Order" }, { key: "total", header: "Total" }] as const;
