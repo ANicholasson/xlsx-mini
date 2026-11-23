@@ -31,17 +31,17 @@ export function cellKindOf(buffer: string, start: number, end: number): number {
 
 /**
  * The value of a cell from its type and what it stores: the text of its `v`, or of its inline
- * string, or `undefined` when it stores neither. A cell that stores nothing or empty text is
- * `null`, whatever its type, as LibreOffice and openpyxl read it. `undefined` when the text is not
- * a value of that type: a number that is not decimal or not finite, a boolean other than `0` or
- * `1`, an index that names no shared string, and every date stored as text.
+ * string, or `undefined` when it stores neither, which is `null`. Empty text is `null`. `undefined`
+ * when the text is not a value of that type: a number that is not decimal or not finite, a boolean
+ * other than `0` or `1`, an index that names no shared string, each of them empty too, and every
+ * date stored as text.
  */
 export function cellValue(
   kind: number,
   stored: string | undefined,
   strings: SharedStrings,
 ): ReadValue | undefined {
-  if (!stored) return null;
+  if (stored === undefined) return null;
   switch (kind) {
     case NUMBER:
       return numberOf(stored);
@@ -52,10 +52,10 @@ export function cellValue(
     case BOOLEAN:
       return stored === "1" ? true : stored === "0" ? false : undefined;
     case FORMULA_STRING:
-      return decodeEscapes(stored);
+      return decodeEscapes(stored) || null;
     case ERROR:
     case INLINE_STRING:
-      return stored;
+      return stored || null;
     default:
       return undefined;
   }

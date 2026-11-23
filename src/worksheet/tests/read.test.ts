@@ -113,13 +113,35 @@ describe("the rows of a worksheet part", () => {
     ]);
   });
 
-  it("reads a cell that stores nothing or empty text as empty, whatever its type, as LibreOffice and openpyxl do", async () => {
-    const empty = ["<f>1+1</f>", "", "<v></v>", "<v/>", '<v xml:space="preserve"></v>'];
-    const types = ["", ' t="n"', ' t="s"', ' t="b"', ' t="e"', ' t="str"', ' t="d"'];
+  it("reads a cell that stores nothing as empty, whatever its type, and an empty v as empty text where the type is text", async () => {
+    const stored = (type: string, inner: string) =>
+      data(`<row r="1"><c r="A1"${type}>${inner}</c><c r="B1"><v>2</v></c></row>`);
+    const types = [
+      "",
+      ' t="n"',
+      ' t="s"',
+      ' t="b"',
+      ' t="e"',
+      ' t="str"',
+      ' t="d"',
+      ' t="inlineStr"',
+    ];
     for (const type of types) {
-      for (const inner of empty) {
-        const part = data(`<row r="1"><c r="A1"${type}>${inner}</c><c r="B1"><v>2</v></c></row>`);
-        expect(await rowsOf(part, { strings: [] }), `${type} ${inner}`).toEqual([[1, null, 2]]);
+      for (const inner of ["<f>1+1</f>", ""]) {
+        expect(await rowsOf(stored(type, inner)), `${type} ${inner}`).toEqual([[1, null, 2]]);
+      }
+    }
+    for (const type of [' t="e"', ' t="str"']) {
+      for (const inner of ["<v></v>", "<v/>", '<f>""</f><v xml:space="preserve"></v>']) {
+        expect(await rowsOf(stored(type, inner)), `${type} ${inner}`).toEqual([[1, null, 2]]);
+      }
+    }
+    for (const type of ["", ' t="n"', ' t="s"', ' t="b"', ' t="d"']) {
+      for (const inner of ["<v></v>", "<v/>"]) {
+        const part = stored(type, inner);
+        expect(await outcomeOf(part, { strings: [""] }), `${type} ${inner}`).toBe(
+          "INVALID_CELL A1",
+        );
       }
     }
     const blank = data(
