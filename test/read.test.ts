@@ -472,6 +472,22 @@ describe("rows", () => {
     });
   });
 
+  it("keeps every field and the stack of a refusal it names the sheet of", async () => {
+    const book = await openXlsx(fixture("minimal.xlsx"));
+    const rows = book.rows(0)[Symbol.asyncIterator]();
+    await rows.next();
+    const refusal = new XlsxReadError("MISSING_HEADER", "the header row lacks a column", {
+      cell: "C1",
+      limit: "cellPositions",
+      header: "Total",
+    });
+    const named = await Promise.resolve(rows.throw?.(refusal)).catch((error: unknown) => error);
+    expect(named).toBeInstanceOf(XlsxReadError);
+    expect({ ...(named as XlsxReadError) }).toEqual({ ...refusal, sheet: book.sheets[0] });
+    expect((named as XlsxReadError).message).toBe(refusal.message);
+    expect((named as XlsxReadError).stack).toBe(refusal.stack);
+  });
+
   it("reads two sheets at once and one sheet twice at once, each iteration with limits of its own", async () => {
     const book = await openXlsx(fixture("multi-sheet.xlsx"));
     const alone = [await readRows(book, 0), await readRows(book, 1)];

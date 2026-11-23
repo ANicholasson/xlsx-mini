@@ -280,13 +280,23 @@ describe("the rows of a worksheet part", () => {
       " A1",
       "",
       "A&#49;",
+      "AAAAAAAAA1",
+      "A\t1",
     ];
     for (const reference of references) {
       const part = data(`<row r="1"><c r="${reference}"><v>1</v></c></row>`);
-      const written = reference.replace("&#49;", "1");
       expect(await outcomeOf(part), reference).toBe(
-        ["INVALID_CELL", written].filter(Boolean).join(" "),
+        ["INVALID_CELL", reference].filter(Boolean).join(" "),
       );
+    }
+    const long = {
+      AAAAAAAAAA1: "AAAAAAAAAA…",
+      [`${"\t".repeat(4_194_000)}A1`]: `${"\t".repeat(10)}…`,
+      [`A${"&#49;".repeat(20)}`]: "A&#49;&#49…",
+    };
+    for (const [reference, written] of Object.entries(long)) {
+      const part = data(`<row r="1"><c r="${reference}"><v>1</v></c></row>`);
+      expect(await outcomeOf(part), reference.slice(0, 20)).toBe(`INVALID_CELL ${written}`);
     }
     const order = {
       '<c r="B1"><v>1</v></c><c r="A1"><v>2</v></c>': "INVALID_CELL A1",
