@@ -2,9 +2,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { type Workbook, writeXlsx } from "../src/index.js";
+import { type ObjectColumn, type Workbook, sheetFromObjects, writeXlsx } from "../src/index.js";
 import { createPackage, store } from "../src/opc/index.js";
-import { type OpenedWorkbook, type ReadValue, XlsxReadError, openXlsx } from "../src/read.js";
+import {
+  type OpenedWorkbook,
+  type ReadColumn,
+  type ReadRow,
+  type ReadValue,
+  XlsxReadError,
+  objectsFromRows,
+  openXlsx,
+} from "../src/read.js";
 import {
   appearanceWorkbook,
   autoWidthWorkbook,
@@ -748,6 +756,147 @@ describe("rows", () => {
       }
       expect(ofSheet(blob) - before, leave).toBeLessThanOrEqual(2);
     }
+    const columns = [{ key: "name", header: "row 0" }];
+    const before = ofSheet(blob);
+    objectsFromRows(book.rows(0), columns)[Symbol.asyncIterator]();
+    expect(ofSheet(blob)).toBe(before);
+    for await (const { number } of objectsFromRows(book.rows(0), columns)) {
+      expect(number).toBe(2);
+      break;
+    }
+    expect(ofSheet(blob) - before, "objects").toBeLessThanOrEqual(2);
+  });
+});
+
+async function objectsOutcome(
+  rows: AsyncIterable<ReadRow>,
+  columns: readonly ReadColumn<string>[],
+): Promise<unknown[] | object> {
+  const read: unknown[] = [];
+  try {
+    for await (const { number, values } of objectsFromRows(rows, columns)) {
+      read.push([number, values]);
+    }
+    return read;
+  } catch (error) {
+    if (!(error instanceof XlsxReadError)) throw error;
+    const { code, sheet, cell, header } = error;
+    return { code, sheet, cell, header };
+  }
+}
+
+describe("objectsFromRows", () => {
+  interface Order {
+    readonly id: string;
+    readonly customer: string;
+    readonly total: number;
+    readonly placed: Date;
+    readonly paid: boolean;
+    readonly note: string | null;
+    readonly tags: readonly string[];
+  }
+  const orders: readonly Order[] = [
+    {
+      id: "A-1",
+      customer: "Kari",
+      total: 10.5,
+      placed: new Date(Date.UTC(2026, 0, 1, 9, 30)),
+      paid: true,
+      note: null,
+      tags: ["new"],
+    },
+    {
+      id: "A-2",
+      customer: "Ola",
+      total: 1249.9,
+      placed: new Date(Date.UTC(2026, 1, 28)),
+      paid: false,
+      note: "late",
+      tags: [],
+    },
+  ];
+  const columns: ObjectColumn<Order>[] = [
+    { key: "id", header: "Order", width: 12 },
+    { key: "customer", header: "__proto__" },
+    { key: "total", header: "Total", style: { numberFormat: '#,##0.00 "kr"' } },
+    { key: "placed", header: "2024", style: { numberFormat: "yyyy-mm-dd hh:mm" } },
+    { key: "paid", hidden: true },
+    { key: "note", header: "Total" },
+    { key: "tags", header: "Tags", value: (order) => order.tags.join(", ") },
+  ];
+
+  it("reads back the objects sheetFromObjects wrote, by the same column list", async () => {
+    const book = await openXlsx(
+      await writeXlsx({ sheets: [sheetFromObjects(orders, { name: "Orders", columns })] }),
+    );
+    expect(await objectsOutcome(book.rows("Orders"), columns)).toEqual([
+      [
+        2,
+        {
+          id: "A-1",
+          customer: "Kari",
+          total: 10.5,
+          placed: orders[0]!.placed,
+          paid: true,
+          note: null,
+          tags: "new",
+        },
+      ],
+      [
+        3,
+        {
+          id: "A-2",
+          customer: "Ola",
+          total: 1249.9,
+          placed: orders[1]!.placed,
+          paid: false,
+          note: "late",
+          tags: null,
+        },
+      ],
+    ]);
+  });
+
+  it("refuses with MISSING_HEADER a header row that lacks a declared column and a sheet without rows, and passes a refusal of the sheet through with the sheet and the cell", async () => {
+    const book = await openXlsx(
+      await writeXlsx({
+        sheets: [
+          sheetFromObjects(orders, { name: "Orders", columns }),
+          { name: "Empty", rows: [] },
+        ],
+      }),
+    );
+    const more = [...columns, { key: "id", header: "Discount" }];
+    expect(await objectsOutcome(book.rows("Orders"), more)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "Discount",
+    });
+    expect(await objectsOutcome(book.rows("Empty"), columns)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "Order",
+    });
+    const damaged = await openXlsx(
+      await workbookOf(
+        '<sheet name="Cells" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml"),
+        {
+          "xl/worksheets/sheet1.xml": sheetPart(
+            '<row r="1"><c r="A1" t="inlineStr"><is><t>Total</t></is></c></row>' +
+              '<row r="2"><c r="A2"><v>1</v></c></row><row r="3"><c r="A3"><v>0x10</v></c></row>',
+          ),
+        },
+      ),
+    );
+    expect(await objectsOutcome(damaged.rows(0), [{ key: "total", header: "Total" }])).toEqual({
+      code: "INVALID_CELL",
+      sheet: "Cells",
+      cell: "A3",
+      header: undefined,
+    });
   });
 });
 
