@@ -63,15 +63,17 @@ export interface ReadLimits {
   readonly cellPositions?: number;
   /**
    * Characters of text one row may hold, counted as its values are placed. A row is held whole, so
-   * this bounds what one `rows` iteration keeps in memory at a time. Default 4 194 304.
+   * this bounds the text of the values one `rows` iteration holds at a time. Default 4 194 304.
    */
   readonly rowCharacters?: number;
   /** Entries in the shared-string table. Default 1 000 000. */
   readonly sharedStrings?: number;
   /**
    * Bytes the shared-string table may inflate to, on top of counting against `inflatedBytes`. The
-   * table is held in memory as long as the workbook, at up to 2.6 times this on Node and 4.8 times
-   * on Bun. Default 33 554 432 (32 MiB).
+   * table is held in memory as long as the workbook. In trials at the default, it held at most 2.9
+   * times this on Node and 4.2 times on Bun, for a million entries of 16 characters with one
+   * outside Latin-1, which makes an entry two bytes a character. A measurement, not a bound.
+   * Default 33 554 432 (32 MiB).
    */
   readonly sharedStringBytes?: number;
   /**
@@ -110,7 +112,8 @@ export class XlsxReadError extends Error {
   readonly code: ReadErrorCode;
   /**
    * The name of the sheet the refusal is about, when it is about one: a sheet being read, a sheet
-   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for.
+   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for. It is whole, unlike `cell`: a
+   * name the workbook lists can be nearly as long as a token, 4 194 304 characters.
    */
   readonly sheet: string | undefined;
   /**
@@ -129,7 +132,8 @@ export class XlsxReadError extends Error {
   /** For `MISSING_HEADER`: the header text that the header row lacks. */
   readonly header: string | undefined;
   /**
-   * The place in the reader that refused, then the caller's frames that led there. A refusal that
+   * Starts at the place in the reader that refused. Whether the caller's frames that led there
+   * follow is the runtime's choice: Node and Deno give them, Bun 1.4 does not. A refusal that
    * `rows` names the sheet of keeps the stack it was made with.
    */
   declare stack: string;

@@ -51,14 +51,17 @@ export interface OpenedWorkbook {
    *
    * Every iteration reads the sheet from its start, yields each row that holds a value in the
    * order of the sheet, and has limits of its own: two sheets may be read at once, and a sheet
-   * again. The shared strings are read once, by the first iteration of a worksheet, and charged to
-   * the opening's `inflatedBytes`. Leaving the loop early stops the inflate. A refusal of the sheet
-   * names it in `sheet`; a refusal of the shared strings names none, and every later iteration of a
-   * worksheet repeats it.
+   * again. The shared strings are read once, by the first iteration of a worksheet, charged to the
+   * opening's `inflatedBytes`, and held as long as the workbook. Leaving the loop early stops the
+   * inflate. A refusal of the sheet names it in `sheet`; a refusal of the shared strings names none,
+   * and every later iteration of a worksheet repeats it.
    *
-   * One iteration holds one row and the text of the part around it: with the default limits, at
-   * most 38 MiB of heap on Node in trials. Iterations at the same time each hold as much, and the
-   * file decides how many sheets there are.
+   * One iteration holds one row and the text of the part around it. In trials with the default
+   * limits, the most one iteration reached was 90 MiB of heap on Node, for a row of six cells that
+   * each hold the longest text of character references, and 309 MiB resident on Bun, for 30 rows
+   * that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds.
+   * Iterations at the same time each hold their own, and the file decides how many sheets there
+   * are.
    *
    * A sheet is held to its size and its checksum at its last byte, after its rows were yielded:
    * act on what was read once the loop has ended without an error.
