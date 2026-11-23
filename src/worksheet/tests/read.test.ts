@@ -31,7 +31,7 @@ type Rows = readonly (readonly [number, ...ReadValue[]])[];
 interface Reading {
   readonly strings?: readonly string[];
   readonly limits?: ReadLimits;
-  /** Which styles show a date, by index: 1 for a date style. */
+  /** Which styles show a date, by index: 1 for a date style. None by default. */
   readonly dates?: readonly number[];
   readonly date1904?: boolean;
 }
@@ -638,7 +638,18 @@ describe("dates", () => {
     }
   });
 
-  it("refuses a style index that is not decimal or names no style, on an empty cell too, as openpyxl does", async () => {
+  it("reads a cell's style only where it can change the value: a number, when a style shows a date", async () => {
+    const elsewhere: readonly (readonly [string, string, ReadValue])[] = [
+      ["", "", null],
+      [' t="n"', "", null],
+      [' t="s"', "<v>0</v>", "text"],
+      [' t="str"', "<v>45000</v>", "45000"],
+      [' t="inlineStr"', "<is><t>45000</t></is>", "45000"],
+      [' t="b"', "<v>1</v>", true],
+      [' t="e"', "<v>#N/A</v>", "#N/A"],
+      [' t="d"', "<v>2023-03-15</v>", utc("2023-03-15T00:00:00")],
+    ];
+    const valueOf = (rows: Rows) => rows[0]?.[1] ?? null;
     for (const style of [
       "2",
       "99",
@@ -652,16 +663,20 @@ describe("dates", () => {
       "0x1",
       "&#49;",
     ]) {
-      for (const inner of ["<v>45000</v>", ""]) {
-        expect(await outcomeOf(cell(` s="${style}"`, inner), { dates: [0, 1] }), style).toBe(
-          "INVALID_CELL A1",
-        );
+      for (const type of ["", ' t="n"']) {
+        const number = cell(` s="${style}"${type}`, "<v>45000</v>");
+        expect(await outcomeOf(number, { dates: [0, 1] }), style).toBe("INVALID_CELL A1");
+        expect(await rowsOf(number), style).toEqual([[1, 45000]]);
+      }
+      for (const [type, inner, value] of elsewhere) {
+        const part = cell(` s="${style}"${type}`, inner);
+        const rows = await rowsOf(part, { strings: ["text"], dates: [0, 1] });
+        expect(valueOf(rows), `${style} ${type}`).toEqual(value);
       }
     }
     for (const style of ["", ' s="0"', ' s="00"']) {
-      expect(await rowsOf(cell(style, "<v>1</v>")), style).toEqual([[1, 1]]);
+      expect(await rowsOf(cell(style, "<v>1</v>"), { dates: [0, 1] }), style).toEqual([[1, 1]]);
     }
-    expect(await outcomeOf(cell(' s="1"', "<v>1</v>"))).toBe("INVALID_CELL A1");
   });
 });
 

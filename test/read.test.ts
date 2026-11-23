@@ -334,6 +334,31 @@ describe("rows", () => {
     ]);
   });
 
+  it("reads a cell's style only where it can change the value, so a style that does not exist is refused only on a number in a workbook with a date style", async () => {
+    const rows = '<row r="1"><c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9"><v>2</v></c></row>';
+    const book = async (styles?: string) =>
+      openXlsx(
+        await workbookOf(
+          '<sheet name="One" sheetId="1" r:id="rId1"/>',
+          relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+            (styles === undefined ? "" : relationship("rId2", "styles", "styles.xml")),
+          {
+            "xl/worksheets/sheet1.xml": sheetPart(rows),
+            ...(styles === undefined ? {} : { "xl/styles.xml": styles }),
+          },
+        ),
+      );
+    for (const styles of [undefined, stylesPart(0, 2)]) {
+      expect(await readRows(await book(styles), 0), styles).toEqual([[1, true, 2]]);
+    }
+    expect(await outcomeOf(await book(stylesPart(0, 14)), 0)).toEqual({
+      code: "INVALID_CELL",
+      sheet: "One",
+      cell: "B1",
+      limit: undefined,
+    });
+  });
+
   it("reads the styles part once, by the first read of a worksheet, whichever sheet asks first", async () => {
     const bytes = await sharingWorkbook(tablePart("first", "second"));
     const styles = unzip(bytes).find(({ name }) => name === "xl/styles.xml")!;

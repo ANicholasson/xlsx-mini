@@ -32,12 +32,13 @@ const alternate = (inner: string) =>
   `<mc:AlternateContent><mc:Choice Requires="x14">${inner}</mc:Choice></mc:AlternateContent>`;
 const named = '<cellStyleXfs count="2"><xf numFmtId="0"/><xf numFmtId="14"/></cellStyleXfs>';
 
-async function datesOf(part: string): Promise<readonly number[]> {
-  const dates: DateStyles = await readXml(bytesOf(part), stylesVisitor());
-  return [...dates];
+/** Which cell styles show a date, by index, or `undefined` when none does. */
+async function datesOf(part: string): Promise<readonly number[] | undefined> {
+  const dates: DateStyles | undefined = await readXml(bytesOf(part), stylesVisitor());
+  return dates && [...dates];
 }
 
-async function outcomeOf(part: string): Promise<readonly number[] | string> {
+async function outcomeOf(part: string): Promise<readonly number[] | undefined | string> {
   try {
     return await datesOf(part);
   } catch (error) {
@@ -52,7 +53,8 @@ async function dateCodes(codes: readonly string[]): Promise<readonly boolean[]> 
     `<numFmts>${codes.map((code, at) => numFmt(164 + at, code)).join("")}</numFmts>` +
       `<cellXfs>${codes.map((_, at) => xf(164 + at)).join("")}</cellXfs>`,
   );
-  return (await datesOf(part)).map((date) => date === 1);
+  const dates = await datesOf(part);
+  return codes.map((_, at) => dates?.[at] === 1);
 }
 
 /**
@@ -247,7 +249,7 @@ describe("which cell styles show a date", () => {
     const part = styleSheet(`<cellXfs>${ids.map((id) => xf(id)).join("")}</cellXfs>`);
     const dates = await datesOf(part);
     const listed = [14, 15, 16, 17, 22, 27, 28, 29, 30, 31, 36, 50, 51, 52, 53, 54, 55, 56, 57, 58];
-    expect(ids.filter((id) => dates[id] === 1)).toEqual(listed);
+    expect(ids.filter((id) => dates?.[id] === 1)).toEqual(listed);
   });
 
   it("lets a code replace a built-in id, 0 included, and takes the last code of an id, as LibreOffice and openpyxl do", async () => {
@@ -256,14 +258,14 @@ describe("which cell styles show a date", () => {
         `<cellXfs>${xf(0)}${xf(14)}${xf(20)}${xf(22)}</cellXfs>`,
     );
     expect(await datesOf(replaced)).toEqual([1, 0, 1, 1]);
-    for (const [first, last, date] of [
-      ["yyyy-mm-dd", "0.00", 0],
-      ["0.00", "yyyy-mm-dd", 1],
+    for (const [first, last, dates] of [
+      ["yyyy-mm-dd", "0.00", undefined],
+      ["0.00", "yyyy-mm-dd", [0, 1]],
     ] as const) {
       const twice = styleSheet(
         `<numFmts>${numFmt(164, first)}${numFmt(164, last)}</numFmts><cellXfs>${xf(0)}${xf(164)}</cellXfs>`,
       );
-      expect(await datesOf(twice)).toEqual([0, date]);
+      expect(await datesOf(twice)).toEqual(dates);
     }
   });
 
@@ -288,10 +290,18 @@ describe("which cell styles show a date", () => {
     expect(await datesOf(part)).toEqual([0, 1, 0, 0]);
   });
 
-  it("has one style that shows no date when the part has no cell styles", async () => {
-    for (const inner of ["", "<cellXfs/>", `<fonts/>${named}`]) {
-      expect(await datesOf(styleSheet(inner)), inner).toEqual([0]);
+  it("gives no table when no cell style shows a date, so that no cell's style is read", async () => {
+    for (const inner of [
+      "",
+      "<cellXfs/>",
+      `<fonts/>${named}`,
+      `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(0)}${xf(2)}${xf(164)}${xf(20)}</cellXfs>`,
+    ]) {
+      expect(await datesOf(styleSheet(inner)), inner).toBeUndefined();
     }
+    expect(await datesOf(styleSheet(`<cellXfs>${xf(0)}${xf(2)}${xf(14)}</cellXfs>`))).toEqual([
+      0, 0, 1,
+    ]);
   });
 
   it("passes over what holds no cell style: named styles, differential formats, extensions, and a numFmt or an xf outside its list", async () => {
@@ -299,12 +309,12 @@ describe("which cell styles show a date", () => {
       `<numFmts>${numFmt(164, "0.00")}</numFmts>` +
         `<cellStyleXfs>${xf(14)}</cellStyleXfs>` +
         `<dxfs><dxf>${numFmt(164, "yyyy")}</dxf></dxfs>` +
-        `<cellXfs>${xf(0)}${xf(164)}<xf numFmtId="0"><alignment/><extLst><ext/></extLst></xf></cellXfs>` +
+        `<cellXfs>${xf(0)}${xf(164)}<xf numFmtId="0"><alignment/><extLst><ext/></extLst></xf>${xf(22)}</cellXfs>` +
         xf(14) +
         alternate(`<x14:dxfs><dxf>${numFmt(165, "yyyy")}</dxf></x14:dxfs>`) +
         `<extLst><ext><x14:slicerStyles/></ext></extLst>`,
     );
-    expect(await datesOf(part)).toEqual([0, 0, 0]);
+    expect(await datesOf(part)).toEqual([0, 0, 0, 1]);
   });
 
   it("refuses a style that names an id past the built-in ones that numFmts does not define, for which LibreOffice takes a differential format's code and openpyxl reads General", async () => {
@@ -397,6 +407,6 @@ describe("which cell styles show a date", () => {
     const dates = await datesOf(part);
     expect(performance.now() - started).toBeLessThan(2_000);
     expect(dates).toHaveLength(200_000);
-    expect(dates.every((date) => date === 1)).toBe(true);
+    expect(dates?.every((date) => date === 1)).toBe(true);
   });
 });
