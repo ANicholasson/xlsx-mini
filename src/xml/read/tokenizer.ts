@@ -267,10 +267,11 @@ export function createTokenizer(): Tokenizer {
       while ((kindOf(code) & SPACE) !== 0) code = text.charCodeAt(++end);
       if (code !== GREATER_THAN) return stuck(end, MISMATCHED);
       next = end + 1;
-      if (
-        next - at > MAX_TOKEN_LENGTH ||
-        copied.length + joined.length + runEnd - runStart > MAX_TOKEN_LENGTH
-      ) {
+      if (copied !== "") {
+        joined = copied + joined;
+        copied = "";
+      }
+      if (next - at > MAX_TOKEN_LENGTH || joined.length + runEnd - runStart > MAX_TOKEN_LENGTH) {
         refuse(TOO_LONG);
       }
       cursor.name = locals[depth - 1]!;
@@ -508,9 +509,7 @@ export function createTokenizer(): Tokenizer {
       if (!textful) return "";
       const text = cursor.buffer;
       return detach(
-        copied +
-          joined +
-          (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)),
+        joined + (runPlain ? text.slice(runStart, runEnd) : decode(text, runStart, runEnd, TEXT)),
       );
     },
 
@@ -525,7 +524,7 @@ export function createTokenizer(): Tokenizer {
       }
       if (textful) {
         textful = false;
-        copied = joined = "";
+        joined = "";
         runEnd = runStart;
       }
       if (fed.length < awaited && !ended) return NEED;
