@@ -59,7 +59,7 @@ const tables: Table[] = [];
 for (const [name, items, run] of [
   ["one item of runs of 13 characters", 1, "abcdefghijklm"],
   ["one item of runs of one character", 1, "a"],
-  ["a thousand items of runs of 16 characters", 1_000, "abcdefghijklmnop"],
+  ["two thousand items of runs of 16 characters", 2_000, "abcdefghijklmnop"],
 ] as const) {
   collect();
   const { bytes, size } = part(items, run);
