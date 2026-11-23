@@ -317,20 +317,46 @@ describe("which cell styles show a date", () => {
     expect(await datesOf(part)).toEqual([0, 0, 0, 1]);
   });
 
-  it("refuses a style that names an id past the built-in ones that numFmts does not define, for which LibreOffice takes a differential format's code and openpyxl reads General", async () => {
-    const differential = (id: number, code: string) =>
-      `<dxfs><dxf>${numFmt(id, code)}</dxf></dxfs>`;
-    for (const part of [
-      styleSheet(`<cellXfs>${xf(0)}${xf(165)}</cellXfs>${differential(165, "yyyy-mm-dd")}`),
-      styleSheet(`${differential(82, "yyyy-mm-dd")}<cellXfs>${xf(82)}</cellXfs>`),
-      styleSheet(`${numFmt(165, "0.00")}<cellXfs>${xf(165)}</cellXfs>`),
-      styleSheet(`<cellXfs>${xf(100)}${xf(200)}${xf(4_294_967_310)}</cellXfs>`),
-      styleSheet(`<cellXfs>${xf(82)}</cellXfs>`),
-    ]) {
-      expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
+  it("reads a style that names an id past the built-in ones that numFmts does not define as no date, as openpyxl reads ids 82 to 163 and LibreOffice three of four such parts", async () => {
+    const differentials = (...formats: readonly (readonly [number, string])[]) =>
+      `<dxfs>${formats.map(([id, code]) => `<dxf>${numFmt(id, code)}</dxf>`).join("")}</dxfs>`;
+    const date = xf(14);
+    for (const [part, dates] of [
+      [
+        styleSheet(
+          `<cellXfs>${xf(0)}${xf(165)}${date}</cellXfs>${differentials([165, "yyyy-mm-dd"], [166, "0.00"])}`,
+        ),
+        [0, 0, 1],
+      ],
+      [
+        styleSheet(`${differentials([165, "yyyy-mm-dd"])}<cellXfs>${xf(165)}${date}</cellXfs>`),
+        [0, 1],
+      ],
+      [
+        styleSheet(
+          `<cellXfs>${xf(100)}${date}</cellXfs>${differentials([164, "0.00"], [100, "yyyy-mm-dd"])}`,
+        ),
+        [0, 1],
+      ],
+      [
+        styleSheet(
+          `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(164)}${xf(165)}${date}</cellXfs>` +
+            differentials([164, "yyyy-mm-dd"], [165, "yyyy-mm-dd"]),
+        ),
+        [0, 0, 1],
+      ],
+      [styleSheet(`${numFmt(165, "yyyy-mm-dd")}<cellXfs>${xf(165)}${date}</cellXfs>`), [0, 1]],
+      [
+        styleSheet(
+          `<cellXfs>${xf(82)}${xf(163)}${xf(200)}${xf(999_999_999_999_999)}${date}</cellXfs>`,
+        ),
+        [0, 0, 0, 0, 1],
+      ],
+    ] as const) {
+      expect(await datesOf(part), part).toEqual(dates);
     }
     const defined = styleSheet(
-      `<numFmts>${numFmt(165, "0.00")}${numFmt(82, "d")}</numFmts><cellXfs>${xf(165)}${xf(82)}</cellXfs>${differential(165, "yyyy")}`,
+      `<numFmts>${numFmt(165, "0.00")}${numFmt(82, "d")}</numFmts><cellXfs>${xf(165)}${xf(82)}</cellXfs>${differentials([165, "yyyy"])}`,
     );
     expect(await datesOf(defined)).toEqual([0, 1]);
     const builtIn = styleSheet(
