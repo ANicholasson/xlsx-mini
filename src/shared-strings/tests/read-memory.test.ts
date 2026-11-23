@@ -2,12 +2,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { reportOf } from "../../../test/helpers/child.ts";
+import type { EscapesReport } from "./read-escapes.child.ts";
 import type { Report } from "./read-memory.child.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
 const HEAP_MEBIBYTES = 64;
 const DEFAULT_TABLE_BYTES = 33_554_432;
+const ESCAPES_HEAP_MEBIBYTES = 18;
 
 describe("the shared-string table in a process whose heap is held to 64 MiB", () => {
   let report: Report;
@@ -27,5 +29,34 @@ describe("the shared-string table in a process whose heap is held to 64 MiB", ()
       expect(partBytes, name).toBeGreaterThan(DEFAULT_TABLE_BYTES - 1_000_000);
       expect(characters, name).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("escapes in a process whose heap is held to 18 MiB", () => {
+  let report: EscapesReport;
+
+  beforeAll(async () => {
+    report = (await reportOf(
+      join(here, "read-escapes.child.ts"),
+      ESCAPES_HEAP_MEBIBYTES,
+    )) as EscapesReport;
+  }, 120_000);
+
+  it("decodes a text of the longest length made only of escapes, as it reads one of letters", () => {
+    const longest = report.tokenCharacters - 64;
+    expect(report.decoded).toEqual([
+      { name: "letters", characters: longest, wrong: 0 },
+      { name: "escapes of a letter", characters: Math.floor(longest / 7), wrong: 0 },
+      {
+        name: "escapes of a letter outside Latin-1",
+        characters: Math.floor(longest / 7),
+        wrong: 0,
+      },
+      {
+        name: "escapes of a surrogate pair",
+        characters: 2 * Math.floor(longest / 14),
+        wrong: 0,
+      },
+    ]);
   });
 });
