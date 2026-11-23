@@ -132,8 +132,9 @@ export class XlsxReadError extends Error {
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
   readonly limit: ReadLimit | undefined;
   /**
-   * For `MISSING_HEADER`: the header that the header row lacks, as the caller declared it, whole:
-   * it is not text from the file. `undefined` when the caller declared no column.
+   * For `MISSING_HEADER`: the header that the header row lacks, or the key of a column declared
+   * without one. It is the caller's own text, whole, and never text from the file. `undefined` when
+   * the caller declared no column.
    */
   readonly header: string | undefined;
   /**

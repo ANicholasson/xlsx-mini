@@ -301,21 +301,26 @@ describe("objectsFromRows", () => {
     expect(({} as Record<string, unknown>)["polluted"]).toBeUndefined();
   });
 
-  it("gives an object that JSON.stringify and a spread copy, and that String cannot convert", async () => {
+  it("gives an object that JSON.stringify, structuredClone and a spread copy, that Object.assign does not, and that String cannot convert", async () => {
+    const placed = new Date(Date.UTC(2026, 0, 2));
     const rows = sheet([
       [1, "__proto__", "Total"],
-      [2, "x", 10.5],
+      [2, placed, 10.5],
     ]);
     const values = (
       await readObjects(rows, [{ key: "__proto__" }, { key: "total", header: "Total" }])
     )[0]![1];
-    expect(JSON.stringify(values)).toBe('{"__proto__":"x","total":10.5}');
-    const copy = { ...values };
-    expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
-    expect(Object.entries(copy)).toEqual([
-      ["__proto__", "x"],
-      ["total", 10.5],
-    ]);
+    expect(JSON.stringify(values)).toBe('{"__proto__":"2026-01-02T00:00:00.000Z","total":10.5}');
+    for (const copy of [{ ...values }, structuredClone(values)]) {
+      expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+      expect(Object.entries(copy)).toEqual([
+        ["__proto__", placed],
+        ["total", 10.5],
+      ]);
+    }
+    const assigned: object = Object.assign({}, values);
+    expect(Object.getPrototypeOf(assigned)).toBe(placed);
+    expect(Object.keys(assigned)).toEqual(["total"]);
     const unknown: unknown = values;
     expect(() => String(unknown)).toThrow(TypeError);
   });

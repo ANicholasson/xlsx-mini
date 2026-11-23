@@ -1,6 +1,6 @@
 /**
  * Objects by declared columns: the mirror of `sheetFromObjects`. Keys come from the caller and
- * never from the file; text from the file is only looked up among the declared headers.
+ * never from the file: what the header row holds keys a `Map` and never names a property.
  */
 import { XlsxReadError } from "../../errors/read.js";
 import type { ReadRow, ReadValue } from "./model.js";
@@ -33,14 +33,15 @@ export interface ReadColumn<Key extends string> {
  * @experimental
  */
 export interface ReadObject<Key extends string> {
-  /** The sheet's row number, from 1. */
+  /** The number of the row as the rows give it: for `rows`, the sheet's row number, from 1. */
   readonly number: number;
   /**
    * Every declared key, in the order of the columns, with the value of its column in this row, or
    * `null` where the row ends before that column. A new object for every row, with no prototype: a
-   * key named `__proto__` or `constructor` is a value like any other, and the object has no
-   * `toString` or `hasOwnProperty`, so `String(values)` throws. `JSON.stringify` and a spread copy
-   * its values.
+   * key named `__proto__` or `constructor` is a value like any other, and the object inherits no
+   * `toString` or `hasOwnProperty`, so `String(values)` throws. `JSON.stringify`, `structuredClone`
+   * and a spread copy every key as a value. `Object.assign` sets each key on its target instead, so on
+   * Node and Bun a key named `__proto__` sets the prototype of the target.
    */
   readonly values: { readonly [K in Key]: ReadValue };
 }
@@ -127,11 +128,11 @@ async function* objects(
  * read. `header` is the caller's own text, and `sheet` is not set, since the rows do not say which
  * sheet they are. An error of the rows passes through as it is.
  *
- * Nothing is read until the result is iterated, and every iteration iterates the rows again from
- * their start. Leaving the loop early ends the iteration of the rows, which for `rows` stops the
- * inflate. The header row is read once per iteration; every later row costs one object and one
- * array read per declared column, however wide the sheet. What a value must be stays with the
- * caller.
+ * Nothing is read until the result is iterated, and each iteration iterates the rows anew, so
+ * `rows` reads the sheet again from its start. Leaving the loop early ends the iteration of the
+ * rows, which for `rows` stops the inflate. The header row is read once per iteration; every later
+ * row makes one object for `values` and reads the row once per declared key, however wide the
+ * sheet. What a value must be stays with the caller.
  *
  * @example
  * const columns = [{ key: "id", header: "Order" }, { key: "total", header: "Total" }] as const;

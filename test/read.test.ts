@@ -857,7 +857,7 @@ describe("objectsFromRows", () => {
     ]);
   });
 
-  it("refuses with MISSING_HEADER a header row that lacks a declared column and a sheet without rows, and passes a refusal of the sheet through with the sheet and the cell", async () => {
+  it("refuses with MISSING_HEADER a header row that lacks a declared column, a column with an empty header and a sheet without rows, and passes a refusal of the sheet through with the sheet and the cell", async () => {
     const book = await openXlsx(
       await writeXlsx({
         sheets: [
@@ -878,6 +878,16 @@ describe("objectsFromRows", () => {
       sheet: undefined,
       cell: undefined,
       header: "Order",
+    });
+    const blank: ObjectColumn<Order>[] = [{ key: "id", header: "" }];
+    const unnamed = await openXlsx(
+      await writeXlsx({ sheets: [sheetFromObjects(orders, { name: "Blank", columns: blank })] }),
+    );
+    expect(await objectsOutcome(unnamed.rows(0), blank)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "",
     });
     const damaged = await openXlsx(
       await workbookOf(
