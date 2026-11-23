@@ -2,7 +2,7 @@
 // `DecodeReport`.
 import { type ByteChunks, readXml } from "../read.js";
 
-export interface Decoded {
+interface Decoded {
   readonly name: string;
   readonly outcome: string;
   readonly characters: number;

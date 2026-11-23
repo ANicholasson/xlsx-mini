@@ -482,8 +482,9 @@ describe("rows", () => {
       header: "Total",
     });
     const named = await Promise.resolve(rows.throw?.(refusal)).catch((error: unknown) => error);
+    const fields = (error: object) => Object.fromEntries(Object.entries(error));
     expect(named).toBeInstanceOf(XlsxReadError);
-    expect({ ...(named as XlsxReadError) }).toEqual({ ...refusal, sheet: book.sheets[0] });
+    expect(fields(named as XlsxReadError)).toEqual({ ...fields(refusal), sheet: book.sheets[0] });
     expect((named as XlsxReadError).message).toBe(refusal.message);
     expect((named as XlsxReadError).stack).toBe(refusal.stack);
   });

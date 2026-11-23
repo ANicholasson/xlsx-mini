@@ -4,7 +4,7 @@ import { resolveLimits } from "../../errors/read.js";
 import { type ByteChunks, readXml } from "../../xml/read.js";
 import { sharedStringsVisitor } from "../read.js";
 
-export interface Table {
+interface Table {
   readonly name: string;
   readonly partBytes: number;
   readonly entries: number;
