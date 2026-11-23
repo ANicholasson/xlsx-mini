@@ -2,7 +2,7 @@ import { getHeapStatistics } from "node:v8";
 import { type StreamedPart, selectStreamCompression, streamPackage } from "../src/opc/index.js";
 import { XlsxReadError, openXlsx } from "../src/read.js";
 
-export interface Reading {
+interface Reading {
   readonly row: string;
   readonly sheetBytes: number;
   readonly fileBytes: number;
