@@ -474,7 +474,6 @@ export function createTokenizer(): Tokenizer {
     selfClosing = empty;
     leaf = true;
     copied = joined = "";
-    pieces = 0;
     runEnd = runStart;
     position = next;
     return OPEN;
@@ -527,7 +526,6 @@ export function createTokenizer(): Tokenizer {
       if (textful) {
         textful = false;
         copied = joined = "";
-        pieces = 0;
         runEnd = runStart;
       }
       if (fed.length < awaited && !ended) return NEED;
