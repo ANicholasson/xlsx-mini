@@ -6,6 +6,7 @@
 import { type ReadLimits, XlsxReadError, resolveLimits } from "./errors/read.js";
 import { openPackage, partName } from "./opc/read.js";
 import { type SharedStrings, sharedStringsVisitor } from "./shared-strings/read.js";
+import { type DateStyles, NO_STYLES, stylesVisitor } from "./styles/read.js";
 import { readWorkbook } from "./workbook/read.js";
 import { type ReadRow, worksheetVisitor } from "./worksheet/read.js";
 import { readXml, scanXml } from "./xml/read.js";
@@ -51,10 +52,12 @@ export interface OpenedWorkbook {
    *
    * Every iteration reads the sheet from its start, yields each row that holds a value in the
    * order of the sheet, and has limits of its own: two sheets may be read at once, and a sheet
-   * again. The shared strings are read once, by the first iteration of a worksheet, charged to the
-   * opening's `inflatedBytes`, and held as long as the workbook. Leaving the loop early stops the
-   * inflate. A refusal of the sheet names it in `sheet`; a refusal of the shared strings names none,
-   * and every later iteration of a worksheet repeats it.
+   * again. The shared strings and the styles are read once, by the first iteration of a worksheet,
+   * charged to the opening's `inflatedBytes`, the styles within the eighth of it that the parts
+   * which become lists share, and held as long as the workbook: the styles as one byte per cell
+   * style. Leaving the loop early stops the inflate. A refusal of the sheet names it in `sheet`; a refusal of the
+   * shared strings or the styles names none, and every later iteration of a worksheet repeats it.
+   * A date is a `Date` (see `ReadValue`).
    *
    * One iteration holds one row and the text of the part around it. In trials with the default
    * limits, the most one iteration reached was 106 MiB of heap on Node, for a row of six cells that
@@ -84,7 +87,8 @@ export interface OpenedWorkbook {
  * `ReadErrorCode`, and a damaged workbook is refused, never repaired and never read as an empty one.
  * A file that is not a workbook package is `NOT_XLSX`. A sheet list that is missing, empty or stated
  * twice is `INVALID_WORKBOOK`, and so are a sheet whose relationship is missing or not to a kind of
- * sheet, a target outside the package, and two sheets with one name.
+ * sheet, a target outside the package, two sheets with one name, and a date system that is neither
+ * true nor false.
  *
  * @example
  * const book = await openXlsx(file);
@@ -99,19 +103,36 @@ export async function openXlsx(
   const limits = resolveLimits(options?.limits);
   const { book } = limits;
   const pkg = await openPackage(file, book.parts, book.structure);
-  const { sheets: listed, sharedStrings } = await readWorkbook(
+  const {
+    sheets: listed,
+    sharedStrings,
+    styles,
+    date1904,
+  } = await readWorkbook(
     (name) => pkg.open(partName(name, "structure"), book.structure),
     book.structure,
   );
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
 
   // A rejected promise that nothing awaits ends the process as an unhandled rejection.
-  let strings: Promise<SharedStrings> | undefined;
-  async function readStrings(): Promise<SharedStrings> {
-    if (sharedStrings === undefined) return [];
-    const bytes =
-      pkg.open(sharedStrings, book.stringBytes) ?? damaged("the shared-string table is missing");
-    return readXml(bytes, sharedStringsVisitor(book.strings));
+  let tables: Promise<readonly [SharedStrings, DateStyles]> | undefined;
+  async function readTables(): Promise<readonly [SharedStrings, DateStyles]> {
+    const strings =
+      sharedStrings === undefined
+        ? []
+        : await readXml(
+            pkg.open(sharedStrings, book.stringBytes) ??
+              damaged("the shared-string table is missing"),
+            sharedStringsVisitor(book.strings),
+          );
+    const dates =
+      styles === undefined
+        ? NO_STYLES
+        : await readXml(
+            pkg.open(styles, book.structure) ?? damaged("the styles part is missing"),
+            stylesVisitor(),
+          );
+    return [strings, dates];
   }
 
   return {
@@ -129,7 +150,7 @@ export async function openXlsx(
       return {
         async *[Symbol.asyncIterator]() {
           if (worksheet === undefined) return;
-          const table = await (strings ??= readStrings());
+          const [strings, dates] = await (tables ??= readTables());
           const meters = limits.rows();
           try {
             const bytes =
@@ -137,7 +158,9 @@ export async function openXlsx(
             yield* scanXml(
               bytes,
               worksheetVisitor({
-                strings: table,
+                strings,
+                dates,
+                date1904,
                 positions: meters.positions,
                 rowText: meters.rowText,
               }),

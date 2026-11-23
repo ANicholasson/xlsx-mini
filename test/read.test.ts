@@ -103,21 +103,30 @@ function workbookOf(
   );
 }
 
-function sharingWorkbook(table: string): Promise<Uint8Array> {
-  const rows = '<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>';
+const stylesPart = (...formats: number[]) =>
+  `<styleSheet xmlns="${MAIN}"><cellXfs>${formats.map((id) => `<xf numFmtId="${id}"/>`).join("")}</cellXfs></styleSheet>`;
+
+/** Sheets One and Two, each a row of two shared strings and a date, and a chart sheet between them. */
+function sharingWorkbook(table: string, styles = stylesPart(0, 14)): Promise<Uint8Array> {
+  const row = (number: number) =>
+    `<row r="${number}"><c r="A${number}" t="s"><v>0</v></c><c r="B${number}" t="s"><v>1</v></c><c r="C${number}" s="1"><v>45000</v></c></row>`;
   return workbookOf(
     '<sheet name="One" sheetId="1" r:id="rId1"/><sheet name="Chart" sheetId="2" r:id="rId2"/><sheet name="Two" sheetId="3" r:id="rId3"/>',
     relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
       relationship("rId2", "chartsheet", "chartsheets/sheet1.xml") +
       relationship("rId3", "worksheet", "worksheets/sheet2.xml") +
-      relationship("rId4", "sharedStrings", "sharedStrings.xml"),
+      relationship("rId4", "sharedStrings", "sharedStrings.xml") +
+      relationship("rId5", "styles", "styles.xml"),
     {
-      "xl/worksheets/sheet1.xml": sheetPart(rows),
-      "xl/worksheets/sheet2.xml": sheetPart(rows.replaceAll('1"', '2"')),
+      "xl/worksheets/sheet1.xml": sheetPart(row(1)),
+      "xl/worksheets/sheet2.xml": sheetPart(row(2)),
       "xl/sharedStrings.xml": table,
+      "xl/styles.xml": styles,
     },
   );
 }
+
+const MARCH_15 = new Date(Date.UTC(2023, 2, 15));
 
 describe("openXlsx", () => {
   it("lists the sheets of every golden fixture in order, hidden ones too, from the writer's input", async () => {
@@ -199,6 +208,18 @@ describe("openXlsx", () => {
       );
     const opened = await openXlsx(bytes, { limits: { inflatedBytes: 8 * charged } });
     expect(opened.sheets).toEqual(["Catalogue"]);
+    const styles = unzip(bytes).find(({ name }) => name === "xl/styles.xml")!.uncompressedSize;
+    const styled = await openXlsx(bytes, { limits: { inflatedBytes: 8 * (charged + styles) } });
+    expect(await readRows(styled, 0)).toEqual(await readRows(await openXlsx(bytes), 0));
+    const unstyled = await openXlsx(bytes, {
+      limits: { inflatedBytes: 8 * (charged + styles) - 8 },
+    });
+    expect(await outcomeOf(unstyled, 0)).toEqual({
+      code: "LIMIT_EXCEEDED",
+      sheet: undefined,
+      cell: undefined,
+      limit: "inflatedBytes",
+    });
     await expect(
       openXlsx(bytes, { limits: { inflatedBytes: 8 * charged - 8 } }),
     ).rejects.toMatchObject({ code: "LIMIT_EXCEEDED", limit: "inflatedBytes" });
@@ -289,6 +310,138 @@ describe("rows", () => {
     ]);
   });
 
+  it("reads a number whose style shows a date as a Date, in the date system of the workbook", async () => {
+    const rows =
+      '<row r="1"><c r="A1" s="1"><v>0</v></c><c r="B1" s="1"><v>44000.5</v></c><c r="C1"><v>44000.5</v></c><c r="D1" t="d"><v>2024-06-19</v></c></row>';
+    const bytes = (properties: string) =>
+      workbookOf(
+        "",
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "styles", "styles.xml"),
+        {
+          "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}">${properties}<sheets><sheet name="Dates" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+          "xl/worksheets/sheet1.xml": sheetPart(rows),
+          "xl/styles.xml": stylesPart(0, 14),
+        },
+      );
+    const june = (day: number, hour: number) =>
+      new Date(Date.UTC(2024 - (day === 19 ? 0 : 4), 5, day, hour));
+    expect(await readRows(await openXlsx(await bytes('<workbookPr date1904="1"/>')), 0)).toEqual([
+      [1, new Date(Date.UTC(1904, 0, 1)), june(19, 12), 44000.5, june(19, 0)],
+    ]);
+    expect(await readRows(await openXlsx(await bytes("<workbookPr/>")), 0)).toEqual([
+      [1, 0, june(18, 12), 44000.5, june(19, 0)],
+    ]);
+  });
+
+  it("reads the styles part once, by the first read of a worksheet, whichever sheet asks first", async () => {
+    const bytes = await sharingWorkbook(tablePart("first", "second"));
+    const styles = unzip(bytes).find(({ name }) => name === "xl/styles.xml")!;
+    for (const order of [
+      ["One", "Two", "One"],
+      ["Two", "One", "Two"],
+    ]) {
+      const blob = new WatchedBlob([bytes.slice()]);
+      const book = await openXlsx(blob);
+      const ofStyles = () =>
+        blob.reads.filter(
+          ([start]) =>
+            start >= styles.localHeaderOffset &&
+            start < styles.localHeaderOffset + styles.compressedSize + 30 + styles.name.length,
+        ).length;
+      expect(ofStyles()).toBe(0);
+      for (const sheet of order) {
+        expect(await readRows(book, sheet)).toEqual([
+          [sheet === "One" ? 1 : 2, "first", "second", MARCH_15],
+        ]);
+      }
+      expect(ofStyles()).toBeGreaterThan(0);
+      const once = ofStyles();
+      await readRows(book, order[0]!);
+      expect(ofStyles()).toBe(once);
+    }
+  });
+
+  it("reads back every date-like value the writer takes as a Date, under each built-in id the writer gives one", async () => {
+    const civil = {
+      hour: 23,
+      minute: 59,
+      second: 59,
+      millisecond: 999,
+      microsecond: 0,
+      nanosecond: 0,
+    };
+    const values = [
+      new Date(Date.UTC(1900, 0, 1)),
+      new Date(Date.UTC(1900, 1, 28, 23, 59, 59, 999)),
+      new Date(Date.UTC(1900, 2, 1)),
+      new Date(Date.UTC(9999, 11, 31, 23, 59, 59, 999)),
+      { [Symbol.toStringTag]: "Temporal.PlainDate", year: 1900, month: 3, day: 1 },
+      { [Symbol.toStringTag]: "Temporal.PlainDateTime", year: 9999, month: 12, day: 31, ...civil },
+      { [Symbol.toStringTag]: "Temporal.ZonedDateTime", year: 1900, month: 2, day: 28, ...civil },
+      { [Symbol.toStringTag]: "Temporal.Instant", epochMilliseconds: Date.UTC(2026, 10, 17) },
+    ] as const;
+    const sheet = { name: "Dates", rows: values.map((value) => [value]) };
+    const bytes = await writeXlsx({ sheets: [sheet] });
+    const text = (name: string) =>
+      new TextDecoder().decode(unzip(bytes).find((entry) => entry.name === name)!.data);
+    const formats = [
+      ...text("xl/styles.xml")
+        .split("<cellXfs")[1]!
+        .matchAll(/<xf numFmtId="(\d+)"/g),
+    ];
+    const used = [...text("xl/worksheets/sheet1.xml").matchAll(/ s="(\d+)"/g)].map(([, style]) =>
+      Number(formats[Number(style)]![1]),
+    );
+    expect(new Set(used)).toEqual(new Set([14, 22]));
+    expect(await readRows(await openXlsx(bytes), 0)).toEqual(expectedRows(sheet));
+  });
+
+  it("writes back every Date it reads from a serial at the edges of the writer's range, and reads it again as itself", async () => {
+    const serials = [
+      "1",
+      "59.9999999",
+      "61",
+      "2958465.9999999884",
+      "45000.9999999999",
+      "60",
+      "0.5",
+      "2958466",
+    ];
+    const rows = serials.map(
+      (serial, at) => `<row r="${at + 1}"><c r="A${at + 1}" s="1"><v>${serial}</v></c></row>`,
+    );
+    const read = await readRows(
+      await openXlsx(
+        await workbookOf(
+          '<sheet name="Edges" sheetId="1" r:id="rId1"/>',
+          relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+            relationship("rId2", "styles", "styles.xml"),
+          {
+            "xl/worksheets/sheet1.xml": sheetPart(rows.join("")),
+            "xl/styles.xml": stylesPart(0, 22),
+          },
+        ),
+      ),
+      0,
+    );
+    expect(read.map(([, value]) => value instanceof Date)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+    const dates = read.filter(([, value]) => value instanceof Date);
+    const again = await openXlsx(
+      await writeXlsx({ sheets: [{ name: "Edges", rows: dates.map(([, date]) => [date]) }] }),
+    );
+    expect(await readRows(again, 0)).toEqual(dates.map(([, date], at) => [at + 1, date]));
+  });
+
   it("refuses a worksheet whose part is missing, or that holds no sheet data, naming it, and never reads it as empty", async () => {
     const book = await openXlsx(
       await workbookOf(
@@ -352,8 +505,8 @@ describe("rows", () => {
     });
   });
 
-  it("gives a chart sheet no rows and starts no shared strings, even ones over their limit, and leaves no rejection unhandled", async () => {
-    const bytes = await sharingWorkbook(tablePart("first", "second"));
+  it("gives a chart sheet no rows and starts no shared strings or styles, even ones it would refuse, and leaves no rejection unhandled", async () => {
+    const bytes = await sharingWorkbook(tablePart("first", "second"), "<styles/>");
     const unhandled: unknown[] = [];
     const listen = (reason: unknown) => unhandled.push(reason);
     process.on("unhandledRejection", listen);
@@ -389,7 +542,7 @@ describe("rows", () => {
       const book = await openXlsx(bytes, { limits: { inflatedBytes: once } });
       for (const sheet of order) {
         expect(await readRows(book, sheet)).toEqual([
-          [sheet === "One" ? 1 : 2, ...texts.slice(0, 2)],
+          [sheet === "One" ? 1 : 2, ...texts.slice(0, 2), MARCH_15],
         ]);
       }
     }
@@ -406,9 +559,17 @@ describe("rows", () => {
       [tablePart("a", "b"), { sharedStringBytes: 20 }, "LIMIT_EXCEEDED", "sharedStringBytes"],
       [tablePart("a", "b"), { sharedStrings: 1 }, "LIMIT_EXCEEDED", "sharedStrings"],
       [`<sst xmlns="${MAIN}"><si><t>a</t></si><item/></sst>`, {}, "INVALID_WORKBOOK", undefined],
+      [tablePart("a", "b"), {}, "INVALID_WORKBOOK", undefined, `<styles xmlns="${MAIN}"/>`],
+      [
+        tablePart("a", "b"),
+        { inflatedBytes: 64_000 },
+        "LIMIT_EXCEEDED",
+        "inflatedBytes",
+        stylesPart(...Array.from({ length: 2_000 }, () => 0)),
+      ],
     ] as const;
-    for (const [table, limits, code, limit] of refusals) {
-      const book = await openXlsx(await sharingWorkbook(table), { limits });
+    for (const [table, limits, code, limit, styles] of refusals) {
+      const book = await openXlsx(await sharingWorkbook(table, styles), { limits });
       for (const sheet of ["One", "Two", "One", 0]) {
         expect(await outcomeOf(book, sheet), `${code} ${sheet}`).toEqual({
           code,
@@ -429,6 +590,20 @@ describe("rows", () => {
     expect(await outcomeOf(missing, "One")).toMatchObject({
       code: "INVALID_WORKBOOK",
       sheet: undefined,
+    });
+    const unstyled = await openXlsx(
+      await workbookOf(
+        '<sheet name="One" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "styles", "styles.xml"),
+        { "xl/worksheets/sheet1.xml": sheetPart("") },
+      ),
+    );
+    expect(await outcomeOf(unstyled, "One")).toEqual({
+      code: "INVALID_WORKBOOK",
+      sheet: undefined,
+      cell: undefined,
+      limit: undefined,
     });
   });
 

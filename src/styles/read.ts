@@ -13,6 +13,9 @@ import { isBuiltInDate, showsDate } from "./read/date-format.js";
  */
 export type DateStyles = Uint8Array;
 
+/** The table of a workbook without a styles part. */
+export const NO_STYLES: DateStyles = new Uint8Array(1);
+
 const NUMBER_FORMATS = 1;
 const CELL_STYLES = 2;
 /** The last id the standard gives a built-in format, in its Thai table, 59 to 81. */

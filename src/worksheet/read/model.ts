@@ -2,8 +2,13 @@
  * The value of a cell as the file stores it:
  *
  * - text is a `string`, as stored and untrimmed, with rich text as its plain text;
- * - a number is a `number`, never `NaN` or an infinity. A date or a time is the serial the file
- *   stores, a number of days with the time of day as the fraction;
+ * - a number is a `number`, never `NaN` or an infinity;
+ * - a date is a `Date` whose UTC fields are the sheet's wall clock, rounded to the millisecond, as
+ *   the writer reads a `Date`: a number whose style's number format shows a year, a month or a day,
+ *   and a date stored as text (`t="d"`). A number shown as a time of day or an elapsed time stays a
+ *   number, a fraction of a day, and so does a serial the writer cannot write, which no calendar
+ *   shows: below 1 or on the 29 February 1900 that never was in the 1900 date system, negative or
+ *   past 9999-12-31 in either. Every `Date` read is one the writer writes back;
  * - a boolean is a `boolean`;
  * - an error cell is its text, such as `"#DIV/0!"`;
  * - a formula is its stored result, or `null` when the file stores none: nothing is calculated;
@@ -26,11 +31,12 @@
  * for await (const { cells } of book.rows("Orders")) {
  *   const total: ReadValue = cells[2] ?? null;
  *   if (typeof total === "number") console.log(total.toFixed(2));
+ *   if (cells[3] instanceof Date) console.log(cells[3].toISOString().slice(0, 10));
  * }
  *
  * @experimental
  */
-export type ReadValue = string | number | boolean | null;
+export type ReadValue = string | number | boolean | Date | null;
 
 /**
  * One row of a sheet as `rows` yields it.

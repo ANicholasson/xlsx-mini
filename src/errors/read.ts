@@ -9,12 +9,13 @@
  *   size than declared, a wrong CRC-32, a compression method other than stored or deflate.
  * - `INVALID_XML`: a part is not well-formed XML in UTF-8, holds a DOCTYPE, nests deeper or holds
  *   a longer token than any workbook does.
- * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list, a sheet's data or the
- *   shared strings cannot be found or are damaged, a relationship leaves the package, two sheets
- *   share a name.
+ * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list, a sheet's data, the
+ *   shared strings or the styles cannot be found or are damaged, a relationship leaves the package,
+ *   two sheets share a name, the date system is neither true nor false.
  * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a cell is of an
- *   unknown type or holds what its type does not, a number is not decimal, a shared string does not
- *   exist, a date is stored as text (`t="d"`). `sheet` and `cell` say where.
+ *   unknown type or holds what its type does not, a number is not decimal, a shared string or a
+ *   style does not exist, a date stored as text (`t="d"`) is malformed or one the writer cannot
+ *   write. `sheet` and `cell` say where.
  * - `LIMIT_EXCEEDED`: the file asks for more than a limit allows. `limit` names the key of
  *   `ReadLimits` to raise.
  * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.

@@ -1,6 +1,7 @@
 import { type SharedStrings, decodeEscapes } from "../../shared-strings/read.js";
 import { parseIndex } from "../../xml/read.js";
 import type { ReadValue } from "./model.js";
+import { dateFromText } from "./serial-date.js";
 
 /** The type of a cell, from its `t` attribute, as a small number compared once per cell. */
 const NUMBER = 0;
@@ -28,10 +29,11 @@ export function cellKindOf(buffer: string, start: number, end: number): number {
 
 /**
  * The value of a cell from its type and what it stores: the text of its `v`, or of its inline
- * string, or `undefined` when it stores neither, which is `null`. Empty text is `null`. `undefined`
- * when the text is not a value of that type: a number that is not decimal or not finite, a boolean
- * other than `0` or `1`, an index that names no shared string, each of them empty too, and every
- * date stored as text.
+ * string, or `undefined` when it stores neither, which is `null`. Empty text is `null`, for a date
+ * stored as text too, which LibreOffice and openpyxl read as empty. `undefined` when the text is not
+ * a value of that type: a number that is not decimal or not finite, a boolean other than `0` or
+ * `1`, an index that names no shared string, each of them empty too, and a date stored as text that
+ * `dateFromText` does not read. A number stays a number here, whatever its style.
  */
 export function cellValue(
   kind: number,
@@ -54,7 +56,7 @@ export function cellValue(
     case INLINE_STRING:
       return stored || null;
     default:
-      return undefined;
+      return stored === "" ? null : dateFromText(stored);
   }
 }
 
