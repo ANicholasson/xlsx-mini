@@ -135,12 +135,15 @@ export function createStringItem(depth: number): StringItem {
 }
 
 const UNDERSCORE = 95;
+const LOWER_X = 120;
 
 /**
  * Decodes the escapes `_xHHHH_`, by which the format carries a UTF-16 code unit as text: a lowercase
  * `x` and four hexadecimal digits of either case, read from left to right, so `_x0041_x0042_` is
  * `Ax0042_` and a decoded `_x005F_` starts nothing. Excel and LibreOffice decode these forms and no
- * others. Returns the text itself when it holds no `_x`.
+ * others. Half of a surrogate pair is decoded only with the escape of its other half after it, and
+ * kept as text otherwise, as openpyxl keeps every escape: LibreOffice ends the text there. Returns
+ * the text itself when it holds no `_x`.
  *
  * @example decodeEscapes("__x0078_0041_") // "_x0041_", as escapeText writes it
  */
@@ -148,20 +151,32 @@ export function decodeEscapes(text: string): string {
   let out = "";
   let copiedUpTo = 0;
   for (let at = text.indexOf("_x"); at >= 0; at = text.indexOf("_x", at)) {
-    let code = 0;
-    let digit = 0;
-    for (let offset = 2; offset < 6 && digit >= 0; offset++) {
-      digit = hexDigit(text.charCodeAt(at + offset));
-      code = code * 16 + digit;
-    }
-    if (digit < 0 || text.charCodeAt(at + 6) !== UNDERSCORE) {
+    const code = escapeAt(text, at);
+    const low = code >= 0xd800 && code < 0xdc00 ? escapeAt(text, at + 7) : -1;
+    const paired = low >= 0xdc00 && low < 0xe000;
+    if (code < 0 || (code >= 0xd800 && code < 0xe000 && !paired)) {
       at += 2;
       continue;
     }
-    out += text.slice(copiedUpTo, at) + String.fromCharCode(code);
-    copiedUpTo = at += 7;
+    out +=
+      text.slice(copiedUpTo, at) +
+      String.fromCharCode(code) +
+      (paired ? String.fromCharCode(low) : "");
+    copiedUpTo = at += paired ? 14 : 7;
   }
   return out + text.slice(copiedUpTo);
+}
+
+/** The code unit of the escape at `at`, which starts with `_x`, or -1 when it is none. */
+function escapeAt(text: string, at: number): number {
+  if (text.charCodeAt(at + 6) !== UNDERSCORE || text.charCodeAt(at + 1) !== LOWER_X) return -1;
+  let code = 0;
+  for (let offset = 2; offset < 6; offset++) {
+    const digit = hexDigit(text.charCodeAt(at + offset));
+    if (digit < 0) return -1;
+    code = code * 16 + digit;
+  }
+  return text.charCodeAt(at) === UNDERSCORE ? code : -1;
 }
 
 /** The value of a hexadecimal digit of either case, or -1. */

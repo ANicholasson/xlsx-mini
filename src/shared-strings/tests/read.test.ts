@@ -177,5 +177,24 @@ describe("decodeEscapes", () => {
     const almost = "_x004G_ _x00@0_ _x00`0_ _x00/0_ _x00:0_ _x0041";
     expect(decodeEscapes(almost)).toBe(almost);
     expect(decodeEscapes("_xFFFF__xffff_")).toBe("￿￿");
+    expect(decodeEscapes("a_x0000_b_x0001_")).toBe("a\u0000b\u0001");
+  });
+
+  it("decodes half of a surrogate pair only with the escape of its other half after it", () => {
+    expect(decodeEscapes("a_xD83D__xDE00_b_xd83d__xde00_")).toBe("a\u{1F600}b\u{1F600}");
+    const halves = [
+      "_xD800_",
+      "_xDBFF_x",
+      "_xDC00_",
+      "_xDFFF__xD83D_",
+      "_xDE00__xD83D_",
+      "_xD83D_ _xDE00_",
+      "_xDC00__xDC01_",
+      "_xD83D__XDE00_",
+      "_xD83D_axDE00_",
+    ];
+    for (const text of halves) expect(decodeEscapes(text), text).toBe(text);
+    expect(decodeEscapes("_xD83D__x0041_")).toBe("_xD83D_A");
+    expect(decodeEscapes("_xD7FF__xE000_")).toBe("\uD7FF\uE000");
   });
 });
