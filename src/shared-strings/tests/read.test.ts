@@ -60,6 +60,8 @@ describe("the shared-string table", () => {
       '<si><t xml:space="preserve">  sp  </t></si>': "  sp  ",
       "<si><t>  nsp  </t></si>": "  nsp  ",
       "<si><t>a&#13;b\r\nc&amp;</t></si>": "a\rb\nc&",
+      '<si><t>base</t><rPh sb="0" eb="1"><x/><t>phonetic</t></rPh></si>': "base",
+      "<si><t>a</t><r>loose</r></si>": "a",
     };
     expect(await tableOf(sst(Object.keys(entries).join("")))).toEqual(Object.values(entries));
   });
@@ -139,7 +141,9 @@ describe("the shared-string table", () => {
   it("refuses an entry holding what LibreOffice passes over or reads in part: an unknown element, one in a run, a child of a text", async () => {
     const items = [
       "<si><foo><t>hidden</t></foo><t>shown</t></si>",
+      "<si><foo>hidden</foo></si>",
       "<si><r><t>a</t><foo/></r></si>",
+      "<si><r><foo>hidden</foo></r></si>",
       "<si><r><r><t>a</t></r></r></si>",
       "<si><t>a<b>bold</b>c</t></si>",
       "<si><r><t>a<b/></t></r></si>",
@@ -189,6 +193,7 @@ describe("decodeEscapes", () => {
     const almost = "_x004G_ _x00@0_ _x00`0_ _x00/0_ _x00:0_ _x0041";
     expect(decodeEscapes(almost)).toBe(almost);
     expect(decodeEscapes("_xFFFF__xffff_")).toBe("￿￿");
+    expect(decodeEscapes("_x0030__x0039__x003A__x0040_")).toBe("09:@");
     expect(decodeEscapes("a_x0000_b_x0001_")).toBe("a\u0000b\u0001");
     for (const count of [1023, 1024, 1025, 2500]) {
       expect(decodeEscapes(`${"_x0041_b".repeat(count)}_x`)).toBe(`${"Ab".repeat(count)}_x`);
@@ -197,6 +202,8 @@ describe("decodeEscapes", () => {
 
   it("decodes half of a surrogate pair only with the escape of its other half after it", () => {
     expect(decodeEscapes("a_xD83D__xDE00_b_xd83d__xde00_")).toBe("a\u{1F600}b\u{1F600}");
+    expect(decodeEscapes("_xD800__xDC00__xDBFF__xDFFF_")).toBe("\u{10000}\u{10FFFF}");
+    expect(decodeEscapes("_xD83D__xE000_")).toBe("_xD83D_\uE000");
     const halves = [
       "_xD800_",
       "_xDBFF_x",

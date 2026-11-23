@@ -218,6 +218,7 @@ describe("the rows of a worksheet part", () => {
   it("refuses an unknown type, and a date stored as text until dates are read", async () => {
     const date = await outcomeOf(cell(' t="d"', "<v>2024-01-15T12:00:00</v>"));
     expect(date).toBe("INVALID_CELL A1");
+    expect(await outcomeOf(cell(' t="d"', "<v>45000</v>"))).toBe("INVALID_CELL A1");
     await expect(rowsOf(cell(' t="d"', "<v>2024-01-15</v>"))).rejects.toThrow(
       "a date stored as text is not read yet",
     );
@@ -363,10 +364,13 @@ describe("the rows of a worksheet part", () => {
       worksheet(`<sheetData/>${row}`),
       worksheet(`<sheetPr>${row}</sheetPr><sheetData/>`),
       worksheet(`<sheetPr><sheetData>${row}</sheetData></sheetPr>`),
+      worksheet(`<sheetPr><outlinePr/><sheetData>${row}</sheetData></sheetPr>`),
       data(`<foo/>${row}`),
       data(`<foo>${row}</foo>`),
       data(alternate(row)),
       data('<row r="1"><c r="A1"><f><sheetData/></f></c></row>'),
+      data('<row r="1"><c r="A1"><f><x/><sheetData/></f></c></row>'),
+      data('<row r="1"><extLst><ext uri="x"/><sheetData/></extLst></row>'),
       data(`<row r="1"><extLst><ext uri="x">${row.replace('r="1"', 'r="2"')}</ext></extLst></row>`),
     ];
     for (const part of parts) expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
