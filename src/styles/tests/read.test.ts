@@ -443,4 +443,13 @@ describe("which cell styles show a date", () => {
     expect(dates).toHaveLength(200_000);
     expect(dates?.every((date) => date === 1)).toBe(true);
   });
+
+  it("keeps a table of a million cell styles in a time that grows with their number, not with its square", async () => {
+    const part = styleSheet(`<cellXfs>${"<xf/>".repeat(1_000_000)}${xf(14)}</cellXfs>`);
+    const started = performance.now();
+    const dates = await datesOf(part);
+    expect(performance.now() - started).toBeLessThan(2_000);
+    expect(dates).toHaveLength(1_000_001);
+    expect(dates?.at(-1)).toBe(1);
+  });
 });
