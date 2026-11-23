@@ -1,11 +1,7 @@
-import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
+import { reportOf } from "../../../test/helpers/child.ts";
 import type { DecodeReport } from "./read-decode.child.ts";
 import type { Flood, Report } from "./read-memory.child.ts";
 
@@ -21,31 +17,6 @@ const FLOOD_HEAP_BYTES = 64 * MEBIBYTE;
 const KEPT_HEAP_BYTES = 2 * MEBIBYTE;
 const DECODE_HEAP_MEBIBYTES = 64;
 
-/** Runs a child of this folder in a process of its own and parses the line of JSON it prints. */
-async function childReport(child: string, heapMebibytes: number): Promise<unknown> {
-  const directory = mkdtempSync(join(tmpdir(), "xlsx-mini-xml-"));
-  try {
-    // The child is TypeScript, which Node 20 does not run: bundled, it is one file it does.
-    const build = await rolldown({
-      input: join(here, child),
-      platform: "node",
-      logLevel: "silent",
-    });
-    const { output } = await build.generate({ format: "esm" });
-    await build.close();
-    const script = join(directory, "child.mjs");
-    writeFileSync(script, output[0].code);
-    const { stdout } = await promisify(execFile)(
-      process.execPath,
-      [`--max-old-space-size=${heapMebibytes}`, "--expose-gc", script],
-      { encoding: "utf8" },
-    );
-    return JSON.parse(stdout);
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-}
-
 describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
   let report: Report;
 
@@ -53,7 +24,7 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     report.floods.filter((flood) => flood.name === name);
 
   beforeAll(async () => {
-    report = (await childReport("read-memory.child.ts", HEAP_MEBIBYTES)) as Report;
+    report = (await reportOf(join(here, "read-memory.child.ts"), HEAP_MEBIBYTES)) as Report;
   }, 120_000);
 
   it("runs with that limit, and every flood is as large as a part may be under the default limits", () => {
@@ -163,7 +134,10 @@ describe("decoding in a process whose heap is held to 64 MiB", () => {
   let report: DecodeReport;
 
   beforeAll(async () => {
-    report = (await childReport("read-decode.child.ts", DECODE_HEAP_MEBIBYTES)) as DecodeReport;
+    report = (await reportOf(
+      join(here, "read-decode.child.ts"),
+      DECODE_HEAP_MEBIBYTES,
+    )) as DecodeReport;
   }, 120_000);
 
   it("reads a token of the longest length made only of what XML replaces, as it reads one of letters", () => {
