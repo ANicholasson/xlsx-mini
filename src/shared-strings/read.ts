@@ -3,7 +3,7 @@
  * string in a worksheet shares. Text is given as stored: nothing is trimmed.
  */
 import { type Meter, XlsxReadError } from "../errors/read.js";
-import type { XmlCursor, XmlVisitor } from "../xml/read.js";
+import { JOINED_PIECES, type XmlCursor, type XmlVisitor, detach } from "../xml/read.js";
 
 /**
  * The text of every entry of the table, by index; an empty entry is `""`. A cell that names an
@@ -85,6 +85,8 @@ const RUN_TEXT = 4;
 /** A string item whose own element stands at `depth`. */
 export function createStringItem(depth: number): StringItem {
   let text = "";
+  let joined = "";
+  let pieces = 0;
   let inText = 0;
   let skipped = 0;
   let seen = 0;
@@ -125,12 +127,19 @@ export function createStringItem(depth: number): StringItem {
       if (at !== inText) return 0;
       inText = 0;
       const piece = decodeEscapes(xml.text());
-      text += piece;
+      joined += piece;
+      if (++pieces === JOINED_PIECES) {
+        text += detach(joined);
+        joined = "";
+        pieces = 0;
+      }
       return piece.length;
     },
     take() {
-      const taken = text;
+      const taken = text === "" && pieces < 2 ? joined : detach(text + joined);
       text = "";
+      joined = "";
+      pieces = 0;
       seen = 0;
       return taken;
     },
@@ -146,12 +155,14 @@ const LOWER_X = 120;
  * `Ax0042_` and a decoded `_x005F_` starts nothing. Excel and LibreOffice decode these forms and no
  * others. Half of a surrogate pair is decoded only with the escape of its other half after it, and
  * kept as text otherwise, as openpyxl keeps every escape: LibreOffice ends the text there. Returns
- * the text itself when it holds no `_x`.
+ * the text itself when it decodes no escape, and a copy of its own otherwise.
  *
  * @example decodeEscapes("__x0078_0041_") // "_x0041_", as escapeText writes it
  */
 export function decodeEscapes(text: string): string {
   let out = "";
+  let joined = "";
+  let pieces = 0;
   let copiedUpTo = 0;
   for (let at = text.indexOf("_x"); at >= 0; at = text.indexOf("_x", at)) {
     const code = escapeAt(text, at);
@@ -161,13 +172,18 @@ export function decodeEscapes(text: string): string {
       at += 2;
       continue;
     }
-    out +=
+    joined +=
       text.slice(copiedUpTo, at) +
       String.fromCharCode(code) +
       (paired ? String.fromCharCode(low) : "");
+    if (++pieces === JOINED_PIECES) {
+      out += detach(joined);
+      joined = "";
+      pieces = 0;
+    }
     copiedUpTo = at += paired ? 14 : 7;
   }
-  return out + text.slice(copiedUpTo);
+  return copiedUpTo === 0 ? text : detach(out + joined + text.slice(copiedUpTo));
 }
 
 function escapeAt(text: string, at: number): number {

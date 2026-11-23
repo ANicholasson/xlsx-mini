@@ -69,8 +69,9 @@ export interface ReadLimits {
   /** Entries in the shared-string table. Default 1 000 000. */
   readonly sharedStrings?: number;
   /**
-   * Bytes the shared-string table may inflate to, on top of counting against `inflatedBytes`:
-   * the table is held in memory at several times its size. Default 33 554 432 (32 MiB).
+   * Bytes the shared-string table may inflate to, on top of counting against `inflatedBytes`. The
+   * table is held in memory as long as the workbook, at up to 2.6 times this on Node and 4.8 times
+   * on Bun. Default 33 554 432 (32 MiB).
    */
   readonly sharedStringBytes?: number;
   /**

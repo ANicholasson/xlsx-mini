@@ -51,14 +51,14 @@ The reader is handed files by strangers. Other readers have been hurt by prototy
 
 Every limit has a default sized for a file a person uploads. A caller can raise one per `openXlsx` call; no value turns one off. The byte, position and row limits are per read: two sheets read at the same time each have their own, so what a caller holds in memory is the sum of the reads it runs.
 
-| Limit               | Default   | What it bounds                                                                                                                         |
-| ------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `inflatedBytes`     | 128 MiB   | What one operation inflates. Opening the workbook, with its shared strings and styles, is one operation; each `rows` iteration is one. |
-| `cellPositions`     | 5 000 000 | The positions one `rows` iteration yields, empty cells before a value included.                                                        |
-| `rowCharacters`     | 4 194 304 | The text one row holds. A row is held whole, so this is what one read keeps in memory at a time.                                       |
-| `sharedStrings`     | 1 000 000 | Entries in the shared-string table.                                                                                                    |
-| `sharedStringBytes` | 32 MiB    | What the shared-string table inflates to. It is held in memory at several times its size.                                              |
-| `parts`             | 100 000   | The parts in the package, read or not. A workbook with one picture per row has about one part per row.                                 |
+| Limit               | Default   | What it bounds                                                                                                                            |
+| ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `inflatedBytes`     | 128 MiB   | What one operation inflates. Opening the workbook, with its shared strings and styles, is one operation; each `rows` iteration is one.    |
+| `cellPositions`     | 5 000 000 | The positions one `rows` iteration yields, empty cells before a value included.                                                           |
+| `rowCharacters`     | 4 194 304 | The text one row holds. A row is held whole, so this is what one read keeps in memory at a time.                                          |
+| `sharedStrings`     | 1 000 000 | Entries in the shared-string table.                                                                                                       |
+| `sharedStringBytes` | 32 MiB    | What the shared-string table inflates to. Held at up to 2.6 times this on Node and 4.8 on Bun (a million entries of 12 or 13 characters). |
+| `parts`             | 100 000   | The parts in the package, read or not. A workbook with one picture per row has about one part per row.                                    |
 
 A part's declared size is charged before a byte is inflated, then enforced exactly. Parts that become lists in memory are held to an eighth of `inflatedBytes`, and so is the package's directory, whose size is charged before it is read. Two more rules are fixed and are not limits: elements nest at most 256 deep and one token is at most 4 194 304 characters, reported as `INVALID_XML`. No workbook comes near either, and without them a file inside every limit above exhausted a 512 MiB heap. The row and parts limits exist for the same reason: three sheets of one 119 MiB row each, and a directory of four million entries, did the same in trials.
 

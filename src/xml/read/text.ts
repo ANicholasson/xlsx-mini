@@ -101,11 +101,11 @@ export const ATTRIBUTE = 2;
 type Reading = typeof TEXT | typeof CDATA | typeof ATTRIBUTE;
 
 /**
- * Pieces of a decoded text joined before they are copied into one string. A string grown by `+`
- * one piece at a time is a chain of one node per piece in V8 and JavaScriptCore, 30 and 60 bytes
- * for each character replaced, until it is read.
+ * Pieces of a text joined before they are copied into one string. A string grown by `+` one piece
+ * at a time is a chain of one node per piece in V8 and JavaScriptCore until it is read: 30 and 60
+ * bytes for each character `decode` replaces.
  */
-const JOINED_PIECES = 1024;
+export const JOINED_PIECES = 1024;
 
 /**
  * `text[start, end)` as XML 1.0 reads it: references decoded except in CDATA (4.1), line ends

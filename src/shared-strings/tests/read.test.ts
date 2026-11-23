@@ -64,6 +64,18 @@ describe("the shared-string table", () => {
     expect(await tableOf(sst(Object.keys(entries).join("")))).toEqual(Object.values(entries));
   });
 
+  it("joins every run of an entry of more runs than are joined at once, in order", async () => {
+    const counts = [2, 1023, 1024, 1025, 2048, 2500];
+    const runs = (count: number) => Array.from({ length: count }, (_, run) => `${run}|`);
+    const items = counts.map(
+      (count) =>
+        `<si>${runs(count)
+          .map((run) => `<r><t>${run}</t></r>`)
+          .join("")}</si>`,
+    );
+    expect(await tableOf(sst(items.join("")))).toEqual(counts.map((count) => runs(count).join("")));
+  });
+
   it("reads back every text the writer's table holds, escapes, carriage returns and markup included", async () => {
     const alphabet = fc.constantFrom(
       "_",
@@ -178,6 +190,9 @@ describe("decodeEscapes", () => {
     expect(decodeEscapes(almost)).toBe(almost);
     expect(decodeEscapes("_xFFFF__xffff_")).toBe("￿￿");
     expect(decodeEscapes("a_x0000_b_x0001_")).toBe("a\u0000b\u0001");
+    for (const count of [1023, 1024, 1025, 2500]) {
+      expect(decodeEscapes(`${"_x0041_b".repeat(count)}_x`)).toBe(`${"Ab".repeat(count)}_x`);
+    }
   });
 
   it("decodes half of a surrogate pair only with the escape of its other half after it", () => {
