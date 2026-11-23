@@ -809,6 +809,48 @@ export default async function safely(): Promise<string> {
 
 Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped, and positions stay where you put them.
 
+## Reading (experimental)
+
+Reading is experimental and not in a release yet, and any 0.x minor may change it. `objectsFromRows` from `xlsx-mini/read` is the mirror of `sheetFromObjects`: one column list writes a sheet of objects and reads it back. The first row is the header, and each later row comes back as `{ number, values }` with the declared keys only.
+
+<!-- snippet: read-objects -->
+
+```ts
+import { type ObjectColumn, sheetFromObjects, writeXlsx } from "xlsx-mini";
+import { objectsFromRows, openXlsx } from "xlsx-mini/read";
+
+interface Order {
+  id: string;
+  total: number;
+  placed: Date;
+}
+
+const columns = [
+  { key: "id", header: "Order" },
+  { key: "total", header: "Total", style: { numberFormat: '#,##0.00 "kr"' } },
+  { key: "placed", header: "Placed", style: { numberFormat: "yyyy-mm-dd" } },
+] as const satisfies readonly ObjectColumn<Order>[];
+
+export function exportOrders(orders: Order[]): Promise<Uint8Array> {
+  return writeXlsx({ sheets: [sheetFromObjects(orders, { name: "Orders", columns })] });
+}
+
+export async function importOrders(file: Uint8Array | Blob): Promise<Order[]> {
+  const book = await openXlsx(file);
+  const orders: Order[] = [];
+  for await (const { number, values } of objectsFromRows(book.rows("Orders"), columns)) {
+    const { id, total, placed } = values;
+    if (typeof id !== "string" || typeof total !== "number" || !(placed instanceof Date)) {
+      throw new Error(`Row ${number} is not an order`);
+    }
+    orders.push({ id, total, placed });
+  }
+  return orders;
+}
+```
+
+Write the column list `as const`, as here, when the list is the declaration: a key it does not declare is then a type error. Type it `ObjectColumn<T>[]` when `T` is the declaration: `values` then has every key of `T` in its type, and a key the list does not declare reads as `undefined`.
+
 ## API
 
 | Export                              | Shape                                                                                                                                                                                                                                                                          |

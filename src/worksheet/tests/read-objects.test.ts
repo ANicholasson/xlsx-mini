@@ -388,11 +388,11 @@ describe("the types of objectsFromRows", () => {
     readonly tags: readonly string[];
   }
   const rows = sheet([
-    [1, "id", "placed", "total", "tags"],
-    [2, "A-1", null, 10.5, "a, b"],
+    [1, "Order", "Placed", "total", "Tags", "id"],
+    [2, "A-1", null, 10.5, "a, b", "A-1"],
   ]);
 
-  it("takes the column list of sheetFromObjects as it is, and gives every key of T for a list typed ObjectColumn<T>[]", () => {
+  it("takes the column list of sheetFromObjects as it is, and gives every key of T for a list typed ObjectColumn<T>[], undefined where the list does not declare it", async () => {
     const columns: ObjectColumn<Order>[] = [
       { key: "id", header: "Order", width: 12, hidden: false },
       { key: "total", style: { numberFormat: "0.00" } },
@@ -407,6 +407,10 @@ describe("the types of objectsFromRows", () => {
       readonly total: ReadValue;
       readonly tags: ReadValue;
     }>();
+    const read: ReadObject<keyof Order>["values"][] = [];
+    for await (const { values } of objects) read.push(values);
+    expect(read).toEqual([{ id: "A-1", total: 10.5, tags: "a, b" }]);
+    expect(read[0]!.placed).toBeUndefined();
   });
 
   it("gives only the declared keys for a list written as const, or inline", () => {
