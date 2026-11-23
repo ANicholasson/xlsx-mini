@@ -61,8 +61,8 @@ function elapsedUnit(code: string, start: number, end: number): number {
  *   shows in the first section;
  * - quoted text, the character after a backslash, an underscore or an asterisk, and bracketed
  *   sections (colours, conditions, locales) show no date; an elapsed section counts as its unit;
- * - `y` and `d` show a date in either case. `m` is a minute after an hour or before a second, and a
- *   month otherwise;
+ * - `y` and `d` show a date in either case, and so do `mmm` and longer, the name of a month. `m`
+ *   and `mm` are a minute after an hour or before a second, and a month otherwise;
  * - `General` in any case shows a number, whatever stands beside it; the `M` of `AM/PM` is no
  *   month. Every other letter shows no date, `e`, `g` and `b` included, so the `E` of an exponent
  *   and the letters of `General` are never read as an era.
@@ -104,7 +104,9 @@ export function showsDate(code: string): boolean {
       unit === LOWER_M ||
       unit === LOWER_S
     ) {
+      const start = at;
       while ((code.charCodeAt(at) | 32) === unit) at++;
+      if (unit === LOWER_M && at - start > 2) unit = LOWER_D;
     } else {
       at++;
       continue;
