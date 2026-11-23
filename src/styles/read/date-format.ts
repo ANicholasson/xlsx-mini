@@ -60,9 +60,11 @@ function elapsedUnit(code: string, start: number, end: number): number {
  * - only the first section counts: a number that can be a date is positive, and a positive number
  *   shows in the first section;
  * - quoted text, the character after a backslash, an underscore or an asterisk, and bracketed
- *   sections (colours, conditions, locales) show no date; an elapsed section counts as its unit;
+ *   sections (colours, conditions, locales) show no date; an elapsed section counts as its unit. A
+ *   `[` inside a bracketed section ends what is read, as an unclosed one does: LibreOffice shows
+ *   `[[h]]:mm` as a number and `yyyy[[h]]` as a date;
  * - `y` and `d` show a date in either case, and so do `mmm` and longer, the name of a month. `m`
- *   and `mm` are a minute after an hour or before a second, and a month otherwise;
+ *   and `mm` are a minute after an hour or a second, or before a second, and a month otherwise;
  * - `General` in any case shows a number, whatever stands beside it; the `M` of `AM/PM` is no
  *   month. Every other letter shows no date, `e`, `g` and `b` included, so the `E` of an exponent
  *   and the letters of `General` are never read as an era.
@@ -70,7 +72,7 @@ function elapsedUnit(code: string, start: number, end: number): number {
 export function showsDate(code: string): boolean {
   let date = false;
   let month = false;
-  let afterHour = false;
+  let afterTime = false;
   let at = 0;
   while (at < code.length) {
     const character = code.charCodeAt(at);
@@ -87,7 +89,7 @@ export function showsDate(code: string): boolean {
     let unit = character | 32;
     if (character === OPEN_BRACKET) {
       const end = code.indexOf("]", at);
-      if (end < 0) break;
+      if (end < 0 || code.lastIndexOf("[", end) !== at) break;
       unit = elapsedUnit(code, at + 1, end);
       at = end + 1;
       if (unit === LOWER_M) unit = 0;
@@ -112,8 +114,8 @@ export function showsDate(code: string): boolean {
       continue;
     }
     if (month && unit !== LOWER_S) date = true;
-    month = unit === LOWER_M && !afterHour;
-    afterHour = unit === LOWER_H;
+    month = unit === LOWER_M && !afterTime;
+    afterTime = unit === LOWER_H || unit === LOWER_S;
     if (unit === LOWER_Y || unit === LOWER_D) date = true;
   }
   return date || month;
