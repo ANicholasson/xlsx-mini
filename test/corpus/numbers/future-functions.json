@@ -1,0 +1,20 @@
+{
+  "sheets": [
+    {
+      "name": "Functions",
+      "rows": [
+        [1, "Function", "Result", null, "n", "t"],
+        [2, "STDEV.S", { "result": 2.1381 }, null, 2, "a"],
+        [3, "IFS", { "result": "mid" }, null, 4, "b"],
+        [4, "TEXTJOIN", { "result": "a-b-c" }, null, 4, "c"],
+        [5, "CONCAT", { "result": "abc" }, null, 4],
+        [6, "XLOOKUP", { "result": 4 }, null, 5],
+        [7, "MAXIFS", { "result": 5 }, null, 5],
+        [8, "FILTER in a sum", { "result": { "error": "#NAME?" } }, null, 7],
+        [9, "Already prefixed", { "result": 7 }, null, 9],
+        [10, "Name in a text", { "result": "IFS(x) and XLOOKUP(" }],
+        [11, "Older function", { "result": 40 }]
+      ]
+    }
+  ]
+}

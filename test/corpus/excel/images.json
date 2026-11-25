@@ -1,0 +1,14 @@
+{
+  "sheets": [
+    {
+      "name": "Catalogue",
+      "rows": [
+        [1, "Product", "Code", "Picture", "Badge"],
+        [2, "Desk", "D-1001"],
+        [3, "Chair", "C-2002"],
+        [4, "Lamp", "L-3003"],
+        [5, "No picture", "N-0000"]
+      ]
+    }
+  ]
+}

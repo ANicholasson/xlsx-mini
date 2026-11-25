@@ -1,0 +1,14 @@
+{
+  "sheets": [
+    {
+      "name": "Sheet1",
+      "rows": [
+        [1, "Name", "City", "Amount"],
+        [2, "Kari Nordmann", "Oslo", 1234.5],
+        [3, "Ola <Nordmann> & co", "Tromsø", -42],
+        [4, "Ærlig «ekte» 🎉", null, 1e21],
+        [5, " padded ", null, 0]
+      ]
+    }
+  ]
+}

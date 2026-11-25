@@ -1,0 +1,45 @@
+{
+  "sheets": [
+    {
+      "name": "Export Summary",
+      "rows": [
+        [
+          3,
+          null,
+          "This document was exported from Numbers. Each table was converted to an Excel worksheet. All other objects on each Numbers sheet were placed on separate worksheets. Please be aware that formula calculations may differ in Excel."
+        ],
+        [7, null, "Numbers Sheet Name", "Numbers Table Name", "Excel Worksheet Name"],
+        [9, null, "Lists"],
+        [10, null, null, "Table 1", "Lists"],
+        [11, null, "Orders"],
+        [12, null, null, "Table 1", "Orders"],
+        [13, null, "Notes"],
+        [14, null, null, "Table 1", "Notes"]
+      ]
+    },
+    {
+      "name": "Lists",
+      "rows": [
+        [1, "Status"],
+        [2, "Open"],
+        [3, "Shipped"],
+        [4, "Closed"]
+      ]
+    },
+    {
+      "name": "Orders",
+      "rows": [
+        [1, "Id", "Order", "Customer", "Status", "Total", "Import key", "Badge", "Stamp"],
+        [2, 101, "A-1001", "Kari", "Open", 1234.5, "ord_7f3a"],
+        [3, 102, "A-1002", "Ola", "Shipped", 99, "ord_81bc"],
+        [4, 103, "A-1003", "Liv", "Closed", 560.25, "ord_9d02"],
+        [5, 104, "A-1004", "Nils", "Open", 75, "ord_a410"],
+        [6, null, "Total", null, null, { "result": 1968.75 }]
+      ]
+    },
+    {
+      "name": "Notes",
+      "rows": [[1, "Hidden: the Lists sheet, and on Orders columns A, F and H and row 4."]]
+    }
+  ]
+}

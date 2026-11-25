@@ -1,0 +1,15 @@
+{
+  "sheets": [
+    {
+      "name": "Report",
+      "rows": [
+        [1, "Order", "Customer", "Items", "Total"],
+        [2, "A-1001", "Kari", 3, 1234.5],
+        [3, "A-1002", "Ola", 1, 99],
+        [4, "A-1003", "Liv", 12, 560.25],
+        [5, "A-1004", null, 2, 75],
+        [6, "Total", null, { "result": 18 }, { "result": 1968.75 }]
+      ]
+    }
+  ]
+}

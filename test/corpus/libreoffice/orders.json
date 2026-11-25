@@ -1,0 +1,13 @@
+{
+  "sheets": [
+    {
+      "name": "Orders",
+      "rows": [
+        [1, "Order", "Customer", "Total", "Placed"],
+        [2, "A-1001", "Kari Nordmann", 1234.5, { "date": "2026-11-01T09:30:00.000" }],
+        [3, "A-1002", "Ola Nordmann", 99, { "date": "2026-11-02T14:00:00.000" }],
+        [4, "A-1003", "Per O'Brien", 100000, { "date": "2026-11-03T08:15:00.000" }]
+      ]
+    }
+  ]
+}

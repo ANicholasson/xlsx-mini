@@ -1,0 +1,18 @@
+{
+  "sheets": [
+    {
+      "name": "Budget",
+      "rows": [
+        [1, "Item", "Qty", "Price", "Total"],
+        [2, "Desk", 2, 4999, { "result": 9998 }],
+        [3, "Chair", 4, 1299.5, { "result": 5198 }],
+        [4, "Lamp", 1, 349, { "result": 349 }],
+        [5, "Sum", { "result": 7 }, null, { "result": 15545 }],
+        [7, "Items", { "result": 3 }],
+        [8, "Over budget", { "result": 1 }],
+        [9, "Label", { "result": "Items: 3" }],
+        [10, "Not a formula", "=SUM(B2:B4)"]
+      ]
+    }
+  ]
+}

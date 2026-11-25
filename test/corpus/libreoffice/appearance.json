@@ -1,0 +1,15 @@
+{
+  "sheets": [
+    {
+      "name": "Invoice",
+      "rows": [
+        [1, "Invoice 2026-1042"],
+        [2, "Item", "Description", "Qty", "Amount"],
+        [3, "Desk", "Height-adjustable desk, oak veneer, delivered and assembled on site", 2, 9998],
+        [4, "Chair", "Mesh office chair", 4, 5198],
+        [5, "Total", null, 6, 15196],
+        [7, "Payment within 30 days."]
+      ]
+    }
+  ]
+}

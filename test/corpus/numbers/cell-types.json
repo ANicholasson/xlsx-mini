@@ -1,0 +1,24 @@
+{
+  "sheets": [
+    {
+      "name": "Cell types",
+      "rows": [
+        [1, "Kind", "Value"],
+        [2, "text", "plain text"],
+        [3, "number", 3.14],
+        [4, "boolean true", { "result": true }],
+        [5, "boolean false", { "result": false }],
+        [6, "Date (UTC 2026-11-04 13:45:30)", { "date": "2026-11-04T13:45:30.000" }],
+        [7, "Temporal.PlainDate", { "date": "2026-11-04T00:00:00.000" }],
+        [8, "Temporal.PlainDateTime", { "date": "2026-11-04T13:45:30.000" }],
+        [9, "Temporal.ZonedDateTime", { "date": "2026-11-04T13:45:30.000" }],
+        [10, "Temporal.Instant", { "date": "2026-11-04T13:45:30.000" }],
+        [11, "wrapped { value }", 42],
+        [12, "empty"],
+        [13, "control characters stripped", "abc"],
+        [14, "newline kept", "line1\nline2"],
+        [15, "bigint through coerce", 12345678901234]
+      ]
+    }
+  ]
+}

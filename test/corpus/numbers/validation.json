@@ -1,0 +1,36 @@
+{
+  "sheets": [
+    {
+      "name": "Export Summary",
+      "rows": [
+        [
+          3,
+          null,
+          "This document was exported from Numbers. Each table was converted to an Excel worksheet. All other objects on each Numbers sheet were placed on separate worksheets. Please be aware that formula calculations may differ in Excel."
+        ],
+        [7, null, "Numbers Sheet Name", "Numbers Table Name", "Excel Worksheet Name"],
+        [9, null, "Orders"],
+        [10, null, null, "Table 1", "Orders"],
+        [11, null, "Lists"],
+        [12, null, null, "Table 1", "Lists"]
+      ]
+    },
+    {
+      "name": "Orders",
+      "rows": [
+        [1, "Order", "Status", "Priority", "Qty", "Due", "Discount"],
+        [2, "A-1001", "Open", "High", 2, { "date": "2026-12-01T00:00:00.000" }, 0.1],
+        [3, "A-1002", "Closed", "Low", 10, { "date": "2026-12-15T00:00:00.000" }, 0]
+      ]
+    },
+    {
+      "name": "Lists",
+      "rows": [
+        [1, "Priority"],
+        [2, "High"],
+        [3, "Medium"],
+        [4, "Low"]
+      ]
+    }
+  ]
+}

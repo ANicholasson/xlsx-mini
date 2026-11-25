@@ -1,0 +1,39 @@
+{
+  "sheets": [
+    {
+      "name": "Inventory",
+      "rows": [
+        [1, "Inventory, a title wider than its first column"],
+        [2, "SKU", "Product", "Unit price", "Restocked", "In stock", "Note"],
+        [
+          3,
+          "SKU-100001",
+          "Height-adjustable desk",
+          7490,
+          { "date": "2026-03-14T00:00:00.000" },
+          { "result": true },
+          "Delivered and assembled on site"
+        ],
+        [
+          4,
+          "SKU-7",
+          "Chair",
+          1299.5,
+          { "date": "2026-10-30T00:00:00.000" },
+          { "result": false },
+          "A note long enough to reach the sixty-character ceiling, which a fixed width would need to raise"
+        ],
+        [
+          5,
+          "SKU-100003",
+          "Monitor arm, dual",
+          899,
+          { "date": "2025-12-01T00:00:00.000" },
+          { "result": true }
+        ],
+        [6, "SKU-42", "Lamp", 249.9, { "date": "2026-07-07T00:00:00.000" }, { "result": false }],
+        [7, "Total", null, { "result": 9938.4 }]
+      ]
+    }
+  ]
+}
