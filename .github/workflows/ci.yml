@@ -134,3 +134,5 @@ jobs:
           soffice --version
       - name: Every golden fixture reads back cell for cell
         run: pnpm run validate
+      - name: Every corpus workbook reads back as committed
+        run: node test/corpus/read-back.ts --check
