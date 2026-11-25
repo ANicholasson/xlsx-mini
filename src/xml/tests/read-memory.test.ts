@@ -10,7 +10,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MEBIBYTE = 1_048_576;
 
 const HEAP_MEBIBYTES = 512;
-const REFUSAL_MILLISECONDS = 2_000;
+/** Thirty times what the slowest flood, the attributes of one tag, takes on a developer's machine. */
+const REFUSAL_MILLISECONDS = 15_000;
 /** A token is read again once the buffer has doubled: twice the longest token, and two chunks. */
 const TOKEN_FLOOD_BYTES = 2 * 4_194_304 + 2 * 16_384;
 const FLOOD_HEAP_BYTES = 64 * MEBIBYTE;
