@@ -20,7 +20,7 @@ export { type ReadColumn, type ReadObject, objectsFromRows } from "./read/object
 /** What one `rows` iteration reads a worksheet with. */
 export interface WorksheetContext {
   readonly strings: SharedStrings;
-  /** Which cell styles show a date, by index, or `undefined` when none does. */
+  /** Which cell styles show a date, by index, or `undefined` where no cell's style is read. */
   readonly dates: DateStyles | undefined;
   /** Whether serials count from 1904. */
   readonly date1904: boolean;
@@ -70,8 +70,8 @@ function written(xml: XmlCursor, start: number): string {
  *
  * A number whose style shows a date is given as a `Date` when the writer can write it, and a date
  * stored as text always is: the type says it is a date, whatever the style (ECMA-376 part 1,
- * 18.18.11). A cell's style is read only where it can change the value: in a cell of type number,
- * when some style shows a date, one attribute and one array read. Elsewhere it is not read.
+ * 18.18.11). A cell's style is read only in a cell of type number, and only when `dates` is a table,
+ * one attribute and one array read. Elsewhere it is not read.
  *
  * Refuses, never repairs: `INVALID_WORKBOOK` when the sheet data cannot be found, is stated twice,
  * or holds anything but rows, and when a `sheetData` or a `row` stands anywhere else; `INVALID_CELL`,

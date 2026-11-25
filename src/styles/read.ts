@@ -9,8 +9,8 @@ import { isBuiltInDate, showsDate } from "./read/date-format.js";
 
 /**
  * One entry per cell style, by the index a cell's `s` holds: 1 when the style's number format shows
- * a date, 0 when it does not. An index past the end names no style. At least one entry is 1: a
- * workbook in which no cell style shows a date has no table.
+ * a date, 0 when it does not. An index past the end names no style. A workbook without a styles
+ * part has one cell style, style 0, the style of a cell without `s`, which shows no date.
  */
 export type DateStyles = Uint8Array;
 

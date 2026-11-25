@@ -14,6 +14,10 @@
  * - a formula is its stored result, or `null` when the file stores none: nothing is calculated;
  * - an empty cell, and empty text, is `null`.
  *
+ * A number that names a cell style the workbook does not have is refused as `INVALID_CELL`, never
+ * read as its serial, in a workbook where some cell style shows a date and in one without a styles
+ * part, whose one cell style is style 0, the style of a cell without `s`.
+ *
  * In a shared string, an inline string and a formula's text result, an escape `_xHHHH_` reads as
  * the UTF-16 code unit it names, as the format's rule for the escape says, also for a character
  * XML cannot carry: `_x0000_` reads as U+0000, and so do `_x0001_`, `_xFFFE_` and `_xFFFF_` as
