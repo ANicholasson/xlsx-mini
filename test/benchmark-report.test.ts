@@ -63,6 +63,7 @@ describe("renderReport", () => {
       "this pull request `head123` against main `base567`; 7 runs each, minimum.",
     );
     expect(report).not.toContain("```");
+    expect(report).not.toContain("`read` reads");
   });
 
   it("shows dashes when a run has no base build", () => {
@@ -92,6 +93,35 @@ describe("renderReport", () => {
     expect(report).toContain(
       "`tokens` is the reader's tokenizer over the worksheet of the wide table: 4,200,000 tokens, which this pull request reads at 35.0 million tokens per second.",
     );
+  });
+
+  it("shows read time beside the write time of a suite, and says once what a read reads", () => {
+    const reads: BenchmarkResult[] = [
+      {
+        suite: "wide table",
+        variant: "read",
+        samples: 7,
+        head: { minMs: 330, p50Ms: 335 },
+        base: { minMs: 300, p50Ms: 305 },
+      },
+      { suite: "wide table", variant: "objects", samples: 7, head: { minMs: 360, p50Ms: 365 } },
+    ];
+    const withReads = (runtime: string): RunResult => {
+      const written = run(runtime);
+      return { ...written, benchmarks: [...written.benchmarks, ...reads] };
+    };
+    const report = renderReport([withReads("node"), withReads("bun")], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+    });
+    expect(report).toContain(
+      "| wide table | store | 180.0 ms | 180.0 ms | +0.0 % |\n| many sheets | deflate | 250.0 ms | 250.0 ms | +0.0 % |\n| wide table | read | 300.0 ms | 330.0 ms | ⚠️ +10.0 % |\n| wide table | objects | — | 360.0 ms | — |",
+    );
+    expect(report.match(/`read` reads/g)).toHaveLength(1);
+    expect(report).toContain(
+      "`read` reads every row of every sheet of the suite through `rows`, and `objects` through `objectsFromRows` with a column for each header. Both builds read one file: the suite as this pull request writes it by default.",
+    );
+    expect(report.indexOf("`read` reads")).toBeLessThan(report.indexOf("### Node"));
   });
 
   it("adds the size of both builds in a bundle, gzipped, and whether the bytes are the same", () => {

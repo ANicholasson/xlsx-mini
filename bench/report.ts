@@ -8,7 +8,8 @@ import type { PackageSize, SizeResult } from "./size.ts";
 /** `stream` is `streamXlsx` with its defaults into a sink that discards the bytes. */
 /** `auto` is the suite with every column sized to its content, written as STORE, to read against `store`. */
 /** `tokens` is the reader's tokenizer over the suite's worksheet, every open and close tag a token. */
-export type Variant = "deflate" | "store" | "stream" | "auto" | "tokens";
+/** `read` is the reader over every row of every sheet of the suite; `objects` is the same rows as objects. */
+export type Variant = "deflate" | "store" | "stream" | "auto" | "tokens" | "read" | "objects";
 
 /** The minimum and the median of a benchmark's runs, in milliseconds. */
 export interface Timing {
@@ -45,6 +46,8 @@ export const ALERT_BAND = 0.15;
 
 /** The marker that lets the workflow find and update its own comment. */
 export const COMMENT_MARKER = "<!-- xlsx-mini-benchmarks -->";
+
+const READS: ReadonlySet<Variant> = new Set(["read", "objects"]);
 
 const RUNTIME_ORDER = ["node", "bun", "deno"];
 const RUNTIME_NAMES: Readonly<Record<string, string>> = { node: "Node", bun: "Bun", deno: "Deno" };
@@ -152,6 +155,12 @@ export function renderReport(runs: readonly RunResult[], options: ReportOptions)
       `Changes inside ±${NOISE_BAND * 100} % are noise; ⚠️ marks more than ${NOISE_BAND * 100} % slower, 🔴 more than ${ALERT_BAND * 100} % slower, 🟢 more than ${NOISE_BAND * 100} % faster.`,
     "",
   ];
+  if (ordered.some((run) => run.benchmarks.some((b) => READS.has(b.variant)))) {
+    lines.push(
+      `\`read\` reads every row of every sheet of the suite through \`rows\`, and \`objects\` through \`objectsFromRows\` with a column for each header. Both builds read one file: the suite as ${options.headLabel} writes it by default.`,
+      "",
+    );
+  }
   for (const run of ordered) {
     lines.push(
       `### ${runtimeTitle(run)}`,
