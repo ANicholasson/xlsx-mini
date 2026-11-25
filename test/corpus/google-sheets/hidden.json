@@ -1,0 +1,28 @@
+{
+  "sheets": [
+    {
+      "name": "Lists",
+      "rows": [
+        [1, "Status"],
+        [2, "Open"],
+        [3, "Shipped"],
+        [4, "Closed"]
+      ]
+    },
+    {
+      "name": "Orders",
+      "rows": [
+        [1, "Id", "Order", "Customer", "Status", "Total", "Import key", "Badge", "Stamp"],
+        [2, 101, "A-1001", "Kari", "Open", 1234.5, "ord_7f3a"],
+        [3, 102, "A-1002", "Ola", "Shipped", 99, "ord_81bc"],
+        [4, 103, "A-1003", "Liv", "Closed", 560.25, "ord_9d02"],
+        [5, 104, "A-1004", "Nils", "Open", 75, "ord_a410"],
+        [6, null, "Total", null, null, { "result": 1968.75 }]
+      ]
+    },
+    {
+      "name": "Notes",
+      "rows": [[1, "Hidden: the Lists sheet, and on Orders columns A, F and H and row 4."]]
+    }
+  ]
+}

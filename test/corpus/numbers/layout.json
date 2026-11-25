@@ -1,0 +1,32 @@
+{
+  "sheets": [
+    {
+      "name": "Export Summary",
+      "rows": [
+        [
+          3,
+          null,
+          "This document was exported from Numbers. Each table was converted to an Excel worksheet. All other objects on each Numbers sheet were placed on separate worksheets. Please be aware that formula calculations may differ in Excel."
+        ],
+        [7, null, "Numbers Sheet Name", "Numbers Table Name", "Excel Worksheet Name"],
+        [9, null, "Orders 2026"],
+        [10, null, null, "Table 1", "Orders 2026"],
+        [11, null, "Notes"],
+        [12, null, null, "Table 1", "Notes"]
+      ]
+    },
+    {
+      "name": "Orders 2026",
+      "rows": [
+        [1, "Order", "Customer", "Total"],
+        [2, "A-1001", "Kari Nordmann", 1234.5],
+        [3, "A-1002", "Ola Nordmann", 99],
+        [4, "A-1003", "Per O'Brien", 100000]
+      ]
+    },
+    {
+      "name": "Notes",
+      "rows": [[1, "No filter here"]]
+    }
+  ]
+}

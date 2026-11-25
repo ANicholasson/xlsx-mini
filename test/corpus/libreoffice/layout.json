@@ -1,0 +1,17 @@
+{
+  "sheets": [
+    {
+      "name": "Orders 2026",
+      "rows": [
+        [1, "Order", "Customer", "Total"],
+        [2, "A-1001", "Kari Nordmann", 1234.5],
+        [3, "A-1002", "Ola Nordmann", 99],
+        [4, "A-1003", "Per O'Brien", 100000]
+      ]
+    },
+    {
+      "name": "Notes",
+      "rows": [[1, "No filter here"]]
+    }
+  ]
+}

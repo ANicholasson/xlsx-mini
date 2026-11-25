@@ -1,0 +1,36 @@
+{
+  "sheets": [
+    {
+      "name": "Export Summary",
+      "rows": [
+        [
+          3,
+          null,
+          "This document was exported from Numbers. Each table was converted to an Excel worksheet. All other objects on each Numbers sheet were placed on separate worksheets. Please be aware that formula calculations may differ in Excel."
+        ],
+        [7, null, "Numbers Sheet Name", "Numbers Table Name", "Excel Worksheet Name"],
+        [9, null, "Links"],
+        [10, null, null, "Table 1", "Links"],
+        [11, null, "Summary"],
+        [12, null, null, "Table 1", "Summary"]
+      ]
+    },
+    {
+      "name": "Links",
+      "rows": [
+        [1, "Kind", "Link"],
+        [2, "Web", "Example docs"],
+        [3, "Mail", "Write to us"],
+        [4, "Sheet", "See the summary"],
+        [5, "Here", "Back to the top"]
+      ]
+    },
+    {
+      "name": "Summary",
+      "rows": [
+        [1, "Total", 42],
+        [2, "Back to the links"]
+      ]
+    }
+  ]
+}
