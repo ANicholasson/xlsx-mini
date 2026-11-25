@@ -23,16 +23,20 @@ export async function bundled(child: string): Promise<Bundled> {
 }
 
 /**
- * Runs `child`, a TypeScript file, in a process of its own whose heap is held to `heapMebibytes`
- * and which has a collector to call, and parses the line of JSON it prints. The process fails, and
- * so does the promise, when the heap does not hold what the child reads.
+ * Runs `child`, a TypeScript file, with `args` in a process of its own whose heap is held to
+ * `heapMebibytes` and which has a collector to call, and parses the line of JSON it prints. The
+ * process fails, and so does the promise, when the heap does not hold what the child reads.
  */
-export async function reportOf(child: string, heapMebibytes: number): Promise<unknown> {
+export async function reportOf(
+  child: string,
+  heapMebibytes: number,
+  args: readonly string[] = [],
+): Promise<unknown> {
   const { script, remove } = await bundled(child);
   try {
     const { stdout } = await promisify(execFile)(
       process.execPath,
-      [`--max-old-space-size=${heapMebibytes}`, "--expose-gc", script],
+      [`--max-old-space-size=${heapMebibytes}`, "--expose-gc", script, ...args],
       { encoding: "utf8" },
     );
     return JSON.parse(stdout);
