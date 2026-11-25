@@ -318,6 +318,8 @@ if (measured !== undefined) {
   const unwritable = new Set<string>();
   const processes: object[] = [];
   const only = argument("--variants")?.split(",");
+  const unknown = only?.filter((name) => !VARIANTS.some((variant) => variant === name));
+  if (unknown?.length) throw new Error(`--variants names no variant ${unknown.join(", ")}`);
   const variantsOf = (suite: SuiteName): readonly Variant[] =>
     VARIANTS.filter(
       (variant) =>

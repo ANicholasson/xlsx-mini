@@ -170,8 +170,10 @@ async function report(): Promise<void> {
   const run = promisify(execFile);
   const self = fileURLToPath(import.meta.url);
   const measured = async <Result>(...args: string[]): Promise<Result> => {
+    // A read that never ends would hold the run for ever on a runtime that waits for it.
     const { stdout } = await run(process.execPath, [...engine(), self, ...args], {
       maxBuffer: 1 << 20,
+      timeout: 300_000,
     });
     return JSON.parse(stdout) as Result;
   };
