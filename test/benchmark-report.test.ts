@@ -115,13 +115,36 @@ describe("renderReport", () => {
       headLabel: "this pull request",
     });
     expect(report).toContain(
-      "| wide table | store | 180.0 ms | 180.0 ms | +0.0 % |\n| many sheets | deflate | 250.0 ms | 250.0 ms | +0.0 % |\n| wide table | read | 300.0 ms | 330.0 ms | ⚠️ +10.0 % |\n| wide table | objects | — | 360.0 ms | — |",
+      "| wide table | store | 180.0 ms | 180.0 ms | +0.0 % |\n| wide table | read | 300.0 ms | 330.0 ms | ⚠️ +10.0 % |\n| wide table | objects | — | 360.0 ms | — |\n| many sheets | deflate | 250.0 ms | 250.0 ms | +0.0 % |",
     );
     expect(report.match(/`read` reads/g)).toHaveLength(1);
     expect(report).toContain(
       "`read` reads every row of every sheet of the suite through `rows`, and `objects` through `objectsFromRows` with a column for each header. Both builds read one file: the suite as this pull request writes it by default.",
     );
     expect(report.indexOf("`read` reads")).toBeLessThan(report.indexOf("### Node"));
+  });
+
+  it("joins the runs of one runtime into one table, by suite and then by variant", () => {
+    const reading: RunResult = {
+      ...run("node", 1, false),
+      benchmarks: [
+        { suite: "wide table", variant: "read", samples: 7, head: { minMs: 330, p50Ms: 335 } },
+        { suite: "many sheets", variant: "read", samples: 7, head: { minMs: 200, p50Ms: 205 } },
+      ],
+    };
+    const report = renderReport([reading, run("node")], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+    });
+    expect(report.match(/### Node/g)).toHaveLength(1);
+    expect(report).toContain(
+      "| wide table | deflate | 500.0 ms | 500.0 ms | +0.0 % |\n| wide table | store | 180.0 ms | 180.0 ms | +0.0 % |\n| wide table | read | — | 330.0 ms | — |\n| many sheets | deflate | 250.0 ms | 250.0 ms | +0.0 % |\n| many sheets | read | — | 200.0 ms | — |",
+    );
+    const elsewhere = renderReport([{ ...reading, version: "24.22.2" }, run("node")], {
+      baseLabel: "main",
+      headLabel: "this pull request",
+    });
+    expect(elsewhere.match(/### Node/g)).toHaveLength(2);
   });
 
   it("adds the size of both builds in a bundle, gzipped, and whether the bytes are the same", () => {

@@ -23,20 +23,41 @@ jobs:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # One job per runtime, side by side: each compares the two builds on its own runner, and no
-    # runtime waits for another.
+    # One job per runtime and direction, side by side: each compares the two builds on its own
+    # runner, and none waits for another. The report joins a runtime's two jobs into one table.
     strategy:
       fail-fast: false
       matrix:
         include:
-          - name: Node
+          - name: Node, writing
             runtime: node
+            part: write
+            variants: deflate,store,stream,auto
             command: node
-          - name: Bun
+          - name: Node, reading
+            runtime: node
+            part: read
+            variants: tokens,read,objects
+            command: node
+          - name: Bun, writing
             runtime: bun
+            part: write
+            variants: deflate,store,stream,auto
             command: ./node_modules/.bin/bun
-          - name: Deno
+          - name: Bun, reading
+            runtime: bun
+            part: read
+            variants: tokens,read,objects
+            command: ./node_modules/.bin/bun
+          - name: Deno, writing
             runtime: deno
+            part: write
+            variants: deflate,store,stream,auto
+            command: ./node_modules/.bin/deno run --allow-all --no-lock
+          - name: Deno, reading
+            runtime: deno
+            part: read
+            variants: tokens,read,objects
             command: ./node_modules/.bin/deno run --allow-all --no-lock
     # Read-only on purpose: this job runs the dependencies and the package, so no write scope and
     # no persisted credential is within their reach. Results leave as an artifact.
@@ -71,16 +92,18 @@ jobs:
         env:
           RUNTIME: ${{ matrix.runtime }}
           RUNTIME_COMMAND: ${{ matrix.command }}
-        run: $RUNTIME_COMMAND bench/run.ts --base base-tree/dist --json "bench/results/$RUNTIME.json" --commit "$COMMIT" --base-commit "$BASE_SHA"
+          PART: ${{ matrix.part }}
+          VARIANTS: ${{ matrix.variants }}
+        run: $RUNTIME_COMMAND bench/run.ts --base base-tree/dist --variants "$VARIANTS" --json "bench/results/$RUNTIME-$PART.json" --commit "$COMMIT" --base-commit "$BASE_SHA"
 
       # The size of the two builds in a bundle is the same on every runtime: one job measures it.
       - name: Bundle size
-        if: matrix.runtime == 'node'
+        if: matrix.runtime == 'node' && matrix.part == 'write'
         run: node bench/size.ts --dist dist --base base-tree/dist --json bench/results/size.json
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: bench-results-${{ matrix.runtime }}
+          name: bench-results-${{ matrix.runtime }}-${{ matrix.part }}
           path: bench/results/*.json
           retention-days: 7
 

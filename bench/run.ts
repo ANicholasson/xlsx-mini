@@ -10,8 +10,9 @@
 // variants `read` and `objects` time the reader: this process writes each suite once with the
 // build under test, as `writeXlsx` writes it by default, and every measuring process of either
 // build reads that one file, every row of every sheet, through `rows` or through `objectsFromRows`.
-// `pnpm bench` prints a table; `--json <file>` also writes the results, and `--samples <file>`
-// every process's timings, for studying the harness itself.
+// `pnpm bench` prints a table; `--json <file>` also writes the results, `--samples <file>` every
+// process's timings, for studying the harness itself, and `--variants tokens,read` measures only
+// the variants named.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,22 +26,13 @@ import {
   type BenchmarkResult,
   type RunResult,
   type Timing,
+  VARIANTS,
   type Variant,
   tokensPerSecond,
 } from "./report.ts";
 import { type SuiteName, suites, withAutoWidths } from "./workbooks.ts";
 
 type Write = () => Promise<unknown>;
-
-const VARIANTS = [
-  "deflate",
-  "store",
-  "stream",
-  "auto",
-  "tokens",
-  "read",
-  "objects",
-] as const satisfies readonly Variant[];
 
 /** The variants measured on one suite alone: the tokenizer, and objects by the table's columns. */
 const ONE_SUITE: Partial<Record<Variant, SuiteName>> = {
@@ -49,6 +41,12 @@ const ONE_SUITE: Partial<Record<Variant, SuiteName>> = {
 };
 
 const READS: ReadonlySet<Variant> = new Set(["read", "objects"]);
+
+/**
+ * About thirty times the slowest measuring process on the runner: five streamed writes of the
+ * string-heavy suite at 1.6 s each, after building it.
+ */
+const MEASURING_MILLISECONDS = 300_000;
 
 const PART_SLICE = 16_384;
 
@@ -279,10 +277,13 @@ function measureInProcess(
       String(iterations),
       ...(file === undefined ? [] : ["--file", file]),
     ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+    // A measurement takes seconds; one that stalls fails the run with its name, not the job's timeout.
+    { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], timeout: MEASURING_MILLISECONDS },
   );
   if (child.status !== 0) {
-    throw new Error(`Measuring ${suite}, ${variant} of ${dist} ended with status ${child.status}`);
+    throw new Error(
+      `Measuring ${suite}, ${variant} of ${dist} ended with status ${child.status}, signal ${child.signal}`,
+    );
   }
   return JSON.parse(child.stdout) as Measured;
 }
@@ -317,8 +318,12 @@ if (measured !== undefined) {
   const tokens = new Map<string, number>();
   const unwritable = new Set<string>();
   const processes: object[] = [];
+  const only = argument("--variants")?.split(",");
   const variantsOf = (suite: SuiteName): readonly Variant[] =>
-    VARIANTS.filter((variant) => (ONE_SUITE[variant] ?? suite) === suite);
+    VARIANTS.filter(
+      (variant) =>
+        (ONE_SUITE[variant] ?? suite) === suite && (only === undefined || only.includes(variant)),
+    );
 
   // Each suite once, as the build under test writes it, for both builds to read, and how many rows
   // and objects one read of it gives: every row has a value, and every sheet a header row.
@@ -330,6 +335,7 @@ if (measured !== undefined) {
   >();
   const headApi = (await import(pathToFileURL(resolve(headDist, "index.js")).href)) as typeof Api;
   for (const [suite, make] of suites) {
+    if (!variantsOf(suite).some((variant) => READS.has(variant))) continue;
     const workbook = make();
     const path = join(written, `${suite}.xlsx`);
     writeFileSync(path, await headApi.writeXlsx(workbook));
