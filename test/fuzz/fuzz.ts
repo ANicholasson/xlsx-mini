@@ -162,6 +162,17 @@ export async function fuzz(run: FuzzRun): Promise<FuzzReport> {
         tallies[last.depth].mutations++;
         tallies[last.depth].failed++;
         next = last.index + 1;
+      } else if (overran?.kind === "started") {
+        // Its end and its bound met: the mutation is counted as it ended, and fails as late.
+        const { index, workbook, depth, mutation } = overran;
+        failures.push({
+          seed: run.seed,
+          index,
+          workbook,
+          depth,
+          mutation,
+          failure: `ended as its time bound of ${MUTATION_MILLISECONDS} ms passed`,
+        });
       } else if (exit !== "code 0") {
         throw new Error(`the fuzz process ended (${exit}) between mutations: ${stderr}`);
       } else if (messages.length === 0 && Date.now() < (run.until ?? Infinity)) {
