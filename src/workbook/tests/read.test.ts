@@ -288,6 +288,7 @@ describe("the sheet list", () => {
         "INVALID_WORKBOOK",
       ],
       [`<sheet name="Orders" sheetId="1" x:id="rId1" xmlns:x="${MAIN}"/>`, "INVALID_WORKBOOK"],
+      ['<sheet name="Orders" sheetId="1" r:identity="rId1"/>', "INVALID_WORKBOOK"],
       [
         `<sheet name="Orders" sheetId="1" r:id="rId1" s:id="rId1" xmlns:s="${STRICT}"/>`,
         "INVALID_XML",

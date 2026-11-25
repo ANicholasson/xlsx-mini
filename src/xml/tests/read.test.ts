@@ -506,6 +506,7 @@ describe("the namespace of an element", () => {
       '<a xmlns:x="urn:one"><X:b/></a>',
       '<a XMLNS:x="urn:one"><x:b/></a>',
       '<a xmlns:x="urn:one" xml:space="preserve" y:z=""/>',
+      '<a xmlnsx:p="urn:one"><p:b/></a>',
     ]) {
       await expectRefused(part);
     }
