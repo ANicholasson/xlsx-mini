@@ -34,12 +34,18 @@ function findingsIn(text: string, where: string, markup: boolean): string[] {
 }
 
 const latin1 = new TextDecoder("latin1");
+const utf16 = new TextDecoder("utf-16le");
 
+/** Beside the text of each part: a path in an entry's name, a comment or between entries, and one in UTF-16. */
 function findingsInFile(name: string, bytes: Uint8Array): string[] {
   if (!name.endsWith(".xlsx")) return findingsIn(latin1.decode(bytes), name, false);
-  return unzip(bytes).flatMap((entry) =>
-    findingsIn(latin1.decode(entry.data), `${name} ${entry.name}`, entry.name.endsWith(".xml")),
-  );
+  const findings = HOME.test(latin1.decode(bytes)) ? [`${name}: a home folder outside a part`] : [];
+  for (const entry of unzip(bytes)) {
+    const where = `${name} ${entry.name}`;
+    findings.push(...findingsIn(latin1.decode(entry.data), where, entry.name.endsWith(".xml")));
+    if (HOME.test(utf16.decode(entry.data))) findings.push(`${where}: a home folder in UTF-16`);
+  }
+  return findings;
 }
 
 const read = (name: string) => new Uint8Array(readFileSync(join(corpus, name)));
@@ -51,6 +57,24 @@ describe("the corpus names no one", () => {
 
   it("holds no name, person, home folder or address but at example.com in any file", () => {
     expect(files.flatMap((name) => findingsInFile(name, read(name)))).toEqual([]);
+  });
+
+  it("finds a home folder in the archive's comment and in a part written in UTF-16", () => {
+    const name = files.find((file) => file.endsWith(".xlsx"))!;
+    const path = "/Users/a/book.xlsx";
+    const comment = new TextEncoder().encode(path);
+    const commented = new Uint8Array(read(name).length + comment.length);
+    commented.set(read(name));
+    commented.set(comment, read(name).length);
+    new DataView(commented.buffer).setUint16(read(name).length - 2, comment.length, true);
+    expect(findingsInFile(name, commented)).toEqual([`${name}: a home folder outside a part`]);
+
+    const wide = new Uint8Array(path.length * 2);
+    for (let at = 0; at < path.length; at++) wide[at * 2] = path.charCodeAt(at);
+    const part = unzip(read(name))[0]!.name;
+    expect(findingsInFile(name, replaceEntries(read(name), new Map([[part, wide]])))).toEqual([
+      `${name} ${part}: a home folder in UTF-16`,
+    ]);
   });
 
   it.each([
