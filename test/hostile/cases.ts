@@ -1918,6 +1918,41 @@ const styleCases: HostileCase[] = [
     }),
     outcome: sheetRefused("INVALID_CELL", { cell: "A1" }),
   })),
+  ...(
+    [
+      [
+        "a styles part whose list of cell styles is misspelled",
+        `<cellXfz><xf numFmtId="14"/></cellXfz>`,
+      ],
+      ["a styles part with an empty list of cell styles", '<cellXfs count="0"/>'],
+      ["a styles part without a list of cell styles", ""],
+      [
+        "a styles part whose list of cell styles is of another namespace",
+        '<q:cellXfs xmlns:q="urn:other"><q:xf numFmtId="14"/></q:cellXfs>',
+      ],
+      [
+        "a styles part with styles of cell styles alone",
+        '<cellStyleXfs><xf numFmtId="14"/></cellStyleXfs>',
+      ],
+    ] as const
+  ).map(([name, inside]): HostileCase => ({
+    name,
+    why: "a styles part that lists no cell style leaves style 0 alone, as a missing one does: a number that names another is refused, never read as its serial (issue 112)",
+    file: styled(
+      '<c r="A1" s="1"><v>5</v></c>',
+      `<styleSheet xmlns="${MAIN}">${inside}</styleSheet>`,
+    ),
+    outcome: sheetRefused("INVALID_CELL", { cell: "A1" }),
+  })),
+  {
+    name: "a styles part that lists no cell style, under numbers that name style 0 or none",
+    why: "style 0 is the style of a cell without `s` (issue 112)",
+    file: styled(
+      '<c r="A1"><v>5</v></c><c r="B1" s="0"><v>6</v></c>',
+      `<styleSheet xmlns="${MAIN}"/>`,
+    ),
+    outcome: read(rows("Sheet1", [1, 5, 6])),
+  },
   {
     name: "a workbook without a styles part whose numbers name style 0 or none",
     why: "style 0 is the style of a cell without `s`, and the only one a workbook without a styles part has (issue 112)",

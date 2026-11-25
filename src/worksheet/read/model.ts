@@ -15,8 +15,9 @@
  * - an empty cell, and empty text, is `null`.
  *
  * A number that names a cell style the workbook does not have is refused as `INVALID_CELL`, never
- * read as its serial, in a workbook where some cell style shows a date and in one without a styles
- * part, whose one cell style is style 0, the style of a cell without `s`.
+ * read as its serial, in a workbook where some cell style shows a date and in one that holds no
+ * cell style, for lack of a styles part or of a cell style in it: its one cell style is style 0,
+ * the style of a cell without `s`.
  *
  * In a shared string, an inline string and a formula's text result, an escape `_xHHHH_` reads as
  * the UTF-16 code unit it names, as the format's rule for the escape says, also for a character
