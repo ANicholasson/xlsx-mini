@@ -497,6 +497,19 @@ const element = (name: string) =>
 
 const TEXT = /<(?:[\w.-]+:)?t(?:\s[^>]*)?>[^<]/;
 
+/** A part's text without its comments; a comment that never closes takes the rest. */
+function withoutComments(text: string): string {
+  let kept = "";
+  for (let at = 0; ;) {
+    const open = text.indexOf("<!--", at);
+    if (open < 0) return kept + text.slice(at);
+    kept += text.slice(at, open);
+    const close = text.indexOf("-->", open + 4);
+    if (close < 0) return kept;
+    at = close + 3;
+  }
+}
+
 interface Followed {
   readonly textOf: (path: string) => string | undefined;
   /** The `sheet` elements inside the workbook part's sheet list, as written. */
@@ -528,9 +541,7 @@ function follow(file: Uint8Array): Followed | undefined {
   }
   const textOf = (path: string) => {
     const entry = entries.find(({ name }) => folded(name) === folded(path));
-    return entry === undefined
-      ? undefined
-      : new TextDecoder().decode(entry.data).replace(/<!--[\s\S]*?-->/g, "");
+    return entry === undefined ? undefined : withoutComments(new TextDecoder().decode(entry.data));
   };
   const resolve = (from: string, target: string) => {
     const steps = target.startsWith("/") ? [] : from.split("/").slice(0, -1);
