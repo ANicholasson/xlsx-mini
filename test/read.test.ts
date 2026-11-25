@@ -393,9 +393,8 @@ describe("rows", () => {
     expect(await valuesOf(parts(STRICT, STRICT_RELATIONSHIPS, "s:"))).toEqual(expected);
   });
 
-  it("reads a cell's style only where it can change the value, so a style that does not exist is refused only on a number in a workbook with a date style", async () => {
-    const rows = '<row r="1"><c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9"><v>2</v></c></row>';
-    const book = async (styles?: string) =>
+  it("reads a number cell's style in a workbook with a date style and in one without a styles part, whose one style is 0, and refuses a style that does not exist only there", async () => {
+    const book = async (rows: string, styles?: string) =>
       openXlsx(
         await workbookOf(
           '<sheet name="One" sheetId="1" r:id="rId1"/>',
@@ -407,15 +406,43 @@ describe("rows", () => {
           },
         ),
       );
-    for (const styles of [undefined, stylesPart(0, 2)]) {
-      expect(await readRows(await book(styles), 0), styles).toEqual([[1, true, 2]]);
-    }
-    expect(await outcomeOf(await book(stylesPart(0, 14)), 0)).toEqual({
+    const refusedAt = (cell: string) => ({
       code: "INVALID_CELL",
       sheet: "One",
-      cell: "B1",
+      cell,
       limit: undefined,
     });
+    const named = '<row r="1"><c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9"><v>2</v></c></row>';
+    expect(await readRows(await book(named, stylesPart(0, 2)), 0)).toEqual([[1, true, 2]]);
+    for (const styles of [undefined, stylesPart(0, 14)]) {
+      expect(await outcomeOf(await book(named, styles), 0), styles).toEqual(refusedAt("B1"));
+    }
+
+    const unstyled = (cells: string) => book(`<row r="1">${cells}</row>`);
+    expect(
+      await readRows(
+        await unstyled(
+          '<c r="A1"><v>2</v></c><c r="B1" s="0"><v>3</v></c><c r="C1" s="00" t="n"><v>4</v></c><c r="D1" s="0"><f>1+4</f><v>5</v></c>',
+        ),
+        0,
+      ),
+    ).toEqual([[1, 2, 3, 4, 5]]);
+    expect(
+      await readRows(
+        await unstyled(
+          '<c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9" t="e"><v>#N/A</v></c><c r="C1" s="9" t="str"><f>B1</f><v>45000</v></c><c r="D1" s="9" t="inlineStr"><is><t>45000</t></is></c><c r="E1" s="9" t="d"><v>2023-03-15</v></c><c r="F1" s="9"/><c r="G1" s="x"><f>1+4</f></c>',
+        ),
+        0,
+      ),
+    ).toEqual([[1, true, "#N/A", "45000", "45000", MARCH_15]]);
+    for (const cell of [
+      '<c r="A1" s="1"><v>45000</v></c>',
+      '<c r="A1" s="1" t="n"><v>45000</v></c>',
+      '<c r="A1" s="1"><f>44999+1</f><v>45000</v></c>',
+      '<c r="A1" s="x"><v>45000</v></c>',
+    ]) {
+      expect(await outcomeOf(await unstyled(cell), 0), cell).toEqual(refusedAt("A1"));
+    }
   });
 
   it("reads the styles part once, by the first read of a worksheet, whichever sheet asks first", async () => {

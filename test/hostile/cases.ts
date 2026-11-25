@@ -1795,6 +1795,11 @@ const styled =
 
 const DATE = styleSheet([], [0, 14]);
 
+const relationshipsWithStyles = (styles: string) =>
+  relationships(relationship("rId1", "worksheet", "worksheets/sheet1.xml"), styles);
+
+const stylesOfType = (type: string) => relationship("rIdT", type, "styles.xml");
+
 const SLOW_FORMATS: readonly (readonly [string, () => string, Row])[] = [
   ["unbalanced quotes", () => "&quot;a".repeat(100_000), [1, 5]],
   ["open brackets", () => "[$-".repeat(70_000), [1, 5]],
@@ -1897,6 +1902,31 @@ const styleCases: HostileCase[] = [
     file: styled(`<c r="A1" s="${style}"><v>5</v></c>`, DATE),
     outcome: sheetRefused("INVALID_CELL", { cell: "A1" }),
   })),
+  ...(
+    [
+      ["a styles relationship whose type differs by one character", stylesOfType("stylez")],
+      ["a styles relationship without a type", '<Relationship Id="rIdT" Target="styles.xml"/>'],
+      ["a styles relationship of another relationship's type", stylesOfType("theme")],
+      ["a styles relationship whose type is in another case", stylesOfType("Styles")],
+      ["no styles relationship", ""],
+    ] as const
+  ).map(([name, styles]): HostileCase => ({
+    name,
+    why: "a workbook without a styles part has style 0 alone: a number that names a date style a damaged relationship lost is refused, never read as its serial (issue 112)",
+    file: styled('<c r="A1" s="1"><v>5</v></c>', DATE, {
+      relationships: relationshipsWithStyles(styles),
+    }),
+    outcome: sheetRefused("INVALID_CELL", { cell: "A1" }),
+  })),
+  {
+    name: "a workbook without a styles part whose numbers name style 0 or none",
+    why: "style 0 is the style of a cell without `s`, and the only one a workbook without a styles part has (issue 112)",
+    file: styled('<c r="A1"><v>5</v></c><c r="B1" s="0"><v>6</v></c>', DATE, {
+      relationships: relationshipsWithStyles(""),
+      without: ["xl/styles.xml"],
+    }),
+    outcome: read(rows("Sheet1", [1, 5, 6])),
+  },
   {
     name: "a style that does not exist, on text",
     why: "where a style cannot change the value it is not read, so not refused (issue 86)",
