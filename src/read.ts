@@ -65,10 +65,12 @@ export interface OpenedWorkbook {
    * refusal of the shared strings or the styles names none, and every later iteration of a
    * worksheet repeats it. A date is a `Date` (see `ReadValue`).
    *
-   * A cell's style is read only where it can change the value: in a cell that holds a number, in a
-   * workbook where some cell style shows a date. There a style that is not written in decimal
-   * digits, or that names no cell style, is refused with `INVALID_CELL`. Anywhere else the style
-   * is not read, so it is not refused.
+   * A cell's style is read only in a cell that holds a number, and only in a workbook where some
+   * cell style shows a date or that holds no cell style: one without a styles part, or with a
+   * styles part that lists none. There a style that is not written in decimal digits, or that
+   * names no cell style, is refused with `INVALID_CELL`. A workbook that holds no cell style has
+   * one, style 0, the style of a cell without `s`. Anywhere else the style is not read, so it is
+   * not refused.
    *
    * One iteration holds one row and the text of the part around it. In trials with the default
    * limits, the most one iteration reached was 106 MiB of heap on Node, for a row of six cells that
@@ -138,7 +140,7 @@ export async function openXlsx(
           );
     const dates =
       styles === undefined
-        ? undefined
+        ? new Uint8Array(1)
         : await readXml(
             pkg.open(styles, book.structure) ?? damaged("the styles part is missing"),
             stylesVisitor(),

@@ -788,7 +788,7 @@ describe("dates", () => {
     }
   });
 
-  it("reads a cell's style only where it can change the value: a number, when a style shows a date", async () => {
+  it("reads a cell's style only in a number and only when given a table of styles, as where a style shows a date", async () => {
     const elsewhere: readonly (readonly [string, string, ReadValue])[] = [
       ["", "", null],
       [' t="n"', "", null],

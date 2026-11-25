@@ -302,14 +302,16 @@ describe("which cell styles show a date", () => {
     expect(await datesOf(part)).toEqual([0, 1, 0, 0]);
   });
 
-  it("gives no table when no cell style shows a date, so that no cell's style is read", async () => {
-    for (const inner of [
-      "",
-      "<cellXfs/>",
-      `<fonts/>${named}`,
-      `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(0)}${xf(2)}${xf(164)}${xf(20)}</cellXfs>`,
-    ]) {
-      expect(await datesOf(styleSheet(inner)), inner).toBeUndefined();
+  it("gives no table when no cell style shows a date, so that no cell's style is read, and style 0 alone when the part lists no cell style", async () => {
+    expect(
+      await datesOf(
+        styleSheet(
+          `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(0)}${xf(2)}${xf(164)}${xf(20)}</cellXfs>`,
+        ),
+      ),
+    ).toBeUndefined();
+    for (const inner of ["", "<cellXfs/>", `<fonts/>${named}`]) {
+      expect(await datesOf(styleSheet(inner)), inner).toEqual([0]);
     }
     expect(await datesOf(styleSheet(`<cellXfs>${xf(0)}${xf(2)}${xf(14)}</cellXfs>`))).toEqual([
       0, 0, 1,
