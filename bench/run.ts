@@ -6,20 +6,27 @@
 // one process share the engine's compiled code and its heap, and on the runner that made one of
 // them write a streamed sheet at less than half its speed; apart, a build meets what a program
 // using it meets, and a benchmark is not shaped by the ones before it.
-// The variant `tokens` times the reader's tokenizer over the wide table's worksheet instead.
-// `pnpm bench` prints a table; `--json <file>` also writes the results, and `--samples <file>`
-// every process's timings, for studying the harness itself.
+// The variant `tokens` times the reader's tokenizer over the wide table's worksheet instead. The
+// variants `read` and `objects` time the reader: this process writes each suite once with the
+// build under test, as `writeXlsx` writes it by default, and every measuring process of either
+// build reads that one file, every row of every sheet, through `rows` or through `objectsFromRows`.
+// `pnpm bench` prints a table; `--json <file>` also writes the results, `--samples <file>` every
+// process's timings, for studying the harness itself, and `--variants tokens,read` measures only
+// the variants named.
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type * as Api from "../src/index.ts";
+import type * as Read from "../src/read.ts";
 import type * as Xml from "../src/xml/read.ts";
 import { unzip } from "../test/helpers/unzip.ts";
 import {
   type BenchmarkResult,
   type RunResult,
   type Timing,
+  VARIANTS,
   type Variant,
   tokensPerSecond,
 } from "./report.ts";
@@ -27,22 +34,33 @@ import { type SuiteName, suites, withAutoWidths } from "./workbooks.ts";
 
 type Write = () => Promise<unknown>;
 
-const VARIANTS = [
-  "deflate",
-  "store",
-  "stream",
-  "auto",
-  "tokens",
-] as const satisfies readonly Variant[];
+/** The variants measured on one suite alone: the tokenizer, and objects by the table's columns. */
+const ONE_SUITE: Partial<Record<Variant, SuiteName>> = {
+  tokens: "wide table",
+  objects: "wide table",
+};
 
-const TOKENIZED: SuiteName = "wide table";
+const READS: ReadonlySet<Variant> = new Set(["read", "objects"]);
+
+/**
+ * About thirty times the slowest measuring process on the runner: five streamed writes of the
+ * string-heavy suite at 1.6 s each, after building it.
+ */
+const MEASURING_MILLISECONDS = 300_000;
 
 const PART_SLICE = 16_384;
 
 const SPREADSHEET = new Map([["http://schemas.openxmlformats.org/spreadsheetml/2006/main", 1]]);
 
-/** Null when the build cannot do what the variant asks. */
-type Measured = { readonly samples: readonly number[]; readonly tokens?: number } | null;
+/**
+ * Null when the build cannot do what the variant asks. `rows` is what each read gave: the rows of
+ * every sheet, or the objects.
+ */
+type Measured = {
+  readonly samples: readonly number[];
+  readonly tokens?: number;
+  readonly rows?: number;
+} | null;
 
 interface RuntimeInfo {
   readonly runtime: string;
@@ -133,17 +151,71 @@ async function tokenizing(
 }
 
 /**
+ * Every row of every sheet of a file, through `rows`, or through `objectsFromRows` with a column
+ * for each cell of the first sheet's header row. Counts what it reads, so that nothing goes unread.
+ */
+async function reading(
+  dist: string,
+  file: string,
+  variant: Variant,
+): Promise<{ readonly read: () => Promise<number> } | undefined> {
+  // A build from before the reader has no such module, and then no such row.
+  const reader = (await import(pathToFileURL(resolve(dist, "read.js")).href).catch(
+    () => undefined,
+  )) as typeof Read | undefined;
+  if (reader === undefined) return undefined;
+  const { buffer, byteOffset, byteLength } = readFileSync(file);
+  const bytes = new Uint8Array(buffer, byteOffset, byteLength);
+  const book = await reader.openXlsx(bytes);
+  let columns: { readonly key: string }[] = [];
+  for await (const { cells } of book.rows(0)) {
+    columns = cells.map((header) => ({ key: String(header) }));
+    break;
+  }
+  return {
+    async read() {
+      const opened = await reader.openXlsx(bytes);
+      let count = 0;
+      for (let sheet = 0; sheet < opened.sheets.length; sheet++) {
+        const rows = opened.rows(sheet);
+        for await (const _ of variant === "objects"
+          ? reader.objectsFromRows(rows, columns)
+          : rows) {
+          count++;
+        }
+      }
+      return count;
+    },
+  };
+}
+
+/**
  * What a measuring process does: loads the one build from its `dist/` folder, as the host itself
  * resolves it, builds the one suite, writes it once to warm up, then `iterations` timed times
  * with a collection before each where the host exposes one. For the tokenizer the suite is written
- * once, and its worksheet is what is read and timed.
+ * once, and its worksheet is what is read and timed. A read builds nothing: it reads `file`.
  */
 async function measure(
   dist: string,
   suite: string,
   variant: Variant,
   iterations: number,
+  file: string | undefined,
 ): Promise<Measured> {
+  if (READS.has(variant)) {
+    const reader = await reading(dist, file!, variant);
+    if (reader === undefined) return null;
+    const counts = new Set<number>();
+    const read = () => reader.read().then((count) => void counts.add(count));
+    if (!(await succeeds(read))) return null;
+    const samples: number[] = [];
+    for (let i = 0; i < iterations; i++) {
+      collectGarbage();
+      samples.push(await time(read));
+    }
+    if (counts.size !== 1) throw new Error(`The reads of ${file} gave ${[...counts].join(", ")}`);
+    return { samples, rows: [...counts][0]! };
+  }
   const api = (await import(pathToFileURL(resolve(dist, "index.js")).href)) as typeof Api;
   const workbook = suites.find(([name]) => name === suite)![1]();
   const written = variant === "auto" ? withAutoWidths(workbook) : workbook;
@@ -179,6 +251,7 @@ function measureInProcess(
   suite: SuiteName,
   variant: Variant,
   iterations: number,
+  file: string | undefined,
 ): Measured {
   const script = fileURLToPath(import.meta.url);
   const { runtime } = detectRuntime();
@@ -202,11 +275,14 @@ function measureInProcess(
       variant,
       "--iterations",
       String(iterations),
+      ...(file === undefined ? [] : ["--file", file]),
     ],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] },
+    { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], timeout: MEASURING_MILLISECONDS },
   );
   if (child.status !== 0) {
-    throw new Error(`Measuring ${suite}, ${variant} of ${dist} ended with status ${child.status}`);
+    throw new Error(
+      `Measuring ${suite}, ${variant} of ${dist} ended with status ${child.status}, signal ${child.signal}`,
+    );
   }
   return JSON.parse(child.stdout) as Measured;
 }
@@ -225,6 +301,7 @@ if (measured !== undefined) {
     argument("--suite")!,
     argument("--variant") as Variant,
     iterations,
+    argument("--file"),
   );
   console.log(JSON.stringify(measurement));
 } else {
@@ -240,8 +317,38 @@ if (measured !== undefined) {
   const tokens = new Map<string, number>();
   const unwritable = new Set<string>();
   const processes: object[] = [];
+  const only = argument("--variants")?.split(",");
+  const unknown = only?.filter((name) => !VARIANTS.some((variant) => variant === name));
+  if (unknown?.length) throw new Error(`--variants names no variant ${unknown.join(", ")}`);
   const variantsOf = (suite: SuiteName): readonly Variant[] =>
-    VARIANTS.filter((variant) => variant !== "tokens" || suite === TOKENIZED);
+    VARIANTS.filter(
+      (variant) =>
+        (ONE_SUITE[variant] ?? suite) === suite && (only === undefined || only.includes(variant)),
+    );
+
+  // Every row of the suites holds a value, and every sheet has a header row.
+  const written = mkdtempSync(join(tmpdir(), "xlsx-mini-bench-"));
+  process.on("exit", () => rmSync(written, { recursive: true, force: true }));
+  const files = new Map<
+    SuiteName,
+    { readonly path: string; readonly reads: Map<Variant, number> }
+  >();
+  const headApi = (await import(pathToFileURL(resolve(headDist, "index.js")).href)) as typeof Api;
+  for (const [suite, make] of suites) {
+    if (!variantsOf(suite).some((variant) => READS.has(variant))) continue;
+    const workbook = make();
+    const path = join(written, `${suite}.xlsx`);
+    writeFileSync(path, await headApi.writeXlsx(workbook));
+    let rows = 0;
+    for (const sheet of workbook.sheets) for (const _ of sheet.rows) rows++;
+    files.set(suite, {
+      path,
+      reads: new Map([
+        ["read", rows],
+        ["objects", rows - workbook.sheets.length],
+      ]),
+    });
+  }
   let turn = 0;
   for (let round = 0; round < rounds; round++) {
     for (const [suite] of suites) {
@@ -255,16 +362,21 @@ if (measured !== undefined) {
                 [baseDist, false],
               ];
         if ((round + turn++) % 2 === 1) builds.reverse();
+        const file = READS.has(variant) ? files.get(suite)! : undefined;
         for (const [dist, isHead] of builds) {
-          const measurement = measureInProcess(dist, suite, variant, iterations);
+          const measurement = measureInProcess(dist, suite, variant, iterations, file?.path);
           const samples = measurement?.samples ?? null;
           processes.push({ build: isHead ? "head" : "base", round, suite, variant, samples });
           if (measurement === null) {
-            // A base from before streaming, auto widths or the tokenizer has no such row; the
-            // build under test must do what every variant asks.
-            if (isHead) throw new Error(`The build under test could not write ${key}`);
+            // A base from before streaming, auto widths, the tokenizer or the reader has no such
+            // row; the build under test must do what every variant asks.
+            if (isHead) throw new Error(`The build under test could not measure ${key}`);
             unwritable.add(key);
             continue;
+          }
+          const expected = file?.reads.get(variant);
+          if (measurement.rows !== expected) {
+            throw new Error(`Reading ${key} gave ${measurement.rows} rows, not ${expected}`);
           }
           const into = isHead ? headSamples : baseSamples;
           into.set(key, [...(into.get(key) ?? []), ...measurement.samples]);
