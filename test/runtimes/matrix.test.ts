@@ -20,10 +20,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const binary = (name: string) => binaryIn(root, name);
 const node = direct(process.execPath);
 
-/**
- * A host of the matrix: how the scenario runs there, the zip method its default output uses, and
- * whether it has an inflate to read deflated parts with.
- */
+/** A host of the matrix: how the scenario runs there, and the zip method its default output uses. */
 interface Host {
   readonly name: string;
   readonly run: () => Promise<HostReport>;

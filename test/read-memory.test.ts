@@ -12,7 +12,10 @@ import type { FlatRead, KeptRead } from "./read-memory.child.ts";
 const child = join(dirname(fileURLToPath(import.meta.url)), "read-memory.child.ts");
 
 const MEBIBYTE = 1_048_576;
-/** What a heap may hold besides its old space, which the cap limits; without the cap it is gibibytes. */
+/**
+ * What a heap may hold besides its old space, which the cap limits: the young space, 96 MiB on
+ * Node 26 and 192 MiB on Node 24 on the machine that set this. Without the cap the heap is gibibytes.
+ */
 const YOUNG_SPACE_BYTES = 256 * MEBIBYTE;
 /** The rows of the file each child reads first, so that its own read meets compiled code. */
 const SMALL_ROWS = 1_000;
@@ -30,7 +33,7 @@ const FLAT_HEAP_MEBIBYTES = 64;
 const FLAT_RATIO = 2;
 
 const KEPT_ROWS = 100_000;
-/** Room for the shared strings of the kept sheet: 100 000 kept texts and as many of filler. */
+/** Room for the shared strings of the kept sheet, which the workbook holds: a part of 54 MiB. */
 const KEPT_HEAP_MEBIBYTES = 256;
 /**
  * Twice what a kept text of 19 characters takes on Node 24 and 26, 4.3 bytes per character: a copy

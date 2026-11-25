@@ -89,8 +89,8 @@ export function keptWorkbook(
   ];
 }
 
-/** Room for the shared strings of the kept sheet, which hold the filler text too. */
-export const KEPT_LIMITS = { sharedStringBytes: 64 * 1_048_576 } as const;
+/** Room for the shared strings of the kept sheet, a part of 54 MiB with the filler text. */
+const KEPT_LIMITS = { sharedStringBytes: 64 * 1_048_576 } as const;
 
 /**
  * One kept column: how many strings and characters, how many differ from the text written, what

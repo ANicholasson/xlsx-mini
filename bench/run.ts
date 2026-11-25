@@ -277,7 +277,6 @@ function measureInProcess(
       String(iterations),
       ...(file === undefined ? [] : ["--file", file]),
     ],
-    // A measurement takes seconds; one that stalls fails the run with its name, not the job's timeout.
     { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], timeout: MEASURING_MILLISECONDS },
   );
   if (child.status !== 0) {
@@ -325,8 +324,7 @@ if (measured !== undefined) {
         (ONE_SUITE[variant] ?? suite) === suite && (only === undefined || only.includes(variant)),
     );
 
-  // Each suite once, as the build under test writes it, for both builds to read, and how many rows
-  // and objects one read of it gives: every row has a value, and every sheet a header row.
+  // Every row of the suites holds a value, and every sheet has a header row.
   const written = mkdtempSync(join(tmpdir(), "xlsx-mini-bench-"));
   process.on("exit", () => rmSync(written, { recursive: true, force: true }));
   const files = new Map<
@@ -368,9 +366,9 @@ if (measured !== undefined) {
           const samples = measurement?.samples ?? null;
           processes.push({ build: isHead ? "head" : "base", round, suite, variant, samples });
           if (measurement === null) {
-            // A base from before streaming, auto widths or the tokenizer has no such row; the
-            // build under test must do what every variant asks.
-            if (isHead) throw new Error(`The build under test could not write ${key}`);
+            // A base from before streaming, auto widths, the tokenizer or the reader has no such
+            // row; the build under test must do what every variant asks.
+            if (isHead) throw new Error(`The build under test could not measure ${key}`);
             unwritable.add(key);
             continue;
           }

@@ -2,7 +2,8 @@
 // reading holds: each suite read once from its bytes, the wide table read at 100 000 and 1 000 000
 // rows from its bytes and from a `Blob` of its file, and a column of text kept from a large sheet.
 // `pnpm bench:memory` prints the tables. `bun bench/memory.ts` and `deno run --allow-all
-// bench/memory.ts` print the reads; a name as the argument runs one measurement.
+// bench/memory.ts` print the reads. A name as the argument runs one measurement; a read's name is
+// followed by the file to read and a small file of its kind to read first.
 import { execFile } from "node:child_process";
 import { mkdtempSync, openAsBlob, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,7 +54,7 @@ function fileBytes(path: string): Uint8Array {
 
 const dist = (file: string) => new URL(`../dist/${file}`, import.meta.url).href;
 
-/** One read in this process, from a file another process wrote: a suite, the wide table, or a kept column. */
+/** One read in this process, from a file another process wrote: a suite, or the wide table. */
 interface ReadMeasurement {
   readonly name: string;
   readonly fileBytes: number;
@@ -198,7 +199,6 @@ async function report(): Promise<void> {
     }
   }
 
-  // Every file is written here, so a read's process holds nothing a write left behind.
   const api = (await import(dist("index.js"))) as typeof Api;
   const folder = mkdtempSync(join(tmpdir(), "xlsx-mini-memory-"));
   process.on("exit", () => rmSync(folder, { recursive: true, force: true }));
