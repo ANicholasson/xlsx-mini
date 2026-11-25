@@ -69,6 +69,7 @@ for (const [name, head, unit, tail, read, splitByMarkup] of cases) {
   collect();
   let text = "";
   const outcome = await readXml(part(head, unit, tail, splitByMarkup ? 1 : unit.length), {
+    namespaces: new Map(),
     open(xml) {
       text = xml.attribute("b") ?? "";
     },

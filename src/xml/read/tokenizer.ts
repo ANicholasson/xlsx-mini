@@ -23,9 +23,15 @@ const SKIPPED = 4;
 const MAX_DEPTH = 256;
 /**
  * About 128 times the longest text a cell holds. The names kept for the elements last opened at
- * each depth may hold as many characters together.
+ * each depth, and the declarations in scope, may hold as many characters together.
  */
 const MAX_TOKEN_LENGTH = 4_194_304;
+/**
+ * What a declaration in scope counts toward those characters besides its prefix and namespace
+ * name, for the objects that hold it: fewer than 1 024 fit, and no workbook in the corpora holds
+ * more than ten.
+ */
+const DECLARATION_CHARACTERS = 4096;
 
 const MALFORMED = "a part is not well-formed XML";
 const MISMATCHED = "a part closes a tag it did not open";
@@ -33,8 +39,12 @@ const UNDEFINED_ENTITY = "a part holds an entity XML does not define";
 const DOCTYPE = "a part holds a DOCTYPE";
 const TOO_DEEP = "a part nests elements deeper than 256";
 const TOO_LONG = "a part holds a token longer than 4 194 304 characters";
-const TOO_MANY_NAMES = "a part holds element names longer than 4 194 304 characters together";
+const TOO_MANY_NAMES = "a part holds names in scope longer than 4 194 304 characters together";
+const UNBOUND = "a part uses a prefix no declaration binds";
 const AFTER_ROOT = "a part holds content after its root element";
+
+/** Bound by the standard to `xml`, without a declaration, and to no other prefix. */
+const XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
 
 const EXCLAMATION = 33;
 const DOUBLE_QUOTE = 34;
@@ -85,12 +95,33 @@ const SENTINEL = "\0";
 const PAIRED_ATTRIBUTES = 8;
 
 /**
+ * `marks` holds three numbers for each attribute of a tag under a prefix or named `xmlns`: its
+ * place in `spans`, where its prefix ends (0 for `xmlns`), and `DECLARED` or, once its prefix is
+ * resolved, `RESOLVED` less the number the reader gives its namespace.
+ */
+const MARK = 3;
+const DECLARED = -1;
+const RESOLVED = -2;
+
+/** A prefix, `""` for the default namespace, bound by a declaration in scope. */
+interface Binding {
+  readonly prefix: string;
+  readonly uri: string;
+  /** The number the visitor's `namespaces` gives `uri`, 0 when it names none. */
+  readonly space: number;
+  /** The binding of the same prefix that this one hides until its element closes. */
+  readonly hidden: Binding | undefined;
+  /** Of the element that declares it, from 0, and -1 for none. */
+  readonly depth: number;
+}
+
+/**
  * A pull tokenizer over decoded text. It holds the text of at most one unfinished token, the text
- * of the element it is in, and the newest chunk; it checks that tags nest and match, and never
- * recurses.
+ * of the element it is in, the newest chunk, and the namespace declarations in scope; it checks
+ * that tags nest and match, that every prefix is bound, and never recurses.
  *
  * It is the cursor too: after `next` returns `OPEN` or `CLOSE`, its `XmlCursor` members describe
- * that token. No object is created per token and none per attribute.
+ * that token. No object is created per token and none per attribute: a declaration makes one.
  */
 export interface Tokenizer extends XmlCursor {
   /**
@@ -110,7 +141,7 @@ export interface Tokenizer extends XmlCursor {
   feed(text: string | undefined): void;
 }
 
-export function createTokenizer(): Tokenizer {
+export function createTokenizer(namespaces: ReadonlyMap<string, number>): Tokenizer {
   let limit = 0;
   let position = 0;
   let dropped = 0;
@@ -125,6 +156,22 @@ export function createTokenizer(): Tokenizer {
   let rooted = false;
   let selfClosing = false;
 
+  const xml: Binding = {
+    prefix: "xml",
+    uri: XML_NAMESPACE,
+    space: 0,
+    hidden: undefined,
+    depth: -1,
+  };
+  /** In the order declared, so the last are those of the innermost element that declares any. */
+  const bindings: Binding[] = [xml];
+  /** The innermost binding of each prefix in scope. */
+  const scope = new Map<string, Binding>([["xml", xml]]);
+  let defaultSpace = 0;
+  /** Of the innermost open element that declares a namespace, or -1. */
+  let declaringDepth = -1;
+  let lastLookedUp: Binding | undefined;
+
   let leaf = false;
   let textful = false;
   let copied = "";
@@ -137,6 +184,8 @@ export function createTokenizer(): Tokenizer {
   const spans: number[] = [];
   let spanCount = 0;
   const seen = new Set<string>();
+  const marks: number[] = [];
+  let markCount = 0;
 
   function stuck(at: number, what: string): typeof NEED {
     if (at < limit || ended) refuse(what);
@@ -200,6 +249,109 @@ export function createTokenizer(): Tokenizer {
       if (spans[at + 1]! - start === length && holds(text, start, key, 0, length)) return at;
     }
     return -1;
+  }
+
+  function namespacedAt(key: string, space: number): number {
+    const text = cursor.buffer;
+    const length = key.length;
+    let found = -1;
+    // Every index below `markCount` was written by the scan of the open tag, and resolved; once
+    // the element closes, `spanCount` is 0 and no attribute is found.
+    for (let at = 0; spanCount !== 0 && at < markCount; at += MARK) {
+      const span = marks[at]!;
+      const local = marks[at + 1]! + 1;
+      if (
+        marks[at + 2] === RESOLVED - space &&
+        spans[span + 1]! - local === length &&
+        holds(text, local, key, 0, length)
+      ) {
+        if (found >= 0) refuse(MALFORMED);
+        found = span;
+      }
+    }
+    return found;
+  }
+
+  /** Compares with the last prefix found before slicing, so a prefix repeated allocates nothing. */
+  function lookup(text: string, start: number, end: number): Binding {
+    const length = end - start;
+    if (
+      lastLookedUp?.prefix.length !== length ||
+      !holds(text, start, lastLookedUp.prefix, 0, length)
+    ) {
+      lastLookedUp = scope.get(text.slice(start, end)) ?? refuse(UNBOUND);
+    }
+    return lastLookedUp;
+  }
+
+  /**
+   * Binds the declarations of the open tag, in the order written, for the element at `index`; then
+   * resolves the prefix of each other attribute under one. Every index below `markCount` was
+   * written by the scan of the tag.
+   */
+  function resolve(text: string, index: number): void {
+    let count = 0;
+    for (let at = 0; at < markCount; at += MARK) {
+      if (marks[at + 2] !== DECLARED) continue;
+      const span = marks[at]!;
+      const prefixEnd = marks[at + 1]!;
+      const prefix = prefixEnd === 0 ? "" : detach(text.slice(prefixEnd + 1, spans[span + 1]));
+      const uri = detach(decode(text, spans[span + 2]!, spans[span + 3]!, ATTRIBUTE));
+      // XML Namespaces 1.0, section 3: `xml` binds its own namespace and nothing binds `xmlns`.
+      if (
+        prefix === "xmlns" ||
+        (prefix === "xml") !== (uri === XML_NAMESPACE) ||
+        (uri === "" && prefix !== "")
+      ) {
+        refuse(MALFORMED);
+      }
+      nameCharacters += prefix.length + uri.length + DECLARATION_CHARACTERS;
+      if (nameCharacters > MAX_TOKEN_LENGTH) refuse(TOO_MANY_NAMES);
+      const binding = {
+        prefix,
+        uri,
+        space: namespaces.get(uri) ?? 0,
+        hidden: scope.get(prefix),
+        depth: index,
+      };
+      bindings.push(binding);
+      scope.set(prefix, binding);
+      if (prefix === "") defaultSpace = binding.space;
+      count++;
+    }
+    if (count !== 0) {
+      declaringDepth = index;
+      lastLookedUp = undefined;
+    }
+    for (let at = 0; at < markCount; at += MARK) {
+      if (marks[at + 2] !== DECLARED) {
+        marks[at + 2] = RESOLVED - lookup(text, spans[marks[at]!]!, marks[at + 1]!).space;
+      }
+    }
+  }
+
+  function release(): void {
+    // `xml`, which no element declares, is always the first.
+    while (bindings[bindings.length - 1]!.depth === declaringDepth) {
+      const { prefix, uri, hidden } = bindings.pop()!;
+      if (hidden === undefined) scope.delete(prefix);
+      else scope.set(prefix, hidden);
+      nameCharacters -= prefix.length + uri.length + DECLARATION_CHARACTERS;
+      if (prefix === "") defaultSpace = hidden?.space ?? 0;
+    }
+    declaringDepth = bindings[bindings.length - 1]!.depth;
+    lastLookedUp = undefined;
+  }
+
+  function mark(text: string, start: number, prefixEnd: number, length: number): void {
+    const declares =
+      (prefixEnd === 0 ? length : prefixEnd - start) === 5 && text.startsWith("xmlns", start);
+    if (declares || prefixEnd !== 0) {
+      marks[markCount] = spanCount;
+      marks[markCount + 1] = prefixEnd;
+      marks[markCount + 2] = declares ? DECLARED : 0;
+      markCount += MARK;
+    }
   }
 
   function scan(): Token | typeof SKIPPED {
@@ -276,6 +428,7 @@ export function createTokenizer(): Tokenizer {
       }
       cursor.name = locals[depth - 1]!;
       cursor.depth = depth--;
+      if (depth === declaringDepth) release();
       textful = leaf;
       leaf = false;
       spanCount = 0;
@@ -349,10 +502,10 @@ export function createTokenizer(): Tokenizer {
     if (colon === nameEnd - 1) return stuck(end, MALFORMED);
 
     if (spans.length > 4 * PAIRED_ATTRIBUTES) {
-      spans.length = 0;
+      spans.length = marks.length = 0;
       seen.clear();
     }
-    spanCount = 0;
+    spanCount = markCount = 0;
     let empty = false;
     for (;;) {
       const gap = end;
@@ -376,12 +529,6 @@ export function createTokenizer(): Tokenizer {
       }
       const keyEnd = end;
       if (prefixEnd === keyEnd - 1) return stuck(end, MALFORMED);
-      const key =
-        prefixEnd === 0 ||
-        declaration ||
-        (prefixEnd - start === 5 && text.startsWith("xmlns", start))
-          ? start
-          : prefixEnd + 1;
       while ((kindOf(code) & SPACE) !== 0) code = text.charCodeAt(++end);
       if (code !== EQUALS) return stuck(end, MALFORMED);
       do code = text.charCodeAt(++end);
@@ -401,15 +548,15 @@ export function createTokenizer(): Tokenizer {
         }
       }
 
-      // Two attributes of one tag with one key are one too many: a lookup could not tell them apart.
-      // Every index below `spanCount` was written for an attribute before this one.
-      const length = keyEnd - key;
+      // Two attributes of one tag written with one name are one too many: a lookup could not tell
+      // them apart. Every index below `spanCount` was written for an attribute before this one.
+      const length = keyEnd - start;
       if (spanCount < 4 * PAIRED_ATTRIBUTES) {
         for (let other = 0; other < spanCount; other += 4) {
           const otherStart = spans[other]!;
           if (
             spans[other + 1]! - otherStart === length &&
-            holds(text, key, text, otherStart, length)
+            holds(text, start, text, otherStart, length)
           ) {
             refuse(MALFORMED);
           }
@@ -421,11 +568,12 @@ export function createTokenizer(): Tokenizer {
             seen.add(text.slice(spans[other]!, spans[other + 1]!));
           }
         }
-        const name = text.slice(key, keyEnd);
+        const name = text.slice(start, keyEnd);
         if (seen.has(name)) refuse(MALFORMED);
         seen.add(name);
       }
-      spans[spanCount] = key;
+      if (prefixEnd !== 0 || length === 5) mark(text, start, prefixEnd, length);
+      spans[spanCount] = start;
       spans[spanCount + 1] = keyEnd;
       spans[spanCount + 2] = valueStart;
       spans[spanCount + 3] = end;
@@ -458,6 +606,8 @@ export function createTokenizer(): Tokenizer {
     }
 
     if (depth === MAX_DEPTH) refuse(TOO_DEEP);
+    // A declaration holds for the tag it stands on, wherever in the tag, and for what it holds.
+    if (markCount !== 0) resolve(text, depth);
     // Siblings repeat their name: the element last opened at this depth lends its strings.
     const sibling = names[depth];
     const length = nameEnd - nameStart;
@@ -468,6 +618,7 @@ export function createTokenizer(): Tokenizer {
       names[depth] = name;
       locals[depth] = colon === 0 ? name : detach(text.slice(colon + 1, nameEnd));
     }
+    cursor.namespace = colon === 0 ? defaultSpace : lookup(text, nameStart, colon).space;
     // The two lists were written just now or when that sibling opened.
     cursor.name = locals[depth]!;
     cursor.depth = ++depth;
@@ -482,13 +633,14 @@ export function createTokenizer(): Tokenizer {
 
   const cursor = {
     name: "",
+    namespace: 0,
     depth: 0,
     valueEnd: 0,
     buffer: SENTINEL,
 
-    // `attributeAt` gives the first of four numbers the scan of the open tag wrote, or -1.
-    attribute(name: string): string | undefined {
-      const at = attributeAt(name);
+    // Each lookup gives the first of the four numbers the scan of the open tag wrote, or -1.
+    attribute(name: string, namespace = 0): string | undefined {
+      const at = namespace === 0 ? attributeAt(name) : namespacedAt(name, namespace);
       if (at < 0) return undefined;
       return detach(decode(cursor.buffer, spans[at + 2]!, spans[at + 3]!, ATTRIBUTE));
     },
@@ -517,6 +669,7 @@ export function createTokenizer(): Tokenizer {
       if (selfClosing) {
         selfClosing = false;
         cursor.depth = depth--;
+        if (depth === declaringDepth) release();
         textful = true;
         leaf = false;
         spanCount = 0;

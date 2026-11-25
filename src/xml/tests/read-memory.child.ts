@@ -26,6 +26,10 @@ export interface Report {
   readonly partBytes: number;
   readonly kept: readonly Keeping[];
   readonly heldAfterAttributes: number;
+  readonly heldAtNextTag: number;
+  readonly heldAtNextTagPrefixed: number;
+  readonly nested: number;
+  readonly heldInScope: number;
 }
 
 const collect = (globalThis as { gc?: () => void }).gc ?? (() => undefined);
@@ -116,6 +120,7 @@ function made(
 }
 
 const counting: XmlVisitor<never, string> = {
+  namespaces: new Map(),
   open() {},
   close: () => undefined,
   end: () => "read",
@@ -172,7 +177,26 @@ floods.push(
   await flood(
     "the long names of 256 nested elements",
     SLICE,
-    made((index) => `<p:e${index}${"n".repeat(500_000)}>`, FLOOD_BYTES, SLICE),
+    made(
+      (index) => `<p:e${index}${"n".repeat(500_000)}${index === 0 ? ' xmlns:p="urn:p"' : ""}>`,
+      FLOOD_BYTES,
+      SLICE,
+    ),
+  ),
+  await flood(
+    "the long namespace names of nested declarations",
+    SLICE,
+    made((index) => `<e xmlns:p="urn:${"n".repeat(500_000)}${index}">`, FLOOD_BYTES, SLICE),
+  ),
+  await flood(
+    "a declaration on every element, each out of scope when the next comes",
+    SLICE,
+    made(
+      (index) => (index === 0 ? "<r>" : `<p:e xmlns:p="urn:p${index % 1000}" p:a="${index}"/>`),
+      FLOOD_BYTES,
+      SLICE,
+      "</r>",
+    ),
   ),
   await flood(
     "the text of one element, in runs between long comments",
@@ -230,7 +254,12 @@ async function keeping(
     SLICE,
     "</part>",
   );
-  await readXml(source, { open: look("open"), close: look("close"), end: () => undefined });
+  await readXml(source, {
+    namespaces: new Map(),
+    open: look("open"),
+    close: look("close"),
+    end: () => undefined,
+  });
   const heapGrowth = held() - before;
   return {
     what,
@@ -243,30 +272,76 @@ async function keeping(
 const kept: Keeping[] = [];
 for (const [what, on, keep] of keepers) kept.push(await keeping(what, on, keep));
 
-const beforeAttributes = held();
-let heldAfterAttributes = 0;
-await readXml(
-  made(
-    (index) =>
-      index === 0
-        ? "<part><a"
-        : index < 380_000
-          ? ` n${index}=""`
-          : index === 380_000
-            ? "/>"
-            : "<b><c>1</c></b>",
-    12 * 1_048_576,
-    SLICE,
-    "</part>",
-  ),
-  {
-    open() {},
-    close: () => undefined,
-    end() {
-      heldAfterAttributes = held() - beforeAttributes;
+/**
+ * What is held once a tag of as many attributes as a token may hold is followed by others: at the
+ * end of the part, or when the next tag opens, which still holds the text fed after the long tag.
+ */
+async function heldAfter(count: number, prefix: string, atNextTag: boolean): Promise<number> {
+  const before = held();
+  let after = Number.NaN;
+  await readXml(
+    made(
+      (index) =>
+        index === 0
+          ? '<part xmlns:p="urn:p"><a'
+          : index < count
+            ? ` ${prefix}n${index}=""`
+            : index === count
+              ? "/>"
+              : "<b><c>1</c></b>",
+      12 * 1_048_576,
+      SLICE,
+      "</part>",
+    ),
+    {
+      namespaces: new Map(),
+      open(xml) {
+        if (atNextTag && xml.name === "b" && Number.isNaN(after)) after = held() - before;
+      },
+      close: () => undefined,
+      end() {
+        if (!atNextTag) after = held() - before;
+      },
     },
+  );
+  return after;
+}
+
+const heldAfterAttributes = await heldAfter(380_000, "", false);
+const heldAtNextTag = await heldAfter(300_000, "", true);
+const heldAtNextTagPrefixed = await heldAfter(300_000, "p:", true);
+
+const NESTED = 200;
+
+function nestedDeclarations(): ByteChunks {
+  const opened = Array.from(
+    { length: NESTED },
+    (_, index) =>
+      `<e xmlns:prefix${"p".repeat(16)}${index}="urn:${"u".repeat(64)}:${index}">${" ".repeat(SLICE)}`,
+  );
+  const bytes = encoder.encode(`${opened.join("")}<deepest/>${"</e>".repeat(NESTED)}`);
+  let at = 0;
+  return {
+    read() {
+      const chunk = at < bytes.length ? bytes.subarray(at, at + SLICE) : undefined;
+      at += SLICE;
+      return Promise.resolve(chunk);
+    },
+    close() {},
+  };
+}
+
+const declarations = nestedDeclarations();
+const beforeScope = held();
+let heldInScope = Number.NaN;
+await readXml(declarations, {
+  namespaces: new Map(),
+  open(xml) {
+    if (xml.depth === NESTED + 1) heldInScope = held() - beforeScope;
   },
-);
+  close: () => undefined,
+  end: () => undefined,
+});
 
 const report: Report = {
   heapLimit: getHeapStatistics().heap_size_limit,
@@ -275,5 +350,9 @@ const report: Report = {
   partBytes: PART_BYTES,
   kept,
   heldAfterAttributes,
+  heldAtNextTag,
+  heldAtNextTagPrefixed,
+  nested: NESTED,
+  heldInScope,
 };
 console.log(JSON.stringify(report));

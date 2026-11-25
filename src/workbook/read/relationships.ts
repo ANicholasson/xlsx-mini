@@ -21,13 +21,27 @@ export function relationshipsOf(part: string): string {
   return `${part.slice(0, folder)}_rels/${part.slice(folder)}.rels`;
 }
 
-/** An id stated twice is refused, since a sheet names its relationship by id. */
+const RELATIONSHIPS = 1;
+/** Open Packaging Conventions (ECMA-376 part 2), the same in both families. */
+const PACKAGE = new Map([
+  ["http://schemas.openxmlformats.org/package/2006/relationships", RELATIONSHIPS],
+]);
+
+/**
+ * An id stated twice is refused, since a sheet names its relationship by id; so is an element in
+ * another namespace than the package's relationships, the root included.
+ */
 export function relationshipsVisitor(): XmlVisitor<never, Relationships> {
   const relationships = new Map<string | undefined, Relationship>();
   return {
+    namespaces: PACKAGE,
     open(xml) {
       const root = xml.depth === 1;
-      if (xml.depth > 2 || xml.name !== (root ? "Relationships" : "Relationship")) {
+      if (
+        xml.depth > 2 ||
+        xml.namespace !== RELATIONSHIPS ||
+        xml.name !== (root ? "Relationships" : "Relationship")
+      ) {
         refuse("a relationships part is damaged");
       }
       if (root) return;

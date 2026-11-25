@@ -6,6 +6,7 @@
 import { type Meter, type RowMeter, XlsxReadError } from "../errors/read.js";
 import { type SharedStrings, createStringItem } from "../shared-strings/read.js";
 import type { DateStyles } from "../styles/read.js";
+import { SPREADSHEET, SPREADSHEET_NAMESPACES } from "../workbook/read.js";
 import { type XmlCursor, type XmlVisitor, detach } from "../xml/read.js";
 import { MAX_COLUMNS, MAX_ROWS } from "./lib/cell-ref.js";
 import { columnOfReference, referenceOf } from "./read/cell-reference.js";
@@ -78,6 +79,11 @@ function written(xml: XmlCursor, start: number): string {
  * is malformed or that the writer cannot write, and, in a cell that holds a number where its style
  * is read, a style index that is not decimal or names no style. Hidden rows and columns read like
  * visible ones.
+ *
+ * Every element named here is SpreadsheetML's, Transitional or Strict. One of another namespace
+ * is an element of an unknown name: passed over with what it holds where one is passed over, and
+ * refused where one is refused, so a `row` or a `c` of another vocabulary never gives a value.
+ * An attribute under a prefix, such as `x:r`, is not the one named.
  */
 export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow, void> {
   const { strings, dates, date1904, positions, rowText } = context;
@@ -134,8 +140,9 @@ export function worksheetVisitor(context: WorksheetContext): XmlVisitor<ReadRow,
   }
 
   return {
+    namespaces: SPREADSHEET_NAMESPACES,
     open(xml) {
-      const name = xml.name;
+      const name = xml.namespace === SPREADSHEET ? xml.name : "";
       if (skippedDepth === 0 && pathDepth === 1 && name !== "sheetData") skippedDepth = 2;
       if (skippedDepth !== 0) {
         if (name === "sheetData" || name === "row") damaged();

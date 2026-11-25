@@ -85,6 +85,7 @@ async function outcomeOf(book: OpenedWorkbook, sheet: string | number): Promise<
 
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 const relationship = (id: string, type: string, target: string) =>
   `<Relationship Id="${id}" Type="${RELATIONSHIPS}/${type}" Target="${target}"/>`;
@@ -99,9 +100,9 @@ function workbookOf(
   more: Readonly<Record<string, string>> = {},
 ): Promise<Uint8Array> {
   const parts = {
-    "_rels/.rels": `<Relationships>${relationship("rId1", "officeDocument", "xl/workbook.xml")}</Relationships>`,
-    "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}"><sheets>${sheets}</sheets></workbook>`,
-    "xl/_rels/workbook.xml.rels": `<Relationships>${relationships}</Relationships>`,
+    "_rels/.rels": `<Relationships xmlns="${PACKAGE}">${relationship("rId1", "officeDocument", "xl/workbook.xml")}</Relationships>`,
+    "xl/workbook.xml": `<workbook xmlns="${MAIN}" xmlns:r="${RELATIONSHIPS}"><sheets>${sheets}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="${PACKAGE}">${relationships}</Relationships>`,
     ...more,
   };
   const encoder = new TextEncoder();
@@ -327,7 +328,7 @@ describe("rows", () => {
         relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
           relationship("rId2", "styles", "styles.xml"),
         {
-          "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}">${properties}<sheets><sheet name="Dates" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+          "xl/workbook.xml": `<workbook xmlns="${MAIN}" xmlns:r="${RELATIONSHIPS}">${properties}<sheets><sheet name="Dates" sheetId="1" r:id="rId1"/></sheets></workbook>`,
           "xl/worksheets/sheet1.xml": sheetPart(rows),
           "xl/styles.xml": stylesPart(0, 14),
         },
@@ -340,6 +341,56 @@ describe("rows", () => {
     expect(await readRows(await openXlsx(await bytes("<workbookPr/>")), 0)).toEqual([
       [1, 0, june(18, 12), 44000.5, june(19, 0)],
     ]);
+  });
+
+  it("reads a workbook that writes SpreadsheetML with a prefix on every element, and one of the Strict family, as the same values", async () => {
+    const STRICT = "http://purl.oclc.org/ooxml/spreadsheetml/main";
+    const STRICT_RELATIONSHIPS = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+    const parts = (main: string, related: string, prefix: string) => {
+      const x = (inner: string) => inner.replaceAll(/<(\/?)(\w)/g, `<$1${prefix}$2`);
+      const declared = prefix === "" ? `xmlns="${main}"` : `xmlns:${prefix.slice(0, -1)}="${main}"`;
+      const link = (id: string, type: string, target: string) =>
+        `<Relationship Id="${id}" Type="${related}/${type}" Target="${target}"/>`;
+      const root = (name: string, inner: string, more = "") =>
+        `<${prefix}${name} ${declared}${more}>${x(inner)}</${prefix}${name}>`;
+      return {
+        "_rels/.rels": `<Relationships xmlns="${PACKAGE}">${link("rId1", "officeDocument", "xl/workbook.xml")}</Relationships>`,
+        "xl/workbook.xml": root(
+          "workbook",
+          '<workbookPr date1904="0"/><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets>',
+          ` xmlns:r="${related}"`,
+        ),
+        "xl/_rels/workbook.xml.rels": `<Relationships xmlns="${PACKAGE}">${
+          link("rId1", "worksheet", "worksheets/sheet1.xml") +
+          link("rId2", "sharedStrings", "sharedStrings.xml") +
+          link("rId3", "styles", "styles.xml")
+        }</Relationships>`,
+        "xl/worksheets/sheet1.xml": root(
+          "worksheet",
+          '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>2.5</v></c>' +
+            '<c r="C1" s="1"><v>45000</v></c><c r="D1" t="inlineStr"><is><r><t>in</t></r><r><t>line</t></r></is></c>' +
+            '<c r="E1" t="b"><v>1</v></c></row></sheetData>',
+        ),
+        "xl/sharedStrings.xml": root("sst", '<si><t xml:space="preserve">shared </t></si>'),
+        "xl/styles.xml": root(
+          "styleSheet",
+          '<cellXfs><xf numFmtId="0"/><xf numFmtId="14"/></cellXfs>',
+        ),
+      };
+    };
+    const encoder = new TextEncoder();
+    const valuesOf = async (written: Readonly<Record<string, string>>) => {
+      const bytes = await createPackage(
+        Object.entries(written).map(([path, text]) => ({ path, data: encoder.encode(text) })),
+        store,
+      );
+      return readRows(await openXlsx(bytes), "Data");
+    };
+    const expected = [[1, "shared ", 2.5, new Date(Date.UTC(2023, 2, 15)), "inline", true]];
+    expect(await valuesOf(parts(MAIN, RELATIONSHIPS, ""))).toEqual(expected);
+    expect(await valuesOf(parts(MAIN, RELATIONSHIPS, "x:"))).toEqual(expected);
+    expect(await valuesOf(parts(STRICT, STRICT_RELATIONSHIPS, ""))).toEqual(expected);
+    expect(await valuesOf(parts(STRICT, STRICT_RELATIONSHIPS, "s:"))).toEqual(expected);
   });
 
   it("reads a cell's style only where it can change the value, so a style that does not exist is refused only on a number in a workbook with a date style", async () => {

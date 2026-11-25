@@ -78,14 +78,6 @@ function meaning(characters: readonly Character[]): string {
   return characters.map(({ point }) => String.fromCodePoint(point)).join("");
 }
 
-function isDeclaration(name: string): boolean {
-  return name === "xmlns" || name.startsWith("xmlns:");
-}
-
-function keyOf(name: string): string {
-  return isDeclaration(name) ? name : name.slice(name.indexOf(":") + 1);
-}
-
 const SPACES = ["", " ", "\n", "\t ", "\r\n"];
 
 function writeNode(node: Node): string {
@@ -131,9 +123,7 @@ function writeNode(node: Node): string {
 function tokensOfModel(element: Element, depth: number, tokens: Token[]): Token[] {
   const name = element.name.slice(element.name.indexOf(":") + 1);
   const attributes: Record<string, string> = {};
-  for (const attribute of element.attributes) {
-    attributes[keyOf(attribute.name)] = meaning(attribute.value);
-  }
+  for (const attribute of element.attributes) attributes[attribute.name] = meaning(attribute.value);
   tokens.push(["open", name, depth, attributes]);
   let text = "";
   let leaf = true;
@@ -150,7 +140,7 @@ function tokensOfModel(element: Element, depth: number, tokens: Token[]): Token[
 }
 
 function keysOf(element: Element, keys = new Set<string>()): Set<string> {
-  for (const attribute of element.attributes) keys.add(keyOf(attribute.name));
+  for (const attribute of element.attributes) keys.add(attribute.name);
   for (const child of element.children) if (child.kind === "element") keysOf(child, keys);
   return keys;
 }
@@ -219,12 +209,19 @@ const { element } = fc.letrec<{ element: Element; node: Node }>((tie) => ({
     kind: fc.constant("element" as const),
     name: elementName,
     attributes: fc.uniqueArray(
-      fc.record({
-        name: attributeName,
-        quote: fc.constantFrom('"' as const, "'" as const),
-        value: characters,
-      }),
-      { maxLength: 11, selector: ({ name }) => keyOf(name) },
+      fc
+        .record({
+          name: attributeName,
+          quote: fc.constantFrom('"' as const, "'" as const),
+          value: characters,
+        })
+        // A prefix bound to no namespace is refused: the model binds each to one.
+        .map((attribute) =>
+          attribute.name.startsWith("xmlns:") && attribute.value.length === 0
+            ? { ...attribute, value: [{ point: 117, way: 0 }] }
+            : attribute,
+        ),
+      { maxLength: 11, selector: ({ name }) => name },
     ),
     children: fc.array(tie("node"), { maxLength: 4 }),
     layout: fc.nat({ max: 0xffff }),
@@ -255,6 +252,13 @@ interface Part {
   readonly bytes: Uint8Array;
 }
 
+/** Every prefix an element or an attribute is written with is bound on the root. */
+const BOUND: readonly Attribute[] = ["r", "x", "x14ac"].map((prefix) => ({
+  name: `xmlns:${prefix}`,
+  quote: '"',
+  value: `urn:${prefix}`.split("").map((character) => ({ point: character.charCodeAt(0), way: 1 })),
+}));
+
 const part: fc.Arbitrary<Part> = fc
   .record({
     mark: fc.constantFrom("", "\uFEFF"),
@@ -263,9 +267,14 @@ const part: fc.Arbitrary<Part> = fc
     root: element,
     after: around,
   })
-  .map(({ mark, declaration: declared, before, root, after }) => {
+  .map(({ mark, declaration: declared, before, root: generated, after }) => {
     const misc = (nodes: readonly (Node | string)[]) =>
       nodes.map((node) => (typeof node === "string" ? node : writeNode(node))).join("");
+    const own = new Set(generated.attributes.map(({ name }) => name));
+    const root: Element = {
+      ...generated,
+      attributes: [...BOUND.filter(({ name }) => !own.has(name)), ...generated.attributes],
+    };
     return {
       root,
       bytes: utf8(`${mark}${declared}${misc(before)}${writeNode(root)}${misc(after)}`),
@@ -355,7 +364,7 @@ describe("a part cut into chunks", () => {
   const sampleTokens: Token[] = [
     ["open", "sst", 1, { "xmlns:x": "urn:x", count: "2", uniqueCount: "2" }],
     ["open", "si", 2, {}],
-    ["open", "t", 3, { space: "preserve" }],
+    ["open", "t", 3, { "xml:space": "preserve" }],
     ["close", "t", 3, " Tom & Jerry 🎉\r\n"],
     ["close", "si", 2, ""],
     ["open", "si", 2, { a: 'é"€\t 🎉' }],
@@ -366,7 +375,7 @@ describe("a part cut into chunks", () => {
     ["close", "si", 2, ""],
     ["close", "sst", 1, ""],
   ];
-  const asked = ["xmlns:x", "count", "uniqueCount", "space", "a", "x"];
+  const asked = ["xmlns:x", "count", "uniqueCount", "xml:space", "space", "a", "x"];
 
   it("gives the same tokens cut after any one byte, a multi-byte character included", async () => {
     const bytes = utf8(sample);

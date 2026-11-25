@@ -46,9 +46,17 @@ export function chunked(part: string | Uint8Array, cuts: readonly number[] = [])
   };
 }
 
+/** `urn:one` has a second spelling, as SpreadsheetML has Transitional and Strict. */
+export const NAMESPACES: ReadonlyMap<string, number> = new Map([
+  ["urn:one", 1],
+  ["urn:one:strict", 1],
+  ["urn:two", 2],
+]);
+
 export function collector(asked: readonly string[] = []): XmlVisitor<never, Token[]> {
   const tokens: Token[] = [];
   return {
+    namespaces: NAMESPACES,
     open(xml: XmlCursor) {
       const attributes: Record<string, string> = {};
       for (const name of asked) {

@@ -3,6 +3,7 @@
  * styles show a date. What decides it lives here, beside the code that writes number formats.
  */
 import { XlsxReadError } from "../errors/read.js";
+import { SPREADSHEET, SPREADSHEET_NAMESPACES } from "../workbook/read.js";
 import type { XmlVisitor } from "../xml/read.js";
 import { isBuiltInDate, showsDate } from "./read/date-format.js";
 
@@ -38,6 +39,8 @@ function damaged(): never {
  * a `numFmts` from the fallback of an `AlternateContent`, which openpyxl does not; anything in a
  * `numFmts` but a `numFmt` that holds nothing; anything directly in a `cellXfs` but an `xf`, and an
  * `xf` deeper in one; a `numFmt` without an id or a code; an id that is not a decimal integer.
+ * Every element named here is SpreadsheetML's: one of another namespace is an unknown element, and
+ * an attribute under a prefix, such as `foo:numFmtId`, is not the one named.
  */
 export function stylesVisitor(): XmlVisitor<never, DateStyles | undefined> {
   const custom = new Map<number, boolean>();
@@ -47,8 +50,9 @@ export function stylesVisitor(): XmlVisitor<never, DateStyles | undefined> {
   let section = 0;
   let seen = 0;
   return {
+    namespaces: SPREADSHEET_NAMESPACES,
     open(xml) {
-      const name = xml.name;
+      const name = xml.namespace === SPREADSHEET ? xml.name : "";
       const depth = xml.depth;
       if (depth === 1) {
         if (name !== "styleSheet") damaged();

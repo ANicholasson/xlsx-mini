@@ -171,6 +171,14 @@ The rows of a sheet cost 2 043 bytes gzipped and 5 529 bytes minified. By the mi
 
 Dates cost 1 361 bytes gzipped and 3 705 minified. By the minified bytes the source map gives each file: what a number format shows 1 025, a serial or a date stored as text to a `Date` 797, the styles visitor 724, the date system and the styles' relationship in the workbook reader 480, the writer's serial arithmetic 200, the worksheet visitor 195, the value of a cell 138, the entry's styles table 137, and 9 more in the package and XML layers, which dates do not edit. A second round of review changed them by 260, measured commit by commit: white space and any number of decimals in a date stored as text 221, a minute after a second that no minute stands before and a bracket inside a bracket 67, a style read only where it can change the value 4 fewer, and an undefined format id read as no date 24 fewer. The budget stays.
 
+### Namespaces in the reader, 2026-11-25
+
+| Bundle           | Before namespaces | With them |   Budget |
+| ---------------- | ----------------: | --------: | -------: |
+| `xlsx-mini/read` |          10 965 B |  11 687 B | 12 000 B |
+
+Reading elements by their namespace (ADR 0032) costs 722 bytes gzipped and 1 851 minified: the declarations in scope and their lookup in the tokenizer, the namespace names of SpreadsheetML in both families and of the package's relationships, and a test of the namespace in each part reader. The budget stays, with 313 bytes left.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.
