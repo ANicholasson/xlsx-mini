@@ -1,4 +1,5 @@
 import type { StreamOptions, StreamedWorkbook, Workbook, WriteOptions } from "../../src/index.js";
+import type { OpenedWorkbook } from "../../src/read.js";
 
 /** What every host reports back after running the scenario. */
 export interface HostReport {
@@ -14,7 +15,26 @@ export interface HostReport {
   readonly mime: string;
   /** The error code `downloadXlsx` threw on a host without a document. */
   readonly noDom: string | undefined;
+  /** Each package above read back by the read entry, and the default package once more from a `Blob`. */
+  readonly read: {
+    readonly stored: ReadBack;
+    readonly deflated: ReadBack;
+    readonly streamed: ReadBack;
+    readonly streamedDeflated: ReadBack;
+    readonly blob: ReadBack;
+  };
 }
+
+/** A value as JSON carries it: a `Date` as `{ date }` with its ISO instant. */
+export type PlainValue = string | number | boolean | null | { readonly date: string };
+
+/** The sheets and every sheet's rows, each as its number and its cells; or the refusal's code. */
+export type ReadBack =
+  | {
+      readonly sheets: readonly string[];
+      readonly rows: readonly (readonly [number, ...PlainValue[]])[];
+    }
+  | { readonly refused: string; readonly coded: boolean };
 
 /** The shape of the core entry the scenario needs, as any host loads it. */
 export interface CoreLike {
@@ -29,5 +49,15 @@ export interface BrowserLike {
   XLSX_MIME_TYPE: string;
 }
 
+/** The shape of the read entry the scenario needs. */
+export interface ReadLike {
+  openXlsx(file: Uint8Array | Blob): Promise<OpenedWorkbook>;
+  XlsxReadError: new (...args: never[]) => Error;
+}
+
 export declare const workbook: Workbook;
-export declare function run(lib: CoreLike, browser: BrowserLike): Promise<HostReport>;
+export declare function run(
+  lib: CoreLike,
+  browser: BrowserLike,
+  read: ReadLike,
+): Promise<HostReport>;
