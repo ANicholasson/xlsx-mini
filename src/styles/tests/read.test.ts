@@ -26,8 +26,9 @@ const numFmt = (id: number | string, code: string) =>
   `<numFmt numFmtId="${id}" formatCode="${escaped(code)}"/>`;
 const xf = (id?: number | string, more = ' xfId="0"') =>
   `<xf${id === undefined ? "" : ` numFmtId="${id}"`} fontId="0" fillId="0" borderId="0"${more}/>`;
+const X14 = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main";
 const styleSheet = (inner: string) =>
-  `<styleSheet xmlns="${MAIN}" xmlns:mc="${COMPATIBILITY}">${inner}</styleSheet>`;
+  `<styleSheet xmlns="${MAIN}" xmlns:mc="${COMPATIBILITY}" xmlns:x14="${X14}">${inner}</styleSheet>`;
 const alternate = (inner: string) =>
   `<mc:AlternateContent><mc:Choice Requires="x14">${inner}</mc:Choice></mc:AlternateContent>`;
 const named = '<cellStyleXfs count="2"><xf numFmtId="0"/><xf numFmtId="14"/></cellStyleXfs>';
@@ -430,8 +431,73 @@ describe("which cell styles show a date", () => {
     for (const part of [
       `<styles xmlns="${MAIN}"><cellXfs>${xf(14)}</cellXfs></styles>`,
       "<sst/>",
+      `<styleSheet><cellXfs>${xf(14)}</cellXfs></styleSheet>`,
+      `<styleSheet xmlns="urn:foreign"><cellXfs>${xf(14)}</cellXfs></styleSheet>`,
     ]) {
       expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("reads SpreadsheetML in either family and under any prefix, and an element of another namespace as one of an unknown name", async () => {
+    const inner = `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(0)}${xf(164)}${xf(14)}</cellXfs>`;
+    for (const part of [
+      styleSheet(inner),
+      `<styleSheet xmlns="http://purl.oclc.org/ooxml/spreadsheetml/main">${inner}</styleSheet>`,
+      `<x:styleSheet xmlns:x="${MAIN}">${inner.replaceAll(/<(\/?)(\w)/g, "<$1x:$2")}</x:styleSheet>`,
+    ]) {
+      expect(await datesOf(part), part).toEqual([0, 0, 1]);
+    }
+    // The shapes of the stored cases, as LibreOffice shows them: a number where it differs from
+    // openpyxl, or a refusal.
+    const foo = 'xmlns:foo="urn:foreign"';
+    const shapes: [
+      shape: string,
+      inner: string,
+      outcome: readonly number[] | string | undefined,
+    ][] = [
+      [
+        "foreign-ns numFmts only, a cell style with built-in 14",
+        `<foo:numFmts ${foo}><foo:numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></foo:numFmts><cellXfs>${xf(0)}${xf(14)}</cellXfs>`,
+        [0, 1],
+      ],
+      [
+        "foreign-ns numFmts after cellXfs",
+        `<numFmts>${numFmt(164, "0.00")}</numFmts><cellXfs>${xf(0)}${xf(164)}</cellXfs><foo:numFmts ${foo}><foo:numFmt numFmtId="164" formatCode="yyyy"/></foo:numFmts>`,
+        undefined,
+      ],
+      [
+        "foreign-ns cellXfs after the real one",
+        `<cellXfs>${xf(0)}${xf(0)}</cellXfs><foo:cellXfs ${foo}><foo:xf numFmtId="14"/></foo:cellXfs>`,
+        undefined,
+      ],
+      [
+        "foreign-ns xf inside cellXfs",
+        `<cellXfs>${xf(0)}<foo:xf ${foo} numFmtId="14"/>${xf(0)}</cellXfs>`,
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "numFmtId in a foreign namespace",
+        `<cellXfs>${xf(0)}<xf ${foo} foo:numFmtId="14" fontId="0" fillId="0" borderId="0"/></cellXfs>`,
+        undefined,
+      ],
+      [
+        "numFmtId of a numFmt in a foreign namespace",
+        `<numFmts><numFmt ${foo} foo:numFmtId="164" formatCode="yyyy"/></numFmts><cellXfs>${xf(164)}</cellXfs>`,
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "a numFmt of another namespace in numFmts",
+        `<numFmts><foo:numFmt ${foo} numFmtId="164" formatCode="0.00"/></numFmts><cellXfs>${xf(14)}</cellXfs>`,
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "an xf of another namespace inside an xf",
+        `<cellXfs><xf numFmtId="14"><foo:xf ${foo}/></xf></cellXfs>`,
+        [1],
+      ],
+    ];
+    for (const [shape, styles, outcome] of shapes) {
+      expect(await outcomeOf(styleSheet(styles)), shape).toEqual(outcome);
     }
   });
 

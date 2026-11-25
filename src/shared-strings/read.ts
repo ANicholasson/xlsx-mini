@@ -3,6 +3,7 @@
  * string in a worksheet shares. Text is given as stored: nothing is trimmed.
  */
 import { type Meter, XlsxReadError } from "../errors/read.js";
+import { SPREADSHEET, SPREADSHEET_NAMESPACES } from "../workbook/read.js";
 import { JOINED_PIECES, type XmlCursor, type XmlVisitor, detach } from "../xml/read.js";
 
 /**
@@ -21,7 +22,8 @@ function damaged(): never {
  * Refuses with `INVALID_WORKBOOK` a part whose root is not `sst`, and anything under the root but
  * an `si` and the extensions of `extLst`, which may hold no `si`: an entry in a markup-compatibility
  * block or an extension is counted by one reader and passed over by another, and every index after
- * it would name another string.
+ * it would name another string. An element is these only in SpreadsheetML's namespace, so an `si`
+ * of another namespace is refused like any other element there.
  */
 export function sharedStringsVisitor(
   count: Meter<"sharedStrings">,
@@ -30,9 +32,10 @@ export function sharedStringsVisitor(
   const item = createStringItem(2);
   let skipped = 0;
   return {
+    namespaces: SPREADSHEET_NAMESPACES,
     open(xml) {
       const depth = xml.depth;
-      const name = xml.name;
+      const name = xml.namespace === SPREADSHEET ? xml.name : "";
       if (skipped !== 0) {
         if (name === "si") damaged();
       } else if (depth > 2 ? item.open(xml) : depth === 1 ? name === "sst" : name === "si") {
@@ -62,7 +65,8 @@ export function sharedStringsVisitor(
  * The text of one string item, `si` in the table or `is` in a cell, told of every element below the
  * item's own. The item's text is the text of its `t` and of the `t` of each rich run `r`, in order,
  * each with its escapes decoded; the properties of a run (`rPr`) and the phonetic runs (`rPh`,
- * `phoneticPr`) hold no text of it. One state object serves every item of a part.
+ * `phoneticPr`) hold no text of it. Each is an element of SpreadsheetML's namespace, and one of
+ * another namespace is none of them. One state object serves every item of a part.
  */
 interface StringItem {
   /**
@@ -94,7 +98,7 @@ export function createStringItem(depth: number): StringItem {
     open(xml) {
       if (skipped !== 0) return true;
       if (inText !== 0) return false;
-      const name = xml.name;
+      const name = xml.namespace === SPREADSHEET ? xml.name : "";
       const ownChild = xml.depth - depth === 1;
       if (ownChild) {
         if (name === "r") {

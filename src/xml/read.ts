@@ -3,12 +3,14 @@
  * Knows nothing about spreadsheets and nothing about packages.
  *
  * A part reader is a synchronous visitor. It never sees bytes, a promise or a chunk edge, so it
- * cannot inflate, cannot wait and cannot be handed half a token. What XML itself can do to a
- * reader is refused here with `INVALID_XML`, for every part alike: a DOCTYPE, text that is not
- * valid UTF-8, nesting deeper than 256, a token longer than 4 194 304 characters, the names of
- * the open elements longer than that together, tags that do not match, an entity XML does not
- * define, content after the root. Those numbers are not limits a caller sets: no workbook comes
- * near them.
+ * cannot inflate, cannot wait and cannot be handed half a token. It names the namespaces it reads,
+ * and the cursor gives each element the number it named the element's namespace with. What XML
+ * itself can do to a reader is refused here with `INVALID_XML`, for every part alike: a DOCTYPE,
+ * text that is not valid UTF-8, nesting deeper than 256, a token longer than 4 194 304
+ * characters, the names of the open elements and the namespace declarations in scope longer than
+ * that together, tags that do not match, an entity XML does not define, content after the root, a
+ * prefix that no declaration binds, a declaration XML Namespaces forbids. Those numbers are not
+ * limits a caller sets: no workbook comes near them.
  */
 import type { ByteChunks, XmlVisitor } from "./read/contract.js";
 import { textChunks } from "./read/text.js";
@@ -32,7 +34,7 @@ export async function* scanXml<Item, Result>(
   visitor: XmlVisitor<Item, Result>,
 ): AsyncGenerator<Item, Result, undefined> {
   const text = textChunks(bytes);
-  const tokenizer = createTokenizer();
+  const tokenizer = createTokenizer(visitor.namespaces);
   try {
     for (;;) {
       const token = tokenizer.next();

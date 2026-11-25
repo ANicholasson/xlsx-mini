@@ -39,6 +39,8 @@ const TOKENIZED: SuiteName = "wide table";
 
 const PART_SLICE = 16_384;
 
+const SPREADSHEET = new Map([["http://schemas.openxmlformats.org/spreadsheetml/2006/main", 1]]);
+
 /** Null when the build cannot do what the variant asks. */
 type Measured = { readonly samples: readonly number[]; readonly tokens?: number } | null;
 
@@ -115,6 +117,7 @@ async function tokenizing(
           close() {},
         },
         {
+          namespaces: SPREADSHEET,
           open() {
             tokens++;
           },

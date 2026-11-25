@@ -2,10 +2,8 @@
  * The read side of the workbook: from an opened package to the list of its sheets. Owns the three
  * parts that answer it (the package's relationships, the workbook part, the workbook's
  * relationships) and every rule about them, so the caller asks one question and never sees a
- * relationship.
- *
- * Elements are matched by where they stand, since the tokenizer drops prefixes and looks at no
- * namespace: the root's local name, then the path down from it.
+ * relationship. Owns the namespace of SpreadsheetML too, which every part reader of the workbook
+ * asks for.
  */
 import { type Meter, XlsxReadError } from "../errors/read.js";
 import { type PartName, partName } from "../opc/read.js";
@@ -50,36 +48,55 @@ export interface ListedSheet {
  */
 export type OpenPart = (name: string) => ByteChunks | undefined;
 
-const TRANSITIONAL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
-const STRICT = "http://purl.oclc.org/ooxml/officeDocument/relationships/";
+/** The number a part reader of SpreadsheetML gives its namespace. */
+export const SPREADSHEET = 1;
+const RELATIONSHIP = 2;
+
+/**
+ * SpreadsheetML's namespace in both families, Transitional and Strict (ECMA-376 part 1, annex A),
+ * for a part reader's `namespaces`.
+ */
+export const SPREADSHEET_NAMESPACES: ReadonlyMap<string, number> = new Map([
+  ["http://schemas.openxmlformats.org/spreadsheetml/2006/main", SPREADSHEET],
+  ["http://purl.oclc.org/ooxml/spreadsheetml/main", SPREADSHEET],
+]);
+
+const TRANSITIONAL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const STRICT = "http://purl.oclc.org/ooxml/officeDocument/relationships";
 const MACRO_SHEET = "http://schemas.microsoft.com/office/2006/relationships/";
+
+const WORKBOOK_NAMESPACES = new Map([
+  ...SPREADSHEET_NAMESPACES,
+  [TRANSITIONAL, RELATIONSHIP],
+  [STRICT, RELATIONSHIP],
+]);
 
 /**
  * Whether a sheet of a relationship type has cells. A type that is not here, even by one character,
  * is no kind of sheet: read as a sheet without cells, it would make a damaged workbook an empty one.
  */
 const SHEET_TYPES = new Map<string | undefined, boolean>([
-  [`${TRANSITIONAL}worksheet`, true],
-  [`${STRICT}worksheet`, true],
-  [`${TRANSITIONAL}chartsheet`, false],
-  [`${STRICT}chartsheet`, false],
-  [`${TRANSITIONAL}dialogsheet`, false],
-  [`${STRICT}dialogsheet`, false],
+  [`${TRANSITIONAL}/worksheet`, true],
+  [`${STRICT}/worksheet`, true],
+  [`${TRANSITIONAL}/chartsheet`, false],
+  [`${STRICT}/chartsheet`, false],
+  [`${TRANSITIONAL}/dialogsheet`, false],
+  [`${STRICT}/dialogsheet`, false],
   [`${MACRO_SHEET}xlMacrosheet`, false],
   [`${MACRO_SHEET}xlIntlMacrosheet`, false],
 ]);
 
 const WORKBOOK_TYPES = new Set<string | undefined>([
-  `${TRANSITIONAL}officeDocument`,
-  `${STRICT}officeDocument`,
+  `${TRANSITIONAL}/officeDocument`,
+  `${STRICT}/officeDocument`,
 ]);
 
 const STRING_TYPES = new Set<string | undefined>([
-  `${TRANSITIONAL}sharedStrings`,
-  `${STRICT}sharedStrings`,
+  `${TRANSITIONAL}/sharedStrings`,
+  `${STRICT}/sharedStrings`,
 ]);
 
-const STYLE_TYPES = new Set<string | undefined>([`${TRANSITIONAL}styles`, `${STRICT}styles`]);
+const STYLE_TYPES = new Set<string | undefined>([`${TRANSITIONAL}/styles`, `${STRICT}/styles`]);
 
 const UNRELATED = "a sheet's relationship is missing or not to a sheet";
 
@@ -105,7 +122,9 @@ function notWorkbook(): never {
  * that folder for every relationship.
  *
  * Refuses, never repairs. `NOT_XLSX` when the package has no relationships of its own, none to a
- * workbook, or a workbook part whose root is not `workbook`. `INVALID_WORKBOOK` when there are two
+ * workbook, or a workbook part whose root is not SpreadsheetML's `workbook`. A sheet names its
+ * relationship by `id` in the namespace of relationships, Transitional or Strict; an `id` without a
+ * prefix, or under a prefix bound elsewhere, names none. `INVALID_WORKBOOK` when there are two
  * workbooks, two shared-string tables or two styles parts, a part is missing or damaged, the sheet
  * list is missing, empty, stated twice or holds anything but sheets, a sheet list, a sheet or the
  * workbook's properties stand below an `AlternateContent`, a sheet has no name, no relationship, or
@@ -182,8 +201,10 @@ const DATE_SYSTEMS = new Map([
 
 /**
  * Markup compatibility lets an application take a `sheets`, a `sheet` or a `workbookPr` from below
- * an `AlternateContent` anywhere, so one there is refused. A `workbookPr` deeper than the root's
- * own, as in an extension, states nothing about this workbook.
+ * an `AlternateContent` anywhere, so one there is refused. An `AlternateContent` is known by its
+ * local name in any namespace: refusing more never gives a value the application does not show.
+ * A `workbookPr` deeper than the root's own, as in an extension, states nothing about
+ * this workbook. An element in another namespace than SpreadsheetML's is no element of these.
  */
 function workbookVisitor(): XmlVisitor<never, WorkbookEntries> {
   const names = new Set<string>();
@@ -192,10 +213,11 @@ function workbookVisitor(): XmlVisitor<never, WorkbookEntries> {
   let date1904: boolean | undefined;
   let alternate = 0;
   return {
+    namespaces: WORKBOOK_NAMESPACES,
     open(xml) {
-      const element = xml.name;
+      const element = xml.namespace === SPREADSHEET ? xml.name : "";
       if (xml.depth === 1 && element !== "workbook") notWorkbook();
-      if (alternate === 0 && element === "AlternateContent") alternate = xml.depth;
+      if (alternate === 0 && xml.name === "AlternateContent") alternate = xml.depth;
       if (
         alternate !== 0 &&
         (element === "sheets" || element === "sheet" || element === "workbookPr")
@@ -220,7 +242,7 @@ function workbookVisitor(): XmlVisitor<never, WorkbookEntries> {
       if (!name) refuse("a sheet has no name");
       if (names.has(name)) refuse("two sheets have one name", { sheet: name });
       names.add(name);
-      list.push({ name, relationship: xml.attribute("id") });
+      list.push({ name, relationship: xml.attribute("id", RELATIONSHIP) });
     },
     close(xml) {
       if (xml.depth === alternate) alternate = 0;

@@ -81,6 +81,28 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
   });
 
+  it("refuses nested declarations whose namespace names are longer than a token may be, before it holds them", () => {
+    const [flood] = floodsOf("the long namespace names of nested declarations");
+    expect(flood).toMatchObject({ outcome: "INVALID_XML" });
+    expect(flood!.bytesRead).toBeLessThan(10 * 500_030);
+    expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
+  });
+
+  it("reads a declaration on every element to the end of the part, holding none that is out of scope", () => {
+    const [flood] = floodsOf(
+      "a declaration on every element, each out of scope when the next comes",
+    );
+    expect(flood).toMatchObject({ outcome: "read" });
+    expect(flood!.bytesRead).toBeGreaterThan(report.floodBytes);
+    expect(flood!.heapGrowth).toBeLessThan(4 * MEBIBYTE);
+  });
+
+  it("holds the declarations in scope, not the chunks they were written in", () => {
+    expect(report.nested).toBe(200);
+    expect(report.heldInScope, "measured at the deepest element").not.toBeNaN();
+    expect(report.heldInScope).toBeLessThan(MEBIBYTE);
+  });
+
   it("holds the text of one element that long comments split, not the chunks it was cut from", () => {
     const [flood] = floodsOf("the text of one element, in runs between long comments");
     expect(flood).toMatchObject({ outcome: "read" });
@@ -121,6 +143,11 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
 
   it("lets go of a tag of as many attributes as a token may hold once the next tag is read", () => {
     expect(report.heldAfterAttributes).toBeLessThan(MEBIBYTE);
+  });
+
+  it("holds no more for 300 000 attributes under a prefix than for as many without one, when the next tag opens", () => {
+    expect(report.heldAtNextTag, "measured").not.toBeNaN();
+    expect(report.heldAtNextTagPrefixed - report.heldAtNextTag).toBeLessThan(2 * MEBIBYTE);
   });
 
   it("sees a chunk that is kept alive: slices of the buffer, which the contract forbids keeping, hold the part", () => {

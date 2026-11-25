@@ -2,7 +2,15 @@ import { describe, expect, it } from "vite-plus/test";
 import { XlsxReadError } from "../../errors/read.js";
 import { XML_DECLARATION } from "../index.js";
 import { type XmlCursor, type XmlVisitor, parseIndex, readXml, scanXml } from "../read.js";
-import { type Token, chunked, collector, outcomeOf, tokensOf, utf8 } from "./reading.js";
+import {
+  NAMESPACES,
+  type Token,
+  chunked,
+  collector,
+  outcomeOf,
+  tokensOf,
+  utf8,
+} from "./reading.js";
 
 const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 
@@ -20,6 +28,7 @@ async function valueOf(quoted: string): Promise<string | undefined> {
 async function onOpen<Seen>(part: string, look: (xml: XmlCursor) => Seen): Promise<Seen> {
   const seen: Seen[] = [];
   await readXml(chunked(part), {
+    namespaces: NAMESPACES,
     open(xml) {
       if (seen.length === 0) seen.push(look(xml));
     },
@@ -31,6 +40,7 @@ async function onOpen<Seen>(part: string, look: (xml: XmlCursor) => Seen): Promi
 
 async function expectRefused(part: string | Uint8Array, why?: string): Promise<void> {
   const refusal = await readXml(chunked(part), {
+    namespaces: NAMESPACES,
     open() {},
     close: () => undefined,
     end: () => "read",
@@ -41,6 +51,22 @@ async function expectRefused(part: string | Uint8Array, why?: string): Promise<v
 
 async function expectRead(part: string | Uint8Array, why?: string): Promise<void> {
   expect(await outcomeOf(part), why ?? String(part)).not.toBe("INVALID_XML");
+}
+
+async function namespacesOf(part: string, cuts?: readonly number[]): Promise<string[]> {
+  const seen: string[] = [];
+  await readXml(chunked(part, cuts), {
+    namespaces: NAMESPACES,
+    open(xml) {
+      seen.push(`<${xml.name} ${xml.namespace}`);
+    },
+    close(xml) {
+      seen.push(`/${xml.name}`);
+      return undefined;
+    },
+    end: () => undefined,
+  });
+  return seen;
 }
 
 describe("the tokens of a part", () => {
@@ -79,7 +105,7 @@ describe("the tokens of a part", () => {
     ]);
   });
 
-  it("drop a prefix, so that both ways of writing a namespace read alike", async () => {
+  it("give the local name, its prefix dropped, so that both ways of writing a namespace read alike", async () => {
     const prefixed = `<x:sst xmlns:x="${MAIN}"><x:si><x:t>a</x:t></x:si></x:sst>`;
     const plain = `<sst xmlns="${MAIN}"><si><t>a</t></si></sst>`;
     expect(await tokensOf(prefixed)).toEqual(await tokensOf(plain));
@@ -195,16 +221,80 @@ describe("the text of an element", () => {
 });
 
 describe("the attributes of an open tag", () => {
-  it("are found by local name, in either quote, with white space around the equals sign", async () => {
-    const tag = `<c r="A1" s = '3'\tt\n=\r\n"s" x14ac:dyDescent="0.25" r:id="rId1"/>`;
-    expect(await tokensOf(tag, { asked: ["r", "s", "t", "dyDescent", "id", "none"] })).toEqual([
-      ["open", "c", 1, { r: "A1", s: "3", t: "s", dyDescent: "0.25", id: "rId1" }],
+  it("are found by the name they are written with, in either quote, with white space around the equals sign", async () => {
+    const tag = `<c xmlns:x14ac="urn:x14ac" xmlns:r="urn:two" r="A1" s = '3'\tt\n=\r\n"s" x14ac:dyDescent="0.25" r:id="rId1"/>`;
+    const asked = ["r", "s", "t", "x14ac:dyDescent", "r:id", "xmlns:r", "dyDescent", "id", "none"];
+    expect(await tokensOf(tag, { asked })).toEqual([
+      [
+        "open",
+        "c",
+        1,
+        {
+          r: "A1",
+          s: "3",
+          t: "s",
+          "x14ac:dyDescent": "0.25",
+          "r:id": "rId1",
+          "xmlns:r": "urn:two",
+        },
+      ],
       ["close", "c", 1, ""],
     ]);
-    expect(await onOpen(tag, (xml) => [xml.attribute("r:id"), xml.attribute("x14ac")])).toEqual([
+  });
+
+  it("are never the attribute of their local name when written with a prefix, however the prefix is bound", async () => {
+    for (const bound of [`xmlns:x="${MAIN}"`, 'xmlns:x="urn:one"', 'xmlns:x="urn:other"']) {
+      const tag = `<c ${bound} x:r="A1" x:s="3" x:t="s" x:numFmtId="14" x:date1904="1"/>`;
+      expect(
+        await onOpen(tag, (xml) => [
+          xml.attribute("r"),
+          xml.index("s"),
+          xml.valueStart("t"),
+          xml.attribute("numFmtId"),
+          xml.attribute("date1904"),
+        ]),
+        bound,
+      ).toEqual([undefined, -1, -1, undefined, undefined]);
+    }
+  });
+
+  it("are asked for by namespace with the number the reader gives it, one of its two spellings or the other", async () => {
+    const ids = (tag: string) =>
+      onOpen(tag, (xml) => [xml.attribute("id", 2), xml.attribute("id", 1), xml.attribute("id")]);
+    expect(await ids('<a xmlns:r="urn:two" r:id="rId1"/>')).toEqual(["rId1", undefined, undefined]);
+    expect(await ids('<a xmlns:s="urn:one:strict" s:id="rId1" id="x"/>')).toEqual([
+      undefined,
+      "rId1",
+      "x",
+    ]);
+    expect(await ids('<a xmlns:r="urn:three" r:id="rId1"/>')).toEqual([
+      undefined,
       undefined,
       undefined,
     ]);
+    expect(
+      await ids('<a xmlns="urn:two" id="rId1"/>'),
+      "the default holds for no attribute",
+    ).toEqual([undefined, undefined, "rId1"]);
+    const nested = '<a xmlns:r="urn:two"><b><c r:id="rId1"/></b></a>';
+    const seen: unknown[] = [];
+    await readXml(chunked(nested), {
+      namespaces: NAMESPACES,
+      open(xml) {
+        seen.push(xml.attribute("id", 2));
+      },
+      close: () => undefined,
+      end: () => undefined,
+    });
+    expect(seen).toEqual([undefined, undefined, "rId1"]);
+    const twice = '<a xmlns:o="urn:one" xmlns:s="urn:one:strict" o:id="1" s:id="2"/>';
+    expect(await onOpen(twice, (xml) => xml.attribute("id")), "not asked by namespace").toBe(
+      undefined,
+    );
+    const refusal = await onOpen(twice, (xml) => xml.attribute("id", 1)).catch(
+      (error: unknown) => error,
+    );
+    expect(refusal, "asked by namespace").toMatchObject({ code: "INVALID_XML" });
   });
 
   it("are not the namespace declarations beside them", async () => {
@@ -267,18 +357,26 @@ describe("the attributes of an open tag", () => {
 
   it("are gone when the element closes", async () => {
     const seen: unknown[] = [];
-    await readXml(chunked(`<a r="1"><b r="2"/><c r="3">x</c></a>`), {
+    const part = `<a r="1" xmlns:p="urn:two" p:r="1"><b r="2" p:r="2"/><c r="3" p:r="3">x</c></a>`;
+    await readXml(chunked(part), {
+      namespaces: NAMESPACES,
       open() {},
       close(xml) {
-        seen.push([xml.name, xml.attribute("r"), xml.index("r"), xml.valueStart("r")]);
+        seen.push([
+          xml.name,
+          xml.attribute("r"),
+          xml.index("r"),
+          xml.valueStart("r"),
+          xml.attribute("r", 2),
+        ]);
         return undefined;
       },
       end: () => undefined,
     });
     expect(seen).toEqual([
-      ["b", undefined, -1, -1],
-      ["c", undefined, -1, -1],
-      ["a", undefined, -1, -1],
+      ["b", undefined, -1, -1, undefined],
+      ["c", undefined, -1, -1, undefined],
+      ["a", undefined, -1, -1, undefined],
     ]);
   });
 
@@ -289,6 +387,244 @@ describe("the attributes of an open tag", () => {
       names.map((_, index) => index),
     );
   });
+});
+
+describe("the namespace of an element", () => {
+  it("is the number the reader gives the namespace its prefix or the default namespace is bound to where it stands", async () => {
+    const part =
+      '<a xmlns="urn:one"><b/><x:c xmlns:x="urn:two"><x:d/><e/></x:c>' +
+      '<f xmlns="urn:one:strict"><g xmlns=""><h/></g></f><x:i xmlns:x="urn:three"/><j/></a>';
+    const expected = [
+      "<a 1",
+      "<b 1",
+      "/b",
+      "<c 2",
+      "<d 2",
+      "/d",
+      "<e 1",
+      "/e",
+      "/c",
+      "<f 1",
+      "<g 0",
+      "<h 0",
+      "/h",
+      "/g",
+      "/f",
+      "<i 0",
+      "/i",
+      "<j 1",
+      "/j",
+      "/a",
+    ];
+    expect(await namespacesOf(part)).toEqual(expected);
+    for (let cut = 0; cut <= part.length; cut++) {
+      expect(await namespacesOf(part, [cut]), `cut after ${cut}`).toEqual(expected);
+    }
+  });
+
+  it("is none without a declaration, and none for a prefix bound by the standard alone", async () => {
+    expect(await namespacesOf("<a><b/></a>")).toEqual(["<a 0", "<b 0", "/b", "/a"]);
+    expect(await namespacesOf('<xml:a xml:space="preserve"/>')).toEqual(["<a 0", "/a"]);
+    expect(
+      await namespacesOf(
+        '<a xmlns:xml="http://www.w3.org/XML/1998/namespace" xml:lang="en"><xml:b/></a>',
+      ),
+    ).toEqual(["<a 0", "<b 0", "/b", "/a"]);
+  });
+
+  it("comes from a declaration anywhere in the tag, written as XML allows a value", async () => {
+    expect(await namespacesOf('<x:a x:b="1" xmlns:x="urn:two"/>')).toEqual(["<a 2", "/a"]);
+    expect(await namespacesOf('<a xmlns = "urn:&#111;ne"/>')).toEqual(["<a 1", "/a"]);
+    expect(await namespacesOf("<a xmlns='urn:two'/>")).toEqual(["<a 2", "/a"]);
+    expect(await namespacesOf('<a xmlns="urn:one "/>'), "a space is part of the name").toEqual([
+      "<a 0",
+      "/a",
+    ]);
+    expect(await namespacesOf('<a xmlns="URN:ONE"/>'), "and so is the case").toEqual([
+      "<a 0",
+      "/a",
+    ]);
+    expect(await namespacesOf('<a xmlnsx="urn:one" xmlns:xmlnsx="urn:two"/>')).toEqual([
+      "<a 0",
+      "/a",
+    ]);
+  });
+
+  it("returns to the outer binding once the element that hid it closes, written closed or empty", async () => {
+    const part =
+      '<x:a xmlns:x="urn:one" xmlns="urn:two"><x:b xmlns:x="urn:three" xmlns="urn:one"><x:c/><c/></x:b>' +
+      '<x:d xmlns:x="urn:two" xmlns=""/><x:e/><e/></x:a>';
+    expect(await namespacesOf(part)).toEqual([
+      "<a 1",
+      "<b 0",
+      "<c 0",
+      "/c",
+      "<c 1",
+      "/c",
+      "/b",
+      "<d 2",
+      "/d",
+      "<e 1",
+      "/e",
+      "<e 2",
+      "/e",
+      "/a",
+    ]);
+    expect(
+      await namespacesOf('<r><a xmlns="urn:one"><b xmlns="urn:two"/></a><c/></r>'),
+      "an outer declaration ends after an inner one",
+    ).toEqual(["<r 0", "<a 1", "<b 2", "/b", "/a", "<c 0", "/c", "/r"]);
+  });
+
+  it("comes from the binding of the prefix itself, never one whose prefix starts or ends alike", async () => {
+    const part =
+      '<a xmlns:p="urn:one" xmlns:pq="urn:two" xmlns:qp="urn:three"><pq:b/><p:c/><qp:d/><p:e/><pq:f/></a>';
+    expect(await namespacesOf(part)).toEqual([
+      "<a 0",
+      "<b 2",
+      "/b",
+      "<c 1",
+      "/c",
+      "<d 0",
+      "/d",
+      "<e 1",
+      "/e",
+      "<f 2",
+      "/f",
+      "/a",
+    ]);
+  });
+
+  it("refuses a prefix that no declaration binds where it stands, on an element or an attribute", async () => {
+    for (const part of [
+      "<x:a/>",
+      '<a x:b="1"/>',
+      '<a><b xmlns:x="urn:one"/><x:c/></a>',
+      '<a><b xmlns:x="urn:one"/><c x:d="1"/></a>',
+      '<a xmlns="urn:one"><x:b/></a>',
+      "<xmlns:a/>",
+      '<a xmlns:x="urn:one"><X:b/></a>',
+      '<a XMLNS:x="urn:one"><x:b/></a>',
+      '<a xmlns:x="urn:one" xml:space="preserve" y:z=""/>',
+    ]) {
+      await expectRefused(part);
+    }
+    await expectRead('<a xmlns:x="urn:one" xmlns:xmlx="urn:two" x:b="1" xmlx:c="2"><x:d/></a>');
+  });
+
+  it("refuses what XML Namespaces reserves, and a prefix bound to no namespace", async () => {
+    for (const part of [
+      '<a xmlns:xmlns="urn:one"/>',
+      '<a xmlns:xml="urn:one"/>',
+      '<a xmlns:x="http://www.w3.org/XML/1998/namespace"/>',
+      '<a xmlns="http://www.w3.org/XML/1998/namespace"/>',
+      '<a xmlns:x=""/>',
+      '<a xmlns:x="urn:one"><b xmlns:x=""/></a>',
+    ]) {
+      await expectRefused(part);
+    }
+    await expectRead('<a xmlns:xml="http://www.w3.org/XML/1998/namespace" xmlns=""/>');
+  });
+
+  it("refuses two attributes written with one name, and reads two whose prefixes are bound alike, which only a lookup by namespace could find, and it refuses them", async () => {
+    const many = Array.from({ length: 12 }, (_, index) => `n${index}="${index}"`).join(" ");
+    for (const part of [
+      '<a xmlns:p="urn:x" p:b="1" p:b="2"/>',
+      `<a xmlns:p="urn:x" ${many} p:n9="" p:n9=""/>`,
+      '<a xmlns:p="urn:x" xmlns:p="urn:y"/>',
+      '<a xmlns="urn:x" xmlns="urn:y"/>',
+    ]) {
+      await expectRefused(part);
+    }
+    for (const part of [
+      '<a xmlns:p="urn:x" xmlns:q="urn:x" p:b="1" q:b="2"/>',
+      '<a xmlns:p="urn:x"><c xmlns:q="urn:x" q:b="2" p:b="1"/></a>',
+      `<a xmlns:p="urn:x" xmlns:q="urn:x" ${many} p:n9="" q:n9=""/>`,
+      '<a xmlns:p="urn:x" xmlns:q="urn:y" p:b="1" q:b="2" b="3"/>',
+      `<a xmlns:p="urn:x" ${many} p:n9="" xmlns:n9="urn:y"/>`,
+    ]) {
+      await expectRead(part);
+    }
+    const bound = ['xmlns:p="urn:two"', 'xmlns:q="urn:two"'];
+    for (const tag of [
+      `<a ${bound.join(" ")} p:id="1" q:id="2"/>`,
+      `<a ${bound[0]!}><c ${bound[1]!} q:id="2" p:id="1"/></a>`,
+    ]) {
+      const refusal = await readXml(chunked(tag), {
+        namespaces: NAMESPACES,
+        open(xml) {
+          xml.attribute("id", 2);
+        },
+        close: () => undefined,
+        end: () => undefined,
+      }).catch((error: unknown) => error);
+      expect(refusal, tag).toMatchObject({ code: "INVALID_XML" });
+    }
+  });
+
+  it("keeps fewer than 1 024 declarations in scope, each counting 4 096 characters with the names of the open elements, and none out of scope", async () => {
+    const declarations = (count: number, from = 0) =>
+      Array.from({ length: count }, (_, index) => ` xmlns:p${from + index}="u"`).join("");
+    const name = 1;
+    const declared = (prefix: number, uri: number) => prefix + uri + 4096;
+    const counted = (count: number, from = 0) =>
+      Array.from({ length: count }, (_, index) => declared(`p${from + index}`.length, 1)).reduce(
+        (sum, characters) => sum + characters,
+        0,
+      );
+    let most = 0;
+    while (name + counted(most + 1) <= 4_194_304) most++;
+    expect(most).toBeGreaterThan(1000);
+    expect(most).toBeLessThan(1024);
+    await expectRead(`<a${declarations(most)}/>`);
+    await expectRefused(`<a${declarations(most + 1)}/>`);
+    await expectRefused(
+      `<r><a/><a${declarations(most + 1)}/></r>`,
+      "beside a name counted already",
+    );
+    let inner = 0;
+    while (2 * name + counted(1000) + counted(inner + 1, 1000) <= 4_194_304) inner++;
+    const nested = (count: number) =>
+      `<a${declarations(1000)}><b${declarations(count, 1000)}/></a>`;
+    await expectRead(nested(inner));
+    await expectRefused(nested(inner + 1));
+    await expectRead(
+      `<a${declarations(1000)}>${`<b${declarations(inner, 1000)}/>`.repeat(50)}</a>`,
+      "a declaration out of scope counts no more",
+    );
+  });
+
+  it("counts the prefixes and namespace names in scope with the names of the open elements, to 4 194 304 characters", async () => {
+    const names = "a".length + "b".length;
+    const declared = (prefix: number, uri: number) => prefix + uri + 4096;
+    const part = (rest: number) =>
+      `<a xmlns:p="${"u".repeat(3_000_000)}"><b xmlns:q="${"v".repeat(rest)}"/></a>`;
+    const rest = 4_194_304 - names - declared(1, 3_000_000) - declared(1, 0);
+    await expectRead(part(rest));
+    await expectRefused(part(rest + 1));
+    const sibling = `<b xmlns:q="${"v".repeat(rest)}"/>`;
+    await expectRead(
+      `<a xmlns:p="${"u".repeat(3_000_000)}">${sibling}${sibling}</a>`,
+      "a declaration out of scope counts no more",
+    );
+  }, 60_000);
+
+  it("costs time linear in the part, however many declarations and prefixes it holds", async () => {
+    // Every prefix shares a long stem, and the elements take them in turn: a lookup that walked
+    // the declarations in scope would compare 450 stems on average for each name.
+    const stem = "p".repeat(120);
+    const prefixes = Array.from({ length: 900 }, (_, index) => `${stem}${index}`);
+    const root = prefixes.map((prefix) => ` xmlns:${prefix}="urn:${prefix}"`).join("");
+    const elements = Array.from({ length: 30_000 }, (_, index) => {
+      const own = prefixes[index % 900]!;
+      const other = prefixes[(index * 7) % 900]!;
+      return `<${own}:e xmlns:q="urn:q${index % 3}" q:a="1" ${other}:b="2"/>`;
+    }).join("");
+    const part = `<r${root}>${elements}</r>`;
+    const started = performance.now();
+    await expectRead(part);
+    expect(performance.now() - started).toBeLessThan(2_000);
+  }, 60_000);
 });
 
 describe("parseIndex", () => {
@@ -435,12 +771,21 @@ describe("refused with INVALID_XML", () => {
   it("names of nested elements longer than 4 194 304 characters together", async () => {
     const quarter = 1_048_576;
     const names = ["a", "b", "c", "d"].map((letter) => letter.repeat(quarter));
-    const nested = (last: string) =>
-      [...names.slice(0, 3), last].map((name) => `<${name}>`).join("") +
-      [last, ...names.slice(0, 3).reverse()].map((name) => `</${name}>`).join("");
+    const nested = (last: string, declared = "") =>
+      `${names
+        .slice(0, 3)
+        .map((name) => `<${name}>`)
+        .join("")}<${last}${declared}></${last}>` +
+      names
+        .slice(0, 3)
+        .reverse()
+        .map((name) => `</${name}>`)
+        .join("");
     await expectRead(nested(names[3]!), "4 194 304 characters of names");
     await expectRefused(nested(`${names[3]!}d`), "one character more");
-    await expectRefused(nested(`x:${names[3]!}`), "the prefix counts");
+    const bound = ' xmlns:x="u"';
+    await expectRefused(nested(`x:${names[3]!}`, bound), "the prefix counts, and the declaration");
+    await expectRead(nested(`x:${names[3]!.slice(4_100)}`, bound), "4 096 more for a declaration");
     const siblings = names.map((name) => `<${name}/>`).join("");
     await expectRead(
       `<r>${siblings}${siblings}<e${names[0]!}/></r>`,
@@ -576,8 +921,7 @@ describe("refused with INVALID_XML", () => {
     const tags = [
       `<a b="1" b="2"/>`,
       `<a b="1" c="2" b="3"/>`,
-      `<a r:id="1" x:id="2"/>`,
-      `<a id="1" r:id="2"/>`,
+      `<a xmlns:r="u" r:id="1" r:id="2"/>`,
       `<a xmlns:r="u" xmlns:r="v"/>`,
       `<a xmlns="u" xmlns="v"/>`,
       `<a b/>`,
@@ -605,7 +949,11 @@ describe("refused with INVALID_XML", () => {
     for (const repeated of [0, 7, 8, 11]) {
       await expectRefused(`<a ${attributes.join(" ")} n${repeated}=""/>`, `n${repeated} again`);
     }
-    await expectRefused(`<a ${attributes.join(" ")} x:n9=""/>`, "n9 again, under a prefix");
+    await expectRefused(
+      `<a xmlns:x="u" ${attributes.join(" ")} x:n9="" x:n9=""/>`,
+      "x:n9 twice, under one prefix",
+    );
+    await expectRead(`<a xmlns:x="u" ${attributes.join(" ")} x:n9=""/>`, "n9 and x:n9 are two");
   });
 
   it("a name that is not one, that holds a character outside ASCII, or whose colon is out of place", async () => {
@@ -719,6 +1067,7 @@ describe("scanXml", () => {
   function values(): XmlVisitor<string, number> {
     let count = 0;
     return {
+      namespaces: NAMESPACES,
       open() {},
       close(xml) {
         if (xml.name !== "v") return undefined;
@@ -766,6 +1115,7 @@ describe("scanXml", () => {
   it("asks a visitor for its result only once the part has been read to its last chunk", async () => {
     const bytes = chunked("<a/>\n", [4]);
     const readsAtEnd = await readXml(bytes, {
+      namespaces: NAMESPACES,
       open() {},
       close: () => undefined,
       end: () => bytes.reads,
@@ -783,6 +1133,7 @@ describe("scanXml", () => {
     for (const fails of ["open", "close", "end"] as const) {
       const bytes = chunked("<a/>");
       const visitor: XmlVisitor<never, undefined> = {
+        namespaces: NAMESPACES,
         open() {
           if (fails === "open") throw failure;
         },

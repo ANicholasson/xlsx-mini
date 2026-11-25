@@ -365,7 +365,7 @@ describe("the rows of a worksheet part", () => {
       '<sheetPr><outlinePr summaryBelow="0"/></sheetPr><dimension ref="A1:XFD1048576"/>' +
         '<sheetViews><sheetView workbookViewId="0"/></sheetViews><cols><col min="1" max="16384" width="9"/></cols>' +
         '<sheetData><row r="1" spans="1:16384" hidden="1"><c r="A1"><v>1</v></c></row></sheetData>' +
-        `<mergeCells count="1"><mergeCell ref="A1:B2"/></mergeCells>${alternate("<x14:foo/>")}<extLst><ext uri="x"/></extLst>`,
+        `<mergeCells count="1"><mergeCell ref="A1:B2"/></mergeCells>${alternate('<x14:foo xmlns:x14="urn:x14"/>')}<extLst><ext uri="x"/></extLst>`,
     );
     expect(await rowsOf(part, { limits: { cellPositions: 1 } })).toEqual([[1, 1]]);
     expect(await rowsOf(data(""))).toEqual([]);
@@ -395,6 +395,137 @@ describe("the rows of a worksheet part", () => {
       data(`<row r="1"><extLst><ext uri="x">${row.replace('r="1"', 'r="2"')}</ext></extLst></row>`),
     ];
     for (const part of parts) expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
+  });
+
+  it("reads SpreadsheetML in either family and under any prefix alike", async () => {
+    const cells = '<c r="A1" t="inlineStr"><is><r><t>a</t></r></is></c><c r="B1"><v>2</v></c>';
+    const prefixedCells = cells.replaceAll(/<(\/?)(\w)/g, "<$1x:$2");
+    const row = `<row r="1">${cells}</row>`;
+    const prefixed = `<x:row r="1">${prefixedCells}</x:row>`;
+    for (const part of [
+      data(row),
+      `<worksheet xmlns="http://purl.oclc.org/ooxml/spreadsheetml/main"><sheetData>${row}</sheetData></worksheet>`,
+      `<x:worksheet xmlns:x="${MAIN}"><x:sheetData>${prefixed}</x:sheetData></x:worksheet>`,
+      `<x:worksheet xmlns:x="${MAIN}" xmlns="urn:other"><dimension/><x:sheetData>${prefixed}</x:sheetData></x:worksheet>`,
+      data(`<row r="1" xmlns:x="${MAIN}">${prefixedCells}</row>`),
+    ]) {
+      expect(await outcomeOf(part), part).toEqual([[1, "a", 2]]);
+    }
+  });
+
+  it("refuses an element of another namespace on the path to a value where one of an unknown name is refused, and gives none of its content", async () => {
+    // The shapes of the stored cases, with what this reader gives, where LibreOffice and openpyxl
+    // read them as the table of issue 105 says.
+    const marker = '<row r="1"><c r="A1"><v>7</v></c></row>';
+    const q = 'xmlns:q="urn:foreign"';
+    const shapes: [shape: string, part: string, outcome: string][] = [
+      [
+        "sheetData in a foreign default namespace",
+        worksheet(`<sheetData xmlns="urn:foreign">${marker}</sheetData>`),
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "sheetData prefixed foreign",
+        worksheet(`<q:sheetData ${q}>${marker}</q:sheetData>`),
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "row prefixed foreign",
+        data(`<q:row ${q} r="1"><c r="A1"><v>1</v></c></q:row>`),
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "row in a foreign default namespace",
+        data('<row xmlns="urn:foreign" r="1"><c r="A1"><v>1</v></c></row>'),
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "c prefixed foreign",
+        data(`${marker}<row r="2"><q:c ${q} r="A2"><v>1</v></q:c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "c in a foreign default namespace",
+        data(`${marker}<row r="2"><c xmlns="urn:foreign" r="A2"><v>1</v></c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "v prefixed foreign",
+        data(`${marker}<row r="2"><c r="A2"><q:v ${q}>1</q:v></c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "v in a foreign default namespace",
+        data(`${marker}<row r="2"><c r="A2"><v xmlns="urn:foreign">1</v></c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "is prefixed foreign",
+        data(`${marker}<row r="2"><c r="A2" t="inlineStr"><q:is ${q}><t>a</t></q:is></c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "t of is prefixed foreign",
+        data(`${marker}<row r="2"><c r="A2" t="inlineStr"><is><q:t ${q}>a</q:t></is></c></row>`),
+        "INVALID_CELL A2",
+      ],
+      [
+        "worksheet root in a foreign namespace",
+        `<worksheet xmlns="urn:foreign"><sheetData>${marker}</sheetData></worksheet>`,
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "worksheet root in no namespace",
+        `<worksheet><sheetData>${marker}</sheetData></worksheet>`,
+        "INVALID_WORKBOOK",
+      ],
+      [
+        "c in main and a foreign c for the same place",
+        data(`<row r="1"><c r="A1"><v>1</v></c><q:c ${q} r="B1"><v>2</v></q:c></row>`),
+        "INVALID_CELL B1",
+      ],
+      [
+        "an extLst of another namespace in a row",
+        data(`<row r="1"><c r="A1"><v>1</v></c><q:extLst ${q}/></row>`),
+        "INVALID_CELL B1",
+      ],
+      [
+        "an f of another namespace in a cell",
+        data(`<row r="1"><c r="A1"><q:f ${q}>1+1</q:f><v>2</v></c></row>`),
+        "INVALID_CELL A1",
+      ],
+    ];
+    for (const [shape, part, outcome] of shapes) expect(await outcomeOf(part), shape).toBe(outcome);
+  });
+
+  it("passes over an element of another namespace with what it holds where one of an unknown name is passed over", async () => {
+    const marker = '<row r="1"><c r="A1"><v>7</v></c></row>';
+    for (const part of [
+      worksheet(
+        `<q:sheetPr xmlns:q="urn:foreign"><q:row/></q:sheetPr><sheetData>${marker}</sheetData>`,
+      ),
+      worksheet(
+        `<sheetData>${marker}</sheetData><foo xmlns="urn:foreign"><sheetData/><row/></foo>`,
+      ),
+      data(`<row r="1"><c r="A1"><v>7</v></c><extLst><q:c xmlns:q="urn:foreign"/></extLst></row>`),
+    ]) {
+      expect(await outcomeOf(part), part).toEqual([[1, 7]]);
+    }
+  });
+
+  it("reads no attribute under a prefix as the one it names: a cell's reference, type and style, a row's number", async () => {
+    const x = `xmlns:x="${MAIN}"`;
+    expect(
+      await outcomeOf(data(`<row r="1" ${x} x:r="5"><c r="A1" x:r="C1"><v>1</v></c></row>`)),
+    ).toEqual([[1, 1]]);
+    expect(
+      await outcomeOf(data(`<row ${x} x:r="5"><c x:r="C1" x:t="s"><v>0</v></c></row>`)),
+    ).toEqual([[1, 0]]);
+    expect(
+      await outcomeOf(data(`<row r="1" ${x}><c r="A1" x:s="1"><v>45000</v></c></row>`), {
+        dates: [0, 1],
+      }),
+    ).toEqual([[1, 45000]]);
   });
 
   it("gives each row as it closes, before the rest of the part is read", async () => {

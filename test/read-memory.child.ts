@@ -18,6 +18,7 @@ export interface Report {
 const encoder = new TextEncoder();
 const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
 
 function columnName(column: number): string {
   let name = "";
@@ -88,9 +89,9 @@ function* runs(): Generator<Uint8Array> {
 
 async function packageOf(body: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   const parts: Record<string, string> = {
-    "_rels/.rels": `<Relationships><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}"><sheets>${[1, 2, 3].map((at) => `<sheet name="Sheet${at}" sheetId="${at}" r:id="rId1"/>`).join("")}</sheets></workbook>`,
-    "xl/_rels/workbook.xml.rels": `<Relationships><Relationship Id="rId1" Type="${RELATIONSHIPS}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
+    "_rels/.rels": `<Relationships xmlns="${PACKAGE}"><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+    "xl/workbook.xml": `<workbook xmlns="${MAIN}" xmlns:r="${RELATIONSHIPS}"><sheets>${[1, 2, 3].map((at) => `<sheet name="Sheet${at}" sheetId="${at}" r:id="rId1"/>`).join("")}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="${PACKAGE}"><Relationship Id="rId1" Type="${RELATIONSHIPS}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`,
   };
   async function* streamed(): AsyncGenerator<StreamedPart> {
     for (const [path, xml] of Object.entries(parts)) {

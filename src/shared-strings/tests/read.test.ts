@@ -129,13 +129,34 @@ describe("the shared-string table", () => {
       sst(
         '<si><t>a</t></si><extLst><ext uri="x"><si><t>b</t></si></ext></extLst><si><t>c</t></si>',
       ),
+      `<sst xmlns="urn:other"><si><t>a</t></si></sst>`,
+      `<x:sst xmlns:x="urn:other" xmlns="${MAIN}"><si><t>a</t></si></x:sst>`,
+      sst(`<si><t>zero</t></si><zz:si xmlns:zz="urn:other"><zz:t>alien</zz:t></zz:si>`),
+      sst(`<si><t>zero</t></si><si xmlns="urn:other"><t>alien</t></si><si><t>one</t></si>`),
+      sst(`<si xmlns:x="urn:other"><x:t>alien</x:t></si>`),
+      sst(`<si><r><t xmlns="urn:other">alien</t></r></si>`),
     ];
     for (const part of parts) expect(await outcomeOf(part), part).toBe("INVALID_WORKBOOK");
     expect(
       await outcomeOf(
-        sst('<si><t>a</t></si><extLst><ext uri="x"><x:t>b</x:t></ext></extLst><si><t>c</t></si>'),
+        sst(
+          '<si><t>a</t></si><extLst><ext uri="x" xmlns:x="urn:other"><x:t>b</x:t></ext></extLst><si><t>c</t></si>',
+        ),
       ),
     ).toEqual(["a", "c"]);
+  });
+
+  it("reads SpreadsheetML's elements under any prefix and in the Strict family alike", async () => {
+    const items = "<si><t>a</t></si><si><r><rPr/><t>b</t></r><r><t>c</t></r></si>";
+    const prefixed = `<x:sst xmlns:x="${MAIN}"><x:si><x:t>a</x:t></x:si><x:si><x:r><x:rPr/><x:t>b</x:t></x:r><x:r><x:t>c</x:t></x:r></x:si></x:sst>`;
+    for (const part of [
+      sst(items),
+      prefixed,
+      `<sst xmlns="http://purl.oclc.org/ooxml/spreadsheetml/main">${items}</sst>`,
+      `<x:sst xmlns="urn:other" xmlns:x="${MAIN}"><x:si><x:t>a</x:t></x:si><x:si><x:r><x:t>b</x:t></x:r><x:r><x:t>c</x:t></x:r></x:si></x:sst>`,
+    ]) {
+      expect(await outcomeOf(part), part).toEqual(["a", "bc"]);
+    }
   });
 
   it("refuses an entry holding what LibreOffice passes over or reads in part: an unknown element, one in a run, a child of a text", async () => {
