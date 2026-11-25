@@ -69,7 +69,7 @@ interface Tally {
   refused: Record<string, number>;
   /** Ended in neither a refusal with a code nor a read. */
   failed: number;
-  /** Sheets that had rows and read with none, whose part holds no value any more. */
+  /** Sheets that had rows and read with none or are not read, because the mutation took them away. */
   excused: number;
 }
 
@@ -164,6 +164,10 @@ export async function fuzz(run: FuzzRun): Promise<FuzzReport> {
         next = last.index + 1;
       } else if (exit !== "code 0") {
         throw new Error(`the fuzz process ended (${exit}) between mutations: ${stderr}`);
+      } else if (messages.length === 0 && Date.now() < (run.until ?? Infinity)) {
+        throw new Error(
+          `the fuzz process ended without reading mutation ${next} of seed ${run.seed}`,
+        );
       }
     }
   } finally {

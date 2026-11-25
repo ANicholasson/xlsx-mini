@@ -32,7 +32,11 @@ describe(`${CHECKED_RUN.count} mutations of the corpus from seed ${CHECKED_RUN.s
       expect(Object.keys(refused).length, depth).toBeGreaterThan(2);
     }
     expect(report.tallies.text.readOther).toBeGreaterThan(0);
-    expect(report.tallies.text.excused).toBeGreaterThan(0);
+  });
+
+  it("excuse exactly the sheets the mutations took away: a search that excuses every sheet, or none, fails", () => {
+    const { bytes, records, text } = report.tallies;
+    expect([bytes.excused, records.excused, text.excused]).toEqual([0, 0, 7]);
   });
 
   it.each([0, 1_234, CHECKED_RUN.count - 1])(

@@ -488,18 +488,38 @@ const ENTITIES: Readonly<Record<string, string>> = {
   apos: "'",
 };
 
+/** An element by its local name: its attributes, where a quoted `>` does not end the tag, and its content. */
 const element = (name: string) =>
-  new RegExp(`<(?:[\\w.-]+:)?${name}\\b([^>]*?)(?:/>|>([\\s\\S]*?)</(?:[\\w.-]+:)?${name}>)`, "g");
+  new RegExp(
+    `<(?:[\\w.-]+:)?${name}\\b((?:"[^"]*"|'[^']*'|[^>"'])*?)(?:/>|>([\\s\\S]*?)</(?:[\\w.-]+:)?${name}>)`,
+    "g",
+  );
 
 const TEXT = /<(?:[\w.-]+:)?t(?:\s[^>]*)?>[^<]/;
 
+interface Followed {
+  readonly textOf: (path: string) => string | undefined;
+  /** The `sheet` elements inside the workbook part's sheet list, as written. */
+  readonly listed: readonly string[];
+  readonly related: readonly { id: string | undefined; type: string; target: string }[];
+}
+
+function attribute(tag: string, name: string): string | undefined {
+  const found = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`).exec(tag);
+  const value = found?.[1] ?? found?.[2];
+  return value?.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (reference, hex, decimal, named) => {
+    if (!hex && !decimal) return ENTITIES[named] ?? reference;
+    const point = hex ? Number.parseInt(hex, 16) : Number(decimal);
+    return point <= 0x10ffff ? String.fromCodePoint(point) : reference;
+  });
+}
+
 /**
- * Whether the sheet named `sheet` holds a value in a package: a cell whose `v` has text, whose
- * inline string has a `t` with text, or that names an entry of the shared-string table that has
- * one. It is found by searching the parts' text, which no reader of ours does. `undefined` when the
- * package or its relationships cannot be followed that way.
+ * The workbook part of a package and what it relates to, found by searching the parts' text with
+ * comments left out, which no reader of ours does. `undefined` when the package or its
+ * relationships cannot be followed that way.
  */
-export function sheetHoldsValues(file: Uint8Array, sheet: string): boolean | undefined {
+function follow(file: Uint8Array): Followed | undefined {
   let entries: ReturnType<typeof unzip>;
   try {
     entries = unzip(file);
@@ -508,15 +528,9 @@ export function sheetHoldsValues(file: Uint8Array, sheet: string): boolean | und
   }
   const textOf = (path: string) => {
     const entry = entries.find(({ name }) => folded(name) === folded(path));
-    return entry === undefined ? undefined : new TextDecoder().decode(entry.data);
-  };
-  const attribute = (tag: string, name: string) => {
-    const value = new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
-    return value?.replace(/&(?:#x([\da-f]+)|#(\d+)|(\w+));/gi, (reference, hex, decimal, named) =>
-      hex || decimal
-        ? String.fromCodePoint(hex ? Number.parseInt(hex, 16) : Number(decimal))
-        : (ENTITIES[named] ?? reference),
-    );
+    return entry === undefined
+      ? undefined
+      : new TextDecoder().decode(entry.data).replace(/<!--[\s\S]*?-->/g, "");
   };
   const resolve = (from: string, target: string) => {
     const steps = target.startsWith("/") ? [] : from.split("/").slice(0, -1);
@@ -537,12 +551,33 @@ export function sheetHoldsValues(file: Uint8Array, sheet: string): boolean | und
       target: resolve(part, attribute(tag, "Target") ?? ""),
     }));
   const workbook = relationshipsOf("").find(({ type }) => type.endsWith("/officeDocument"))?.target;
-  if (workbook === undefined) return undefined;
-  const related = relationshipsOf(workbook);
-  const listed = [...(textOf(workbook) ?? "").matchAll(element("sheet"))].find(
-    ([tag]) => attribute(tag, "name") === sheet,
-  )?.[0];
-  const id = listed && /\s[\w.-]+:id="([^"]*)"/.exec(listed)?.[1];
+  const text = workbook === undefined ? undefined : textOf(workbook);
+  if (workbook === undefined || text === undefined) return undefined;
+  const listed = [...text.matchAll(element("sheets"))].flatMap(([, , content = ""]) =>
+    [...content.matchAll(element("sheet"))].map(([tag]) => tag),
+  );
+  return { textOf, listed, related: relationshipsOf(workbook) };
+}
+
+/**
+ * Whether the workbook part of a package lists a sheet named `sheet`. `undefined` when the package
+ * cannot be followed.
+ */
+export function sheetListed(file: Uint8Array, sheet: string): boolean | undefined {
+  return follow(file)?.listed.some((tag) => attribute(tag, "name") === sheet);
+}
+
+/**
+ * Whether the sheet named `sheet` holds a value in a package: a cell whose `v` has text, whose
+ * inline string has a `t` with text, or that names an entry of the shared-string table that has
+ * one. `undefined` when the package or the sheet's relationship cannot be followed.
+ */
+export function sheetHoldsValues(file: Uint8Array, sheet: string): boolean | undefined {
+  const followed = follow(file);
+  if (followed === undefined) return undefined;
+  const { textOf, listed, related } = followed;
+  const tag = listed.find((each) => attribute(each, "name") === sheet);
+  const id = tag && /\s[\w.-]+:id\s*=\s*(?:"([^"]*)"|'([^']*)')/.exec(tag)?.slice(1).find(Boolean);
   const part = textOf(related.find((each) => each.id === id)?.target ?? "");
   if (part === undefined) return undefined;
   const table = related.find(({ type }) => type.endsWith("/sharedStrings"));

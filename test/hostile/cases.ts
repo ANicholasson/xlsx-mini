@@ -691,6 +691,17 @@ const workbookCases: HostileCase[] = [
     outcome: opening("INVALID_WORKBOOK", { sheet: "Sheet1" }),
   },
   {
+    name: "a sheet relationship without a type",
+    why: "the type left out: refused, never read as a workbook without that sheet",
+    file: file({
+      relationships: relationships(
+        '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/>',
+        relationship("rIdS", "sharedStrings", "sharedStrings.xml"),
+      ),
+    }),
+    outcome: opening("INVALID_WORKBOOK", { sheet: "Sheet1" }),
+  },
+  {
     name: "a sheet without a relationship",
     why: "a sheet that names a relationship the workbook does not have",
     file: file({ workbook: workbookPart(sheetEntry("Sheet1", "rId9")) }),
@@ -1643,6 +1654,14 @@ const strings = (items: Text) => () =>
   );
 
 const stringCases: HostileCase[] = [
+  {
+    name: "a table of two shared strings that states 4 294 967 295",
+    why: "`count` and `uniqueCount` are the file's word: nothing is sized from them",
+    file: file({
+      strings: `<sst xmlns="${MAIN}" count="4294967295" uniqueCount="4294967295">${item("a")}${item("b")}</sst>`,
+    }),
+    outcome: DEFAULT_ROWS,
+  },
   {
     name: "20 million shared strings",
     why: "340 MiB of table, more than `sharedStringBytes` allows",

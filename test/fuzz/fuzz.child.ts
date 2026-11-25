@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { isDeepStrictEqual } from "node:util";
-import { type Outcome, outcomeOf, render, send } from "../helpers/outcome.ts";
-import { type Depth, mutate, randomOf, sheetHoldsValues } from "./mutate.ts";
+import { type Outcome, outcomeOf, send } from "../helpers/outcome.ts";
+import { judge } from "./judge.ts";
+import { type Depth, mutate, randomOf } from "./mutate.ts";
 
 interface Drawn {
   readonly index: number;
@@ -18,7 +18,7 @@ export type FuzzMessage =
       readonly kind: "done";
       /** `read`, `read other values`, the code of the first refusal, or `failed`. */
       readonly ended: string;
-      /** Sheets that had rows and read with none, whose part holds no value any more. */
+      /** Sheets that had rows and read with none or are not read, because the mutation took them away. */
       readonly excused: number;
       readonly failure: string | undefined;
       readonly milliseconds: number;
@@ -52,9 +52,6 @@ process.on("unhandledRejection", (reason) => {
   unhandled = `a rejection that nothing awaits: ${String(reason)}`;
 });
 
-const rowsOf = (outcome: Outcome, name: string) =>
-  "sheets" in outcome ? outcome.sheets.find((sheet) => sheet.name === name)?.rows : undefined;
-
 let failed = 0;
 for (
   let index = first!;
@@ -78,27 +75,10 @@ for (
   let excused = 0;
   const failures: string[] = [];
   try {
-    const outcome = await outcomeOf(mutation.bytes);
-    const refusal =
-      "refused" in outcome
-        ? outcome.refused
-        : outcome.sheets.find((sheet) => sheet.refused !== undefined)?.refused;
-    ended =
-      refusal?.code ??
-      (isDeepStrictEqual(outcome, original.outcome) ? "read" : "read other values");
-    if (ended === "read other values" && mutation.same) {
-      failures.push(`read values the original does not hold: ${render(outcome)}`);
-    }
-    for (const sheet of "sheets" in outcome ? outcome.sheets : []) {
-      if (sheet.rows?.length !== 0 || !rowsOf(original.outcome, sheet.name)?.length) continue;
-      const holds = sheetHoldsValues(mutation.bytes, sheet.name);
-      if (holds === false) excused++;
-      else {
-        failures.push(
-          `sheet ${JSON.stringify(sheet.name)} had rows and reads with none, ${holds ? "though its part holds a value" : "and its part cannot be followed"}`,
-        );
-      }
-    }
+    const judgment = judge(original.outcome, await outcomeOf(mutation.bytes), mutation);
+    ended = judgment.ended;
+    excused = judgment.excused;
+    failures.push(...judgment.failures);
   } catch (error) {
     failures.push(`not an XlsxReadError: ${String(error)}`);
   }

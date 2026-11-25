@@ -78,7 +78,11 @@ export function supervise<Message>(
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stderr = "";
     child.stderr?.setEncoding("utf8");
+    let fatal: string | undefined;
+    let before = "";
     child.stderr?.on("data", (text: string) => {
+      fatal ??= /FATAL ERROR.*/.exec(before + text)?.[0];
+      before = text.slice(-200);
       if (stderr.length < 8_000) stderr += text;
     });
     child.on("message", (message: Message) => {
@@ -94,7 +98,6 @@ export function supervise<Message>(
     child.on("error", reject);
     child.on("close", (code, signal) => {
       clearTimeout(timer);
-      const fatal = /FATAL ERROR.*/.exec(stderr)?.[0];
       resolve({
         messages,
         exit: signal ?? `code ${code}`,
