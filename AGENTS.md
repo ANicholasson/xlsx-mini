@@ -8,7 +8,7 @@ Zero-dependency TypeScript library that writes `.xlsx` files. An experimental en
 - The repair dialog never appears. Every change keeps the golden fixtures opening clean in Excel, Numbers, Google Sheets and LibreOffice; `docs/compatibility.md` records each check.
 - The core runs everywhere: web-standard APIs only. Node and DOM globals belong in runtime-specific entries and tests; lint enforces it.
 - Output is deterministic: identical input, identical bytes.
-- The read side refuses a damaged or hostile file with a code, never repairs it, and never reads a damaged workbook as an empty one. The writer's bundles are the same bytes with or without the read side.
+- The read side never repairs. A damaged file ends in a refusal with a code, never in a guess or an empty workbook, and every read stays within its limits. The writer's bundles are the same bytes with or without the read side.
 - Performance is a design input, measured by benchmarks, with the hot-path rules in `CODING_STANDARDS.md`.
 
 ## Read before changing code

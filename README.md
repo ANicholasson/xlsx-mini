@@ -5,7 +5,7 @@
 [![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is damaged or hostile. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is damaged. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
 
 ## Install
 
@@ -811,7 +811,7 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## Reading (experimental)
 
-`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers, so a damaged or hostile file is refused with a code, never repaired and never read as an empty workbook. Reading is experimental, and any 0.x minor may change it.
+`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers. A damaged file is refused with a code, never repaired and never read as an empty workbook, and every read is held to limits. Reading is experimental, and any 0.x minor may change it.
 
 <!-- snippet: read-rows -->
 
