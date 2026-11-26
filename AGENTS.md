@@ -1,6 +1,6 @@
 # xlsx-mini
 
-Zero-dependency TypeScript library that writes `.xlsx` files. Write-only; reading is out of scope.
+Zero-dependency TypeScript library that writes `.xlsx` files. An experimental entry, `xlsx-mini/read`, reads the values of one (ADR 0032). Editing a workbook is out of scope.
 
 ## Never compromise
 
@@ -8,6 +8,7 @@ Zero-dependency TypeScript library that writes `.xlsx` files. Write-only; readin
 - The repair dialog never appears. Every change keeps the golden fixtures opening clean in Excel, Numbers, Google Sheets and LibreOffice; `docs/compatibility.md` records each check.
 - The core runs everywhere: web-standard APIs only. Node and DOM globals belong in runtime-specific entries and tests; lint enforces it.
 - Output is deterministic: identical input, identical bytes.
+- The read side never repairs. A malformed part among those it reads ends in a refusal with a code, never in a guess or an empty workbook; a part it has no use for is never inflated, and every read stays within its limits. The writer's bundles are the same bytes with or without the read side.
 - Performance is a design input, measured by benchmarks, with the hot-path rules in `CODING_STANDARDS.md`.
 
 ## Read before changing code
@@ -23,7 +24,7 @@ Zero-dependency TypeScript library that writes `.xlsx` files. Write-only; readin
 - `pnpm validate` converts every golden fixture to CSV with LibreOffice and compares it with `test/fixtures/csv/`; the validate job does the same. A changed fixture regenerates its CSV in the same change.
 - A change users notice gets a changeset (`pnpm changeset`). Merging the version pull request publishes through npm trusted publishing.
 - README code lives in `examples/snippets/`, one file per block; an HTML comment `<!-- snippet: name -->` before the block names the file. `test/readme.test.ts` runs every file and fails when a block and its file differ. Edit the file, then paste it into the README.
-- The runtime matrix in `test/runtimes/` builds `dist/` and writes a workbook in Node (ESM and CommonJS), Bun, Deno, workerd and the Vercel edge VM on every test run. `pnpm install` provides every host; nothing else to install.
+- The runtime matrix in `test/runtimes/` builds `dist/` and writes a workbook, then reads it back, in Node (ESM and CommonJS), Bun, Deno, workerd and the Vercel edge VM on every test run. `pnpm install` provides every host; nothing else to install.
 - `pnpm bench` runs the three benchmark suites in `bench/` (wide table, many sheets, string-heavy) on Node; `pnpm bench:all` also on Bun and Deno; `--base <dist>` times a second build in turns with the first. On every pull request the workflow builds `main` alongside and posts one comment with the changes, measured on the same runner. `pnpm bench:memory` prints peak memory per suite. The budgets live in `docs/adr/0021-performance-baseline-and-budgets.md`. Time and memory budgets only ratchet down. The bundle-size budget is a ceiling: only a feature that needs the bytes raises it, in its own pull request, and records in that ADR what the bytes buy.
 - Test at the lowest layer that fails; extend an existing case before adding one; a bug fix ships its failing test first.
 - Changing a golden fixture means regenerating it from its input, opening it in the four applications, and updating the compatibility log in the same change.

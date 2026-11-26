@@ -108,5 +108,8 @@ describe("bundle size", () => {
     const readme = readFileSync(join(root, "README.md"), "utf8");
     expect(readme).toContain(`under ${SIZE_BUDGET.writeXlsx / 1000} kB`);
     expect(readme).toContain(`under ${SIZE_BUDGET.everything / 1000} kB`);
+    expect(readme).toContain(
+      `\`xlsx-mini/read\` alone takes on under ${SIZE_BUDGET.read / 1000} kB`,
+    );
   });
 });
