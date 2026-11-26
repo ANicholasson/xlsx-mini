@@ -48,7 +48,8 @@ export interface OpenedWorkbook {
   /**
    * The name of every sheet in the order of the workbook, hidden ones included, as the file states
    * it: nothing trimmed or normalised. Never empty, and no two names are the same character for
-   * character; names that differ only by case are two sheets.
+   * character; names that differ only by case are two sheets. An escape `_xHHHH_` in a name is
+   * given as written, where Excel and LibreOffice show the character it names.
    */
   readonly sheets: readonly string[];
   /**
@@ -101,7 +102,8 @@ export interface OpenedWorkbook {
  * A file that is not a workbook package is `NOT_XLSX`. A sheet list that is missing, empty or stated
  * twice is `INVALID_WORKBOOK`, and so are a sheet whose relationship is missing or not to a kind of
  * sheet, a target outside the package, two sheets with one name, and a date system that is neither
- * true nor false.
+ * true nor false. Every part is read by the namespace and the local name of each element, so an
+ * element of another namespace is never read as a sheet, a row or a cell; ADR 0032 has the rules.
  *
  * @example
  * const book = await openXlsx(file);

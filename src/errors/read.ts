@@ -27,6 +27,10 @@
  * - `UNKNOWN_SHEET`: `rows` was asked for a name or an index the workbook does not have.
  * - `INVALID_LIMIT`: a limit that is not a positive finite number. `limit` names it.
  *
+ * A part whose compressed data is damaged can be refused with another of the four codes of a
+ * damaged file on another runtime: Bun and Deno have given `INVALID_PACKAGE` where Node gave
+ * `INVALID_XML` or `INVALID_CELL`. Branch on the four together, as the example does.
+ *
  * @example
  * const damaged: readonly ReadErrorCode[] = [
  *   "INVALID_PACKAGE", "INVALID_XML", "INVALID_WORKBOOK", "INVALID_CELL",
