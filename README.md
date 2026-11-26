@@ -5,7 +5,7 @@
 [![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is damaged. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is malformed. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
 
 ## Install
 
@@ -811,7 +811,7 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## Reading (experimental)
 
-`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers. A damaged file is refused with a code, never repaired and never read as an empty workbook, and every read is held to limits. Reading is experimental, and any 0.x minor may change it.
+`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers. A malformed file is refused with a code, never repaired and never read as an empty workbook, and every read is held to limits. Reading is experimental, and any 0.x minor may change it.
 
 <!-- snippet: read-rows -->
 
@@ -951,7 +951,7 @@ The limits hold per read. Each iteration of `rows` has its own `inflatedBytes`, 
 
 ### Where reading runs
 
-On every change, the runtime matrix reads stored and deflated packages in Node, as ESM and as CommonJS, in Bun, in Deno and in Cloudflare workerd. Where the runtime has no `DecompressionStream`, as in the Vercel edge runtime in the matrix, a package of stored parts reads and a deflated part is refused with `NO_INFLATE`. There `writeXlsx` writes stored parts, so its workbooks read back, but a workbook `streamXlsx` wrote does not, because a streamed part is always a deflate stream, even with `compression: "none"`. Deno has no `Blob` backed by a file. Its `fs.openAsBlob` reads the whole file, so on Deno a file opened that way is held in memory whole. No browser is in the matrix.
+On every change, the runtime matrix reads stored and deflated packages in Node, as ESM and as CommonJS, in Bun, in Deno and in Cloudflare workerd. Where the runtime has no `DecompressionStream`, as in the Vercel edge runtime in the matrix, a package of stored parts reads and a deflated part is refused with `NO_INFLATE`. There `writeXlsx` writes stored parts, so its workbooks read back, but a workbook `streamXlsx` wrote does not, because a streamed part is always a deflate stream, even with `compression: "none"`. Node 20 and 22 stop at the end of a part's deflate stream and do not report bytes after it, so a part whose stated size and CRC-32 match the stream without those bytes reads there as Python's `zipfile` and `unzip` read it. Node 24 and 26 and Bun refuse that part. Deno has no `Blob` backed by a file. Its `fs.openAsBlob` reads the whole file, so on Deno a file opened that way is held in memory whole. No browser is in the matrix.
 
 ### What it costs
 
@@ -1056,7 +1056,7 @@ Four things are outside this library on purpose. Each is large against a writer 
 
 ## Security
 
-No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. The read side opens no file and fetches nothing. It reads the bytes or the `Blob` you give it, refuses a damaged file with a code instead of repairing it, holds each read to its limits, makes no property name from text in the file, and resolves nothing outside the package. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
+No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. The read side opens no file and fetches nothing. It reads the bytes or the `Blob` you give it, refuses a malformed file with a code instead of repairing it, holds each read to its limits, makes no property name from text in the file, and resolves nothing outside the package. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
 
 ## Benchmarks
 
