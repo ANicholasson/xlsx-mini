@@ -135,7 +135,7 @@ _Avoid_: corruption warning
 ### What the read side gives
 
 **Read side**:
-The code that reads the values of a package: the entry `xlsx-mini/read`, `src/read.ts`, and each feature's `read.ts` and `read/`. Nothing outside it imports it, so the writer's bundles are the same bytes without it.
+The code that reads the values of a package: the entry `xlsx-mini/read`, `src/read.ts`, and each feature's `read.ts` and `read/`. Nothing outside it imports it but tests and benchmarks, so the writer's bundles are the same bytes without it.
 _Avoid_: reader (the person who looks at a sheet), parser
 
 **Refusal**:

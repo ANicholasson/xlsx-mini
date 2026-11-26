@@ -5,7 +5,7 @@
 [![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is malformed. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file, and refuses with a code where a part it reads is malformed. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
 
 ## Install
 
@@ -811,7 +811,7 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## Reading (experimental)
 
-`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers. A malformed file is refused with a code, never repaired and never read as an empty workbook, and every read is held to limits. Reading is experimental, and any 0.x minor may change it.
+`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers. Where a part it reads is malformed, the file is refused with a code, never repaired and never read as an empty workbook, and every read is held to limits. Reading is experimental, and any 0.x minor may change it.
 
 <!-- snippet: read-rows -->
 
@@ -910,7 +910,7 @@ export default async function countRows(upload: Blob): Promise<number | string> 
 }
 ```
 
-Every refusal is an `XlsxReadError` with a `code`, and a workbook whose sheet list or sheet data cannot be found is refused, never read as empty. `rows` yields each row as it reads the sheet, and checks the sheet's size and checksum at its last byte, so act on what you read once the loop has ended without an error. On Bun and Deno, a part whose compressed data is damaged can be refused with `INVALID_PACKAGE` where Node gives `INVALID_XML` or `INVALID_CELL`, so branch on the four codes of a damaged file together, as the snippet does. An error that is not an `XlsxReadError`, such as a failed read of the `Blob`, passes through as it is. The table of error codes at the end of this section lists every code.
+Every refusal is an `XlsxReadError` with a `code`, and a workbook whose sheet list or sheet data cannot be found is refused, never read as empty. What is checked is what is read: the package's directory, the workbook and its relationships, the shared strings, the styles and each sheet `rows` reads. A part the read side has no use for, such as a picture or the document properties, is never inflated, so damage in it is not seen. A number cell's style is looked up only in a workbook where some cell style shows a date or that holds no cell style. In any other workbook a style that names no cell style is not refused, and the cell reads as its number. `rows` yields each row as it reads the sheet, and checks the sheet's size and checksum at its last byte, so act on what you read once the loop has ended without an error. On Bun and Deno, a part whose compressed data is damaged can be refused with `INVALID_PACKAGE` where Node gives `INVALID_XML` or `INVALID_CELL`, so branch on the four codes of a damaged file together, as the snippet does. An error that is not an `XlsxReadError`, such as a failed read of the `Blob`, passes through as it is. The table of error codes at the end of this section lists every code.
 
 ### Limits for an upload
 
@@ -959,7 +959,7 @@ In a bundle, minified and gzipped, `xlsx-mini/read` alone takes on under 12 kB, 
 
 ### Before you trust a value
 
-- A number becomes a `Date` when its cell's number format shows a year, a month or a day, and a date stored as text always does. The `Date`'s UTC fields are the sheet's wall clock, as the writer writes a `Date`, so read it with the UTC getters or `toISOString()`, not in local time. A time of day or an elapsed time stays a number, a fraction of a day, and so does a serial no calendar shows, such as 0 or the 29 February 1900 that never was.
+- A number becomes a `Date` when its cell's number format shows a year, a month or a day, and a date stored as text always does. The `Date`'s UTC fields are the sheet's wall clock, as the writer writes a `Date`, so read it with the UTC getters or `toISOString()`, not in local time. A time of day or an elapsed time stays a number, a fraction of a day, and so does a serial no calendar shows, such as a negative one or, in the 1900 date system, 0 and the 29 February 1900 that never was. In the 1904 date system serial 0 is 1 January 1904.
 - Text in the format's escape, `_xHHHH_`, reads as the character it names, so `_x0041_` reads as `A`, as Excel and LibreOffice show it. Google Sheets writes such text as it is, without escaping it, so text it showed as `_x0041_` reads as `A` from a file it wrote.
 
 ### How it is tested
@@ -1004,7 +1004,7 @@ A refusal while `rows` reads a sheet names the sheet in `sheet`, except a refusa
 | `INVALID_WORKBOOK` | The parts do not make a workbook: the sheet list, a sheet's data, the shared strings or the styles are missing or damaged, a relationship leaves the package, two sheets share a name, or the date system is neither true nor false. | `sheet` when the refusal is about one sheet         |
 | `INVALID_CELL`     | A row or a cell is out of order, a reference is malformed, a value is not what its cell's type says, or a shared string or a style does not exist.                                                                                   | `sheet`, and `cell` where the place has a reference |
 | `LIMIT_EXCEEDED`   | The file asks for more than a limit allows.                                                                                                                                                                                          | `limit`, and `sheet` while `rows` reads one         |
-| `MISSING_HEADER`   | `objectsFromRows` found no header row, or one that lacks a declared column.                                                                                                                                                          | `header`, the caller's own text                     |
+| `MISSING_HEADER`   | `objectsFromRows` found no header row, or one that lacks a declared column.                                                                                                                                                          | `header` where a column was declared                |
 | `NO_INFLATE`       | A part is deflated, and the runtime has no `DecompressionStream`, or one that cannot be held to the end of a deflate stream.                                                                                                         | `sheet` while `rows` reads one                      |
 | `UNKNOWN_SHEET`    | `rows` was called with a name or an index the workbook does not have. It throws at the call.                                                                                                                                         | `sheet` when called with a name                     |
 | `INVALID_LIMIT`    | A limit that is not a positive finite number.                                                                                                                                                                                        | `limit`                                             |
@@ -1056,7 +1056,7 @@ Four things are outside this library on purpose. Each is large against a writer 
 
 ## Security
 
-No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. The read side opens no file and fetches nothing. It reads the bytes or the `Blob` you give it, refuses a malformed file with a code instead of repairing it, holds each read to its limits, makes no property name from text in the file, and resolves nothing outside the package. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
+No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. The read side opens no file and fetches nothing. It reads the bytes or the `Blob` you give it, refuses with a code where a part it reads is malformed and never repairs one, holds each read to its limits, makes no property name from text in the file, and resolves nothing outside the package. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
 
 ## Benchmarks
 
@@ -1079,7 +1079,7 @@ Reading is timed the same way, on the file the writer makes of each suite by def
 | Many sheets, 40 sheets of 2 501 rows of 6 cells                  | 191 ms |
 | String-heavy, 200 001 rows of 5 cells                            | 288 ms |
 
-A read holds about as much at a million rows as at 100 000. Read from bytes on Node 24, the wide table streamed with inline strings held at most 1.0 MiB of heap and array buffers above what the process held before the read at 100 000 rows, and 1.3 MiB at a million, with `inflatedBytes` and `cellPositions` raised because a million of its rows pass both defaults.
+What a read keeps does not grow with the rows. Read from bytes on Node 24 and sampled after a collection every 10 000 rows, the wide table streamed with inline strings held at most 1.0 MiB of heap and array buffers above what the process held before the read at 100 000 rows, and 1.3 MiB at a million, with `inflatedBytes` and `cellPositions` raised because a million of its rows pass both defaults. The samples show growth with the number of rows, not the peak of a read, which the section on limits gives trials of.
 
 ## Compatibility
 

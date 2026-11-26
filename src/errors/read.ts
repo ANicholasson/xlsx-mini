@@ -149,7 +149,7 @@ export class XlsxReadError extends Error {
    */
   readonly header: string | undefined;
   /**
-   * Starts at the place in the reader that refused. Whether the caller's frames that led there
+   * Starts at the place in the read side that refused. Whether the caller's frames that led there
    * follow is the runtime's choice: Node and Deno give them, Bun 1.4 does not. A refusal that
    * `rows` names the sheet of keeps the stack it was made with.
    */
