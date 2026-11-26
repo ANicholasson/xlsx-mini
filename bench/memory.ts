@@ -19,6 +19,7 @@ import {
   SAMPLED_ROWS,
   WIDE_LIMITS,
   bytesOf,
+  baseline,
   held,
   keptColumn,
   keptWorkbook,
@@ -82,7 +83,7 @@ async function measureRead(name: string, path: string, small: string): Promise<v
   await peakOfReading([warm.rows(0)], SAMPLED_ROWS, held());
   const wide = kind === "wide";
   const input = detail.endsWith("blob") ? await openAsBlob(path) : fileBytes(path);
-  const heldBefore = held();
+  const heldBefore = await baseline();
   const started = performance.now();
   const book = await read.openXlsx(input, wide ? { limits: WIDE_LIMITS } : undefined);
   const { rows, peak } = await peakOfReading(

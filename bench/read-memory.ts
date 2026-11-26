@@ -56,8 +56,25 @@ const SETTLE_MILLISECONDS = 20;
 async function settled(first: number, before: number, peak: number): Promise<number> {
   let lowest = first;
   for (let tries = 0; lowest > peak && tries < SETTLE_TRIES; tries++) {
-    await new Promise((resolve) => setTimeout(resolve, SETTLE_MILLISECONDS));
+    await pause();
     lowest = Math.min(lowest, held() - before);
+  }
+  return lowest;
+}
+
+function pause(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, SETTLE_MILLISECONDS));
+}
+
+/**
+ * What is held before a read: the lowest of samples a pause apart, for the same reason. A baseline
+ * that counts what the read before it left makes the read measured look smaller by as much.
+ */
+export async function baseline(): Promise<number> {
+  let lowest = held();
+  for (let tries = 0; tries < SETTLE_TRIES; tries++) {
+    await pause();
+    lowest = Math.min(lowest, held());
   }
   return lowest;
 }
