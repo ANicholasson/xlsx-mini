@@ -2,10 +2,11 @@
 "use strict";
 
 const browser = require("xlsx-mini/browser");
+const read = require("xlsx-mini/read");
 const lib = require("xlsx-mini");
 const { run } = require("./scenario.mjs");
 
-run(lib, browser).then(
+run(lib, browser, read).then(
   (report) => console.log(JSON.stringify(report)),
   (error) => {
     console.error(error);

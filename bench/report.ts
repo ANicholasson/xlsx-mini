@@ -5,10 +5,24 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { dirname, join } from "node:path";
 import type { PackageSize, SizeResult } from "./size.ts";
 
-/** `stream` is `streamXlsx` with its defaults into a sink that discards the bytes. */
-/** `auto` is the suite with every column sized to its content, written as STORE, to read against `store`. */
-/** `tokens` is the reader's tokenizer over the suite's worksheet, every open and close tag a token. */
-export type Variant = "deflate" | "store" | "stream" | "auto" | "tokens";
+/**
+ * Every variant, in the order a runtime's table lists them. `stream` is `streamXlsx` with its
+ * defaults into a sink that discards the bytes. `auto` is the suite with every column sized to its
+ * content, written as STORE, to read against `store`. `tokens` is the reader's tokenizer over the
+ * suite's worksheet, every open and close tag a token. `read` is the reader over every row of every
+ * sheet of the suite; `objects` is the same rows as objects.
+ */
+export const VARIANTS = [
+  "deflate",
+  "store",
+  "stream",
+  "auto",
+  "tokens",
+  "read",
+  "objects",
+] as const;
+
+export type Variant = (typeof VARIANTS)[number];
 
 /** The minimum and the median of a benchmark's runs, in milliseconds. */
 export interface Timing {
@@ -45,6 +59,8 @@ export const ALERT_BAND = 0.15;
 
 /** The marker that lets the workflow find and update its own comment. */
 export const COMMENT_MARKER = "<!-- xlsx-mini-benchmarks -->";
+
+const READS: ReadonlySet<Variant> = new Set(["read", "objects"]);
 
 const RUNTIME_ORDER = ["node", "bun", "deno"];
 const RUNTIME_NAMES: Readonly<Record<string, string>> = { node: "Node", bun: "Bun", deno: "Deno" };
@@ -139,9 +155,31 @@ function renderSize(size: SizeResult, options: ReportOptions): string[] {
   return lines;
 }
 
+/**
+ * The runs of one runtime and version as one, its benchmarks in the order of their suites and then
+ * of `VARIANTS`: the jobs of a runtime each measure some of the variants.
+ */
+function byRuntime(runs: readonly RunResult[]): RunResult[] {
+  const joined = new Map<string, RunResult>();
+  for (const run of runs) {
+    const key = `${run.runtime} ${run.version}`;
+    const seen = joined.get(key);
+    joined.set(
+      key,
+      seen === undefined ? run : { ...seen, benchmarks: [...seen.benchmarks, ...run.benchmarks] },
+    );
+  }
+  return [...joined.values()].map((run) => {
+    const suites = [...new Set(run.benchmarks.map(({ suite }) => suite))];
+    const rank = (b: BenchmarkResult) =>
+      suites.indexOf(b.suite) * VARIANTS.length + VARIANTS.indexOf(b.variant);
+    return { ...run, benchmarks: [...run.benchmarks].sort((a, b) => rank(a) - rank(b)) };
+  });
+}
+
 /** The pull-request comment: a table per runtime, minimum of the runs, both builds side by side. */
 export function renderReport(runs: readonly RunResult[], options: ReportOptions): string {
-  const ordered = [...runs].sort((a, b) => runtimeRank(a.runtime) - runtimeRank(b.runtime));
+  const ordered = byRuntime(runs).sort((a, b) => runtimeRank(a.runtime) - runtimeRank(b.runtime));
   const first = ordered[0];
   const samples = first?.benchmarks[0]?.samples ?? 0;
   const lines: string[] = [
@@ -152,6 +190,12 @@ export function renderReport(runs: readonly RunResult[], options: ReportOptions)
       `Changes inside ±${NOISE_BAND * 100} % are noise; ⚠️ marks more than ${NOISE_BAND * 100} % slower, 🔴 more than ${ALERT_BAND * 100} % slower, 🟢 more than ${NOISE_BAND * 100} % faster.`,
     "",
   ];
+  if (ordered.some((run) => run.benchmarks.some((b) => READS.has(b.variant)))) {
+    lines.push(
+      `\`read\` reads every row of every sheet of the suite through \`rows\`, and \`objects\` through \`objectsFromRows\` with a column for each header. Both builds read one file: the suite as ${options.headLabel} writes it by default.`,
+      "",
+    );
+  }
   for (const run of ordered) {
     lines.push(
       `### ${runtimeTitle(run)}`,

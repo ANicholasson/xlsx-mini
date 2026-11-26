@@ -5,9 +5,20 @@
  */
 import { type ReadLimits, XlsxReadError, resolveLimits } from "./errors/read.js";
 import { openPackage, partName } from "./opc/read.js";
+import { type SharedStrings, sharedStringsVisitor } from "./shared-strings/read.js";
+import { type DateStyles, stylesVisitor } from "./styles/read.js";
 import { readWorkbook } from "./workbook/read.js";
+import { type ReadRow, worksheetVisitor } from "./worksheet/read.js";
+import { readXml, scanXml } from "./xml/read.js";
 
 export { type ReadErrorCode, type ReadLimits, XlsxReadError } from "./errors/read.js";
+export {
+  type ReadColumn,
+  type ReadObject,
+  type ReadRow,
+  type ReadValue,
+  objectsFromRows,
+} from "./worksheet/read.js";
 
 /**
  * How to read, as opposed to what to read.
@@ -37,7 +48,8 @@ export interface OpenedWorkbook {
   /**
    * The name of every sheet in the order of the workbook, hidden ones included, as the file states
    * it: nothing trimmed or normalised. Never empty, and no two names are the same character for
-   * character; names that differ only by case are two sheets.
+   * character; names that differ only by case are two sheets. An escape `_xHHHH_` in a name is
+   * given as written, where Excel and LibreOffice show the character it names.
    */
   readonly sheets: readonly string[];
   /**
@@ -45,27 +57,53 @@ export interface OpenedWorkbook {
    * `UNKNOWN_SHEET` here, at the call, for a sheet the workbook does not have. Nothing is read
    * until the result is iterated. A chart sheet, a dialog sheet and a macro sheet have no rows.
    *
-   * Reading the rows of a worksheet is not built yet: iterating them rejects with an `Error` that
-   * says so, and never ends as if the sheet were empty.
+   * Every iteration reads the sheet from its start, yields each row that holds a value in the
+   * order of the sheet, and has limits of its own: two sheets may be read at once, and a sheet
+   * again. The shared strings and the styles are read once, by the first iteration of a worksheet,
+   * charged to the opening's `inflatedBytes`, the styles within the eighth of it that the parts
+   * which become lists share, and held as long as the workbook: the styles as one byte per cell
+   * style. Leaving the loop early stops the inflate. A refusal of the sheet names it in `sheet`; a
+   * refusal of the shared strings or the styles names none, and every later iteration of a
+   * worksheet repeats it. A date is a `Date` (see `ReadValue`).
+   *
+   * A cell's style is read only in a cell that holds a number, and only in a workbook where some
+   * cell style shows a date or that holds no cell style: one without a styles part, or with a
+   * styles part that lists none. There a style that is not written in decimal digits, or that
+   * names no cell style, is refused with `INVALID_CELL`. A workbook that holds no cell style has
+   * one, style 0, the style of a cell without `s`. Anywhere else the style is not read, so it is
+   * not refused.
+   *
+   * One iteration holds one row and the text of the part around it. In trials with the default
+   * limits, the most one iteration reached was 106 MiB of heap on Node, for a row of six cells that
+   * each hold the longest text of character references, and 309 MiB resident on Bun, for 30 rows
+   * that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds, and
+   * they move with when the engine collects: that row reached 88 to 106 MiB over 19 runs.
+   * Iterations at the same time each hold their own, and the file decides how many sheets there
+   * are.
+   *
+   * A sheet is held to its size and its checksum at its last byte, after its rows were yielded:
+   * act on what was read once the loop has ended without an error.
    *
    * @example
-   * for await (const row of book.rows("Orders")) console.log(row);
+   * for await (const row of book.rows("Orders")) console.log(row.number, row.cells);
    */
-  rows(sheet: string | number): AsyncIterable<never>;
+  rows(sheet: string | number): AsyncIterable<ReadRow>;
 }
 
 /**
  * Opens an `.xlsx` file for reading its values: reads the package's directory and the sheet list,
- * and nothing else. A `Blob` is read in slices and never whole; bytes are not copied, so they must
- * not change while the workbook is in use. A part the reader has no use for, such as a picture, is
- * never inflated. The search for the end of the file reads up to its last 65 633 bytes, which in a
- * small file hold other parts' bytes too.
+ * and nothing else. A `Blob` is read in slices and never whole. Bytes are viewed, not copied, so
+ * they must not change while the workbook is in use; bytes over shared memory are copied once. A
+ * part the read side has no use for, such as a picture, is never inflated. The search for the end
+ * of the file reads up to its last 65 633 bytes, which in a small file hold other parts' bytes too.
  *
  * Built for files from strangers: every refusal is an `XlsxReadError` with a code from
  * `ReadErrorCode`, and a damaged workbook is refused, never repaired and never read as an empty one.
  * A file that is not a workbook package is `NOT_XLSX`. A sheet list that is missing, empty or stated
  * twice is `INVALID_WORKBOOK`, and so are a sheet whose relationship is missing or not to a kind of
- * sheet, a target outside the package, and two sheets with one name.
+ * sheet, a target outside the package, two sheets with one name, and a date system that is neither
+ * true nor false. Every part is read by the namespace and the local name of each element, so an
+ * element of another namespace is never read as a sheet, a row or a cell.
  *
  * @example
  * const book = await openXlsx(file);
@@ -77,13 +115,41 @@ export async function openXlsx(
   file: Uint8Array | ArrayBuffer | Blob,
   options?: ReadOptions,
 ): Promise<OpenedWorkbook> {
-  const { book } = resolveLimits(options?.limits);
+  const limits = resolveLimits(options?.limits);
+  const { book } = limits;
   const pkg = await openPackage(file, book.parts, book.structure);
-  const listed = await readWorkbook(
+  const {
+    sheets: listed,
+    sharedStrings,
+    styles,
+    date1904,
+  } = await readWorkbook(
     (name) => pkg.open(partName(name, "structure"), book.structure),
     book.structure,
   );
   const named = new Map(listed.map((listing) => [listing.name, listing] as const));
+
+  // A rejected promise that nothing awaits ends the process as an unhandled rejection.
+  let tables: Promise<readonly [SharedStrings, DateStyles | undefined]> | undefined;
+  async function readTables(): Promise<readonly [SharedStrings, DateStyles | undefined]> {
+    const strings =
+      sharedStrings === undefined
+        ? []
+        : await readXml(
+            pkg.open(sharedStrings, book.stringBytes) ??
+              damaged("the shared-string table is missing"),
+            sharedStringsVisitor(book.strings),
+          );
+    const dates =
+      styles === undefined
+        ? new Uint8Array(1)
+        : await readXml(
+            pkg.open(styles, book.structure) ?? damaged("the styles part is missing"),
+            stylesVisitor(),
+          );
+    return [strings, dates];
+  }
+
   return {
     sheets: Object.freeze(listed.map(({ name }) => name)),
     rows(sheet) {
@@ -95,12 +161,42 @@ export async function openXlsx(
           typeof sheet === "string" ? { sheet } : {},
         );
       }
+      const { name, worksheet } = found;
       return {
         async *[Symbol.asyncIterator]() {
-          if (found.worksheet) throw new Error("reading the rows of a worksheet is not built yet");
-          yield* [];
+          if (worksheet === undefined) return;
+          const [strings, dates] = await (tables ??= readTables());
+          const meters = limits.rows();
+          try {
+            const bytes =
+              pkg.open(worksheet, meters.inflate) ?? damaged("a sheet's part is missing");
+            yield* scanXml(
+              bytes,
+              worksheetVisitor({
+                strings,
+                dates,
+                date1904,
+                positions: meters.positions,
+                rowText: meters.rowText,
+              }),
+            );
+          } catch (error) {
+            if (!(error instanceof XlsxReadError)) throw error;
+            const named = new XlsxReadError(error.code, error.message, {
+              sheet: name,
+              cell: error.cell,
+              limit: error.limit,
+              header: error.header,
+            });
+            named.stack = error.stack;
+            throw named;
+          }
         },
       };
     },
   };
+}
+
+function damaged(message: string): never {
+  throw new XlsxReadError("INVALID_WORKBOOK", message);
 }

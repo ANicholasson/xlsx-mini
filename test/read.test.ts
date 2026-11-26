@@ -2,12 +2,21 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
-import { type Workbook, writeXlsx } from "../src/index.js";
+import { type ObjectColumn, type Workbook, sheetFromObjects, writeXlsx } from "../src/index.js";
 import { createPackage, store } from "../src/opc/index.js";
-import { type OpenedWorkbook, XlsxReadError, openXlsx } from "../src/read.js";
+import {
+  type OpenedWorkbook,
+  type ReadColumn,
+  type ReadRow,
+  type ReadValue,
+  XlsxReadError,
+  objectsFromRows,
+  openXlsx,
+} from "../src/read.js";
 import {
   appearanceWorkbook,
   autoWidthWorkbook,
+  cellTypesOptions,
   cellTypesWorkbook,
   escapesWorkbook,
   formulasWorkbook,
@@ -26,6 +35,7 @@ import {
   stylesWorkbook,
   validationWorkbook,
 } from "./fixtures/workbooks.js";
+import { expectedRows } from "./helpers/expected-rows.js";
 import { unzip } from "./helpers/unzip.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -55,25 +65,45 @@ const GOLDEN: Readonly<Record<string, Workbook>> = {
   "validation.xlsx": validationWorkbook,
 };
 
-async function rowsOf(book: OpenedWorkbook, sheet: string | number): Promise<unknown> {
-  let rows = 0;
-  try {
-    for await (const _ of book.rows(sheet)) rows++;
-  } catch (error) {
-    return error;
-  }
+type Rows = (readonly [number, ...ReadValue[]])[];
+
+async function readRows(book: OpenedWorkbook, sheet: string | number): Promise<Rows> {
+  const rows: Rows = [];
+  for await (const { number, cells } of book.rows(sheet)) rows.push([number, ...cells]);
   return rows;
 }
 
-const NOT_BUILT = new Error("reading the rows of a worksheet is not built yet");
+async function outcomeOf(book: OpenedWorkbook, sheet: string | number): Promise<Rows | object> {
+  try {
+    return await readRows(book, sheet);
+  } catch (error) {
+    if (!(error instanceof XlsxReadError)) throw error;
+    const { code, sheet: named, cell, limit } = error;
+    return { code, sheet: named, cell, limit };
+  }
+}
 
 const RELATIONSHIPS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const MAIN = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+const PACKAGE = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-function workbookOf(sheets: string, relationships: string): Promise<Uint8Array> {
+const relationship = (id: string, type: string, target: string) =>
+  `<Relationship Id="${id}" Type="${RELATIONSHIPS}/${type}" Target="${target}"/>`;
+const sheetPart = (rows: string) =>
+  `<worksheet xmlns="${MAIN}"><sheetData>${rows}</sheetData></worksheet>`;
+const tablePart = (...texts: string[]) =>
+  `<sst xmlns="${MAIN}">${texts.map((text) => `<si><t>${text}</t></si>`).join("")}</sst>`;
+
+function workbookOf(
+  sheets: string,
+  relationships: string,
+  more: Readonly<Record<string, string>> = {},
+): Promise<Uint8Array> {
   const parts = {
-    "_rels/.rels": `<Relationships><Relationship Id="rId1" Type="${RELATIONSHIPS}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
-    "xl/workbook.xml": `<workbook xmlns:r="${RELATIONSHIPS}"><sheets>${sheets}</sheets></workbook>`,
-    "xl/_rels/workbook.xml.rels": `<Relationships>${relationships}</Relationships>`,
+    "_rels/.rels": `<Relationships xmlns="${PACKAGE}">${relationship("rId1", "officeDocument", "xl/workbook.xml")}</Relationships>`,
+    "xl/workbook.xml": `<workbook xmlns="${MAIN}" xmlns:r="${RELATIONSHIPS}"><sheets>${sheets}</sheets></workbook>`,
+    "xl/_rels/workbook.xml.rels": `<Relationships xmlns="${PACKAGE}">${relationships}</Relationships>`,
+    ...more,
   };
   const encoder = new TextEncoder();
   return createPackage(
@@ -81,6 +111,31 @@ function workbookOf(sheets: string, relationships: string): Promise<Uint8Array> 
     store,
   );
 }
+
+const stylesPart = (...formats: number[]) =>
+  `<styleSheet xmlns="${MAIN}"><cellXfs>${formats.map((id) => `<xf numFmtId="${id}"/>`).join("")}</cellXfs></styleSheet>`;
+
+/** Sheets One and Two, each a row of two shared strings and a date, and a chart sheet between them. */
+function sharingWorkbook(table: string, styles = stylesPart(0, 14)): Promise<Uint8Array> {
+  const row = (number: number) =>
+    `<row r="${number}"><c r="A${number}" t="s"><v>0</v></c><c r="B${number}" t="s"><v>1</v></c><c r="C${number}" s="1"><v>45000</v></c></row>`;
+  return workbookOf(
+    '<sheet name="One" sheetId="1" r:id="rId1"/><sheet name="Chart" sheetId="2" r:id="rId2"/><sheet name="Two" sheetId="3" r:id="rId3"/>',
+    relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+      relationship("rId2", "chartsheet", "chartsheets/sheet1.xml") +
+      relationship("rId3", "worksheet", "worksheets/sheet2.xml") +
+      relationship("rId4", "sharedStrings", "sharedStrings.xml") +
+      relationship("rId5", "styles", "styles.xml"),
+    {
+      "xl/worksheets/sheet1.xml": sheetPart(row(1)),
+      "xl/worksheets/sheet2.xml": sheetPart(row(2)),
+      "xl/sharedStrings.xml": table,
+      "xl/styles.xml": styles,
+    },
+  );
+}
+
+const MARCH_15 = new Date(Date.UTC(2023, 2, 15));
 
 describe("openXlsx", () => {
   it("lists the sheets of every golden fixture in order, hidden ones too, from the writer's input", async () => {
@@ -145,7 +200,7 @@ describe("openXlsx", () => {
     }
   });
 
-  it("charges the directory, the three parts of the sheet list and the part name of each sheet to an eighth of inflatedBytes, and nothing more", async () => {
+  it("charges the directory, the three parts of the sheet list and the part names of each sheet, the shared strings and the styles to an eighth of inflatedBytes, and nothing more", async () => {
     const bytes = await writeXlsx(imagesWorkbook);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const directory = view.getUint32(bytes.length - 22 + 12, true);
@@ -154,10 +209,26 @@ describe("openXlsx", () => {
       .filter(({ name }) => listParts.includes(name))
       .reduce(
         (total, entry) => total + entry.uncompressedSize,
-        directory + "xl/workbook.xml".length + "worksheets/sheet1.xml".length,
+        directory +
+          3 * "xl/workbook.xml".length +
+          "worksheets/sheet1.xml".length +
+          "sharedStrings.xml".length +
+          "styles.xml".length,
       );
     const opened = await openXlsx(bytes, { limits: { inflatedBytes: 8 * charged } });
     expect(opened.sheets).toEqual(["Catalogue"]);
+    const styles = unzip(bytes).find(({ name }) => name === "xl/styles.xml")!.uncompressedSize;
+    const styled = await openXlsx(bytes, { limits: { inflatedBytes: 8 * (charged + styles) } });
+    expect(await readRows(styled, 0)).toEqual(await readRows(await openXlsx(bytes), 0));
+    const unstyled = await openXlsx(bytes, {
+      limits: { inflatedBytes: 8 * (charged + styles) - 8 },
+    });
+    expect(await outcomeOf(unstyled, 0)).toEqual({
+      code: "LIMIT_EXCEEDED",
+      sheet: undefined,
+      cell: undefined,
+      limit: "inflatedBytes",
+    });
     await expect(
       openXlsx(bytes, { limits: { inflatedBytes: 8 * charged - 8 } }),
     ).rejects.toMatchObject({ code: "LIMIT_EXCEEDED", limit: "inflatedBytes" });
@@ -225,28 +296,707 @@ describe("rows", () => {
     expect(blob.reads.length).toBe(reads);
   });
 
-  it("does not end the iteration of a worksheet as if it were empty", async () => {
-    const book = await openXlsx(fixture("multi-sheet.xlsx"));
-    for (const sheet of [0, 1, "Empty"]) {
-      const ended = await rowsOf(book, sheet);
-      expect(ended, String(sheet)).toEqual(NOT_BUILT);
-      expect(ended).not.toBeInstanceOf(XlsxReadError);
+  it("reads back every golden fixture as the rows the writer was given, a formula as its cached value or nothing", async () => {
+    for (const [name, input] of Object.entries(GOLDEN)) {
+      const book = await openXlsx(fixture(name));
+      const coerce = name === "cell-types.xlsx" ? cellTypesOptions.coerce : undefined;
+      for (const [index, sheet] of input.sheets.entries()) {
+        const expected = expectedRows(sheet, coerce);
+        expect(await readRows(book, index), `${name}, ${sheet.name}`).toEqual(expected);
+        expect(await readRows(book, sheet.name), `${name}, ${sheet.name}`).toEqual(expected);
+      }
+    }
+    const formulas = await readRows(await openXlsx(fixture("formulas.xlsx")), "Budget");
+    expect(formulas.slice(1)).toEqual([
+      [2, "Desk", 2, 4999],
+      [3, "Chair", 4, 1299.5],
+      [4, "Lamp", 1, 349],
+      [5, "Sum", 7],
+      [7, "Items", 3],
+      [8, "Over budget", true],
+      [9, "Label", "Items: 3"],
+      [10, "Not a formula", "=SUM(B2:B4)"],
+    ]);
+  });
+
+  it("reads a number whose style shows a date as a Date, in the date system of the workbook", async () => {
+    const rows =
+      '<row r="1"><c r="A1" s="1"><v>0</v></c><c r="B1" s="1"><v>44000.5</v></c><c r="C1"><v>44000.5</v></c><c r="D1" t="d"><v>2024-06-19</v></c></row>';
+    const bytes = (properties: string) =>
+      workbookOf(
+        "",
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "styles", "styles.xml"),
+        {
+          "xl/workbook.xml": `<workbook xmlns="${MAIN}" xmlns:r="${RELATIONSHIPS}">${properties}<sheets><sheet name="Dates" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+          "xl/worksheets/sheet1.xml": sheetPart(rows),
+          "xl/styles.xml": stylesPart(0, 14),
+        },
+      );
+    const june = (day: number, hour: number) =>
+      new Date(Date.UTC(2024 - (day === 19 ? 0 : 4), 5, day, hour));
+    expect(await readRows(await openXlsx(await bytes('<workbookPr date1904="1"/>')), 0)).toEqual([
+      [1, new Date(Date.UTC(1904, 0, 1)), june(19, 12), 44000.5, june(19, 0)],
+    ]);
+    expect(await readRows(await openXlsx(await bytes("<workbookPr/>")), 0)).toEqual([
+      [1, 0, june(18, 12), 44000.5, june(19, 0)],
+    ]);
+  });
+
+  it("reads a workbook that writes SpreadsheetML with a prefix on every element, and one of the Strict family, as the same values", async () => {
+    const STRICT = "http://purl.oclc.org/ooxml/spreadsheetml/main";
+    const STRICT_RELATIONSHIPS = "http://purl.oclc.org/ooxml/officeDocument/relationships";
+    const parts = (main: string, related: string, prefix: string) => {
+      const x = (inner: string) => inner.replaceAll(/<(\/?)(\w)/g, `<$1${prefix}$2`);
+      const declared = prefix === "" ? `xmlns="${main}"` : `xmlns:${prefix.slice(0, -1)}="${main}"`;
+      const link = (id: string, type: string, target: string) =>
+        `<Relationship Id="${id}" Type="${related}/${type}" Target="${target}"/>`;
+      const root = (name: string, inner: string, more = "") =>
+        `<${prefix}${name} ${declared}${more}>${x(inner)}</${prefix}${name}>`;
+      return {
+        "_rels/.rels": `<Relationships xmlns="${PACKAGE}">${link("rId1", "officeDocument", "xl/workbook.xml")}</Relationships>`,
+        "xl/workbook.xml": root(
+          "workbook",
+          '<workbookPr date1904="0"/><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets>',
+          ` xmlns:r="${related}"`,
+        ),
+        "xl/_rels/workbook.xml.rels": `<Relationships xmlns="${PACKAGE}">${
+          link("rId1", "worksheet", "worksheets/sheet1.xml") +
+          link("rId2", "sharedStrings", "sharedStrings.xml") +
+          link("rId3", "styles", "styles.xml")
+        }</Relationships>`,
+        "xl/worksheets/sheet1.xml": root(
+          "worksheet",
+          '<sheetData><row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1"><v>2.5</v></c>' +
+            '<c r="C1" s="1"><v>45000</v></c><c r="D1" t="inlineStr"><is><r><t>in</t></r><r><t>line</t></r></is></c>' +
+            '<c r="E1" t="b"><v>1</v></c></row></sheetData>',
+        ),
+        "xl/sharedStrings.xml": root("sst", '<si><t xml:space="preserve">shared </t></si>'),
+        "xl/styles.xml": root(
+          "styleSheet",
+          '<cellXfs><xf numFmtId="0"/><xf numFmtId="14"/></cellXfs>',
+        ),
+      };
+    };
+    const encoder = new TextEncoder();
+    const valuesOf = async (written: Readonly<Record<string, string>>) => {
+      const bytes = await createPackage(
+        Object.entries(written).map(([path, text]) => ({ path, data: encoder.encode(text) })),
+        store,
+      );
+      return readRows(await openXlsx(bytes), "Data");
+    };
+    const expected = [[1, "shared ", 2.5, new Date(Date.UTC(2023, 2, 15)), "inline", true]];
+    expect(await valuesOf(parts(MAIN, RELATIONSHIPS, ""))).toEqual(expected);
+    expect(await valuesOf(parts(MAIN, RELATIONSHIPS, "x:"))).toEqual(expected);
+    expect(await valuesOf(parts(STRICT, STRICT_RELATIONSHIPS, ""))).toEqual(expected);
+    expect(await valuesOf(parts(STRICT, STRICT_RELATIONSHIPS, "s:"))).toEqual(expected);
+  });
+
+  it("reads a number cell's style in a workbook with a date style and in one without a styles part, whose one style is 0, and refuses a style that does not exist only there", async () => {
+    const book = async (rows: string, styles?: string) =>
+      openXlsx(
+        await workbookOf(
+          '<sheet name="One" sheetId="1" r:id="rId1"/>',
+          relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+            (styles === undefined ? "" : relationship("rId2", "styles", "styles.xml")),
+          {
+            "xl/worksheets/sheet1.xml": sheetPart(rows),
+            ...(styles === undefined ? {} : { "xl/styles.xml": styles }),
+          },
+        ),
+      );
+    const refusedAt = (cell: string) => ({
+      code: "INVALID_CELL",
+      sheet: "One",
+      cell,
+      limit: undefined,
+    });
+    const named = '<row r="1"><c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9"><v>2</v></c></row>';
+    expect(await readRows(await book(named, stylesPart(0, 2)), 0)).toEqual([[1, true, 2]]);
+    for (const styles of [undefined, stylesPart(0, 14)]) {
+      expect(await outcomeOf(await book(named, styles), 0), styles).toEqual(refusedAt("B1"));
+    }
+
+    const unstyled = (cells: string) => book(`<row r="1">${cells}</row>`);
+    expect(
+      await readRows(
+        await unstyled(
+          '<c r="A1"><v>2</v></c><c r="B1" s="0"><v>3</v></c><c r="C1" s="00" t="n"><v>4</v></c><c r="D1" s="0"><f>1+4</f><v>5</v></c>',
+        ),
+        0,
+      ),
+    ).toEqual([[1, 2, 3, 4, 5]]);
+    expect(
+      await readRows(
+        await unstyled(
+          '<c r="A1" s="9" t="b"><v>1</v></c><c r="B1" s="9" t="e"><v>#N/A</v></c><c r="C1" s="9" t="str"><f>B1</f><v>45000</v></c><c r="D1" s="9" t="inlineStr"><is><t>45000</t></is></c><c r="E1" s="9" t="d"><v>2023-03-15</v></c><c r="F1" s="9"/><c r="G1" s="x"><f>1+4</f></c>',
+        ),
+        0,
+      ),
+    ).toEqual([[1, true, "#N/A", "45000", "45000", MARCH_15]]);
+    for (const cell of [
+      '<c r="A1" s="1"><v>45000</v></c>',
+      '<c r="A1" s="1" t="n"><v>45000</v></c>',
+      '<c r="A1" s="1"><f>44999+1</f><v>45000</v></c>',
+      '<c r="A1" s="x"><v>45000</v></c>',
+    ]) {
+      expect(await outcomeOf(await unstyled(cell), 0), cell).toEqual(refusedAt("A1"));
     }
   });
 
-  it("gives a chart sheet no rows, every time it is iterated", async () => {
+  it("reads the styles part once, by the first read of a worksheet, whichever sheet asks first", async () => {
+    const bytes = await sharingWorkbook(tablePart("first", "second"));
+    const styles = unzip(bytes).find(({ name }) => name === "xl/styles.xml")!;
+    for (const order of [
+      ["One", "Two", "One"],
+      ["Two", "One", "Two"],
+    ]) {
+      const blob = new WatchedBlob([bytes.slice()]);
+      const book = await openXlsx(blob);
+      const ofStyles = () =>
+        blob.reads.filter(
+          ([start]) =>
+            start >= styles.localHeaderOffset &&
+            start < styles.localHeaderOffset + styles.compressedSize + 30 + styles.name.length,
+        ).length;
+      expect(ofStyles()).toBe(0);
+      for (const sheet of order) {
+        expect(await readRows(book, sheet)).toEqual([
+          [sheet === "One" ? 1 : 2, "first", "second", MARCH_15],
+        ]);
+      }
+      expect(ofStyles()).toBeGreaterThan(0);
+      const once = ofStyles();
+      await readRows(book, order[0]!);
+      expect(ofStyles()).toBe(once);
+    }
+  });
+
+  it("reads back every date-like value the writer takes as a Date, under each built-in id the writer gives one", async () => {
+    const civil = {
+      hour: 23,
+      minute: 59,
+      second: 59,
+      millisecond: 999,
+      microsecond: 0,
+      nanosecond: 0,
+    };
+    const values = [
+      new Date(Date.UTC(1900, 0, 1)),
+      new Date(Date.UTC(1900, 1, 28, 23, 59, 59, 999)),
+      new Date(Date.UTC(1900, 2, 1)),
+      new Date(Date.UTC(9999, 11, 31, 23, 59, 59, 999)),
+      { [Symbol.toStringTag]: "Temporal.PlainDate", year: 1900, month: 3, day: 1 },
+      { [Symbol.toStringTag]: "Temporal.PlainDateTime", year: 9999, month: 12, day: 31, ...civil },
+      { [Symbol.toStringTag]: "Temporal.ZonedDateTime", year: 1900, month: 2, day: 28, ...civil },
+      { [Symbol.toStringTag]: "Temporal.Instant", epochMilliseconds: Date.UTC(2026, 10, 17) },
+    ] as const;
+    const sheet = { name: "Dates", rows: values.map((value) => [value]) };
+    const bytes = await writeXlsx({ sheets: [sheet] });
+    const text = (name: string) =>
+      new TextDecoder().decode(unzip(bytes).find((entry) => entry.name === name)!.data);
+    const formats = [
+      ...text("xl/styles.xml")
+        .split("<cellXfs")[1]!
+        .matchAll(/<xf numFmtId="(\d+)"/g),
+    ];
+    const used = [...text("xl/worksheets/sheet1.xml").matchAll(/ s="(\d+)"/g)].map(([, style]) =>
+      Number(formats[Number(style)]![1]),
+    );
+    expect(new Set(used)).toEqual(new Set([14, 22]));
+    expect(await readRows(await openXlsx(bytes), 0)).toEqual(expectedRows(sheet));
+  });
+
+  it("writes back every Date it reads from a serial at the edges of the writer's range, and reads it again as itself", async () => {
+    const serials = [
+      "1",
+      "59.9999999",
+      "61",
+      "2958465.9999999884",
+      "45000.9999999999",
+      "60",
+      "0.5",
+      "2958466",
+    ];
+    const rows = serials.map(
+      (serial, at) => `<row r="${at + 1}"><c r="A${at + 1}" s="1"><v>${serial}</v></c></row>`,
+    );
+    const read = await readRows(
+      await openXlsx(
+        await workbookOf(
+          '<sheet name="Edges" sheetId="1" r:id="rId1"/>',
+          relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+            relationship("rId2", "styles", "styles.xml"),
+          {
+            "xl/worksheets/sheet1.xml": sheetPart(rows.join("")),
+            "xl/styles.xml": stylesPart(0, 22),
+          },
+        ),
+      ),
+      0,
+    );
+    expect(read.map(([, value]) => value instanceof Date)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+    const dates = read.filter(([, value]) => value instanceof Date);
+    const again = await openXlsx(
+      await writeXlsx({ sheets: [{ name: "Edges", rows: dates.map(([, date]) => [date]) }] }),
+    );
+    expect(await readRows(again, 0)).toEqual(dates.map(([, date], at) => [at + 1, date]));
+  });
+
+  it("refuses a worksheet whose part is missing, or that holds no sheet data, naming it, and never reads it as empty", async () => {
     const book = await openXlsx(
       await workbookOf(
-        '<sheet name="Data" sheetId="1" r:id="rId1"/><sheet name="Chart" sheetId="2" r:id="rId2"/>',
-        `<Relationship Id="rId1" Type="${RELATIONSHIPS}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${RELATIONSHIPS}/chartsheet" Target="chartsheets/sheet1.xml"/>`,
+        '<sheet name="Gone" sheetId="1" r:id="rId1"/><sheet name="Bare" sheetId="2" r:id="rId2"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "worksheet", "worksheets/sheet2.xml"),
+        {
+          "xl/worksheets/sheet2.xml": `<worksheet xmlns="${MAIN}"><dimension ref="A1"/></worksheet>`,
+        },
       ),
     );
-    expect(book.sheets).toEqual(["Data", "Chart"]);
-    expect(await rowsOf(book, "Chart")).toBe(0);
-    expect(await rowsOf(book, 1)).toBe(0);
-    expect(await rowsOf(book, "Data")).toEqual(NOT_BUILT);
+    for (const sheet of ["Gone", "Bare"]) {
+      expect(await outcomeOf(book, sheet)).toEqual({
+        code: "INVALID_WORKBOOK",
+        sheet,
+        cell: undefined,
+        limit: undefined,
+      });
+    }
+  });
+
+  it("names the sheet and the cell of a refused cell, and the sheet and the key of a limit a sheet passes", async () => {
+    const book = await openXlsx(
+      await workbookOf(
+        '<sheet name="Cells" sheetId="1" r:id="rId1"/><sheet name="Wide" sheetId="2" r:id="rId2"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "worksheet", "worksheets/sheet2.xml"),
+        {
+          "xl/worksheets/sheet1.xml": sheetPart('<row r="41"><c r="C41"><v>0x10</v></c></row>'),
+          "xl/worksheets/sheet2.xml": sheetPart('<row r="1"><c r="XFD1"><v>1</v></c></row>'),
+        },
+      ),
+      { limits: { cellPositions: 16_383 } },
+    );
+    expect(await outcomeOf(book, "Cells")).toEqual({
+      code: "INVALID_CELL",
+      sheet: "Cells",
+      cell: "C41",
+      limit: undefined,
+    });
+    expect(await outcomeOf(book, 1)).toEqual({
+      code: "LIMIT_EXCEEDED",
+      sheet: "Wide",
+      cell: undefined,
+      limit: "cellPositions",
+    });
+  });
+
+  it("charges each iteration's inflatedBytes the worksheet's declared size, and nothing of another iteration", async () => {
+    const rows = Array.from({ length: 5_000 }, (_, at) => [at, at / 4]);
+    const bytes = await writeXlsx({ sheets: [{ name: "Numbers", rows }] });
+    const sheet = unzip(bytes).find(({ name }) => name === "xl/worksheets/sheet1.xml")!;
+    const opened = (inflatedBytes: number) => openXlsx(bytes, { limits: { inflatedBytes } });
+    const fits = await opened(sheet.uncompressedSize);
+    for (let read = 0; read < 3; read++) expect(await readRows(fits, 0)).toHaveLength(5_000);
+    expect(await outcomeOf(await opened(sheet.uncompressedSize - 1), 0)).toEqual({
+      code: "LIMIT_EXCEEDED",
+      sheet: "Numbers",
+      cell: undefined,
+      limit: "inflatedBytes",
+    });
+  });
+
+  it("gives a chart sheet no rows and starts no shared strings or styles, even ones it would refuse, and leaves no rejection unhandled", async () => {
+    const bytes = await sharingWorkbook(tablePart("first", "second"), "<styles/>");
+    const unhandled: unknown[] = [];
+    const listen = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", listen);
+    try {
+      const blob = new WatchedBlob([bytes.slice()]);
+      const book = await openXlsx(blob, { limits: { sharedStrings: 1 } });
+      const reads = blob.reads.length;
+      expect(await readRows(book, "Chart")).toEqual([]);
+      expect(await readRows(book, 1)).toEqual([]);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(blob.reads.length).toBe(reads);
+      expect(unhandled).toEqual([]);
+      expect(await outcomeOf(book, "One")).toEqual({
+        code: "LIMIT_EXCEEDED",
+        sheet: undefined,
+        cell: undefined,
+        limit: "sharedStrings",
+      });
+    } finally {
+      process.off("unhandledRejection", listen);
+    }
+  });
+
+  it("reads the shared strings once, charged to the opening's inflatedBytes, whichever sheet asks first", async () => {
+    const texts = Array.from({ length: 4_000 }, (_, at) => `text number ${at}`);
+    const bytes = await sharingWorkbook(tablePart(...texts));
+    const table = unzip(bytes).find(({ name }) => name === "xl/sharedStrings.xml")!;
+    const once = Math.floor(table.uncompressedSize * 1.5);
+    for (const order of [
+      ["One", "Two", "One"],
+      ["Two", "One", "Two"],
+    ]) {
+      const book = await openXlsx(bytes, { limits: { inflatedBytes: once } });
+      for (const sheet of order) {
+        expect(await readRows(book, sheet)).toEqual([
+          [sheet === "One" ? 1 : 2, ...texts.slice(0, 2), MARCH_15],
+        ]);
+      }
+    }
+    const book = await openXlsx(bytes, { limits: { inflatedBytes: table.uncompressedSize } });
+    expect(await outcomeOf(book, "Two")).toMatchObject({
+      code: "LIMIT_EXCEEDED",
+      sheet: undefined,
+      limit: "inflatedBytes",
+    });
+  });
+
+  it("gives a refusal of the shared strings to every iteration of a worksheet, each time, and names no sheet", async () => {
+    const refusals = [
+      [tablePart("a", "b"), { sharedStringBytes: 20 }, "LIMIT_EXCEEDED", "sharedStringBytes"],
+      [tablePart("a", "b"), { sharedStrings: 1 }, "LIMIT_EXCEEDED", "sharedStrings"],
+      [`<sst xmlns="${MAIN}"><si><t>a</t></si><item/></sst>`, {}, "INVALID_WORKBOOK", undefined],
+      [tablePart("a", "b"), {}, "INVALID_WORKBOOK", undefined, `<styles xmlns="${MAIN}"/>`],
+      [
+        tablePart("a", "b"),
+        { inflatedBytes: 64_000 },
+        "LIMIT_EXCEEDED",
+        "inflatedBytes",
+        stylesPart(...Array.from({ length: 2_000 }, () => 0)),
+      ],
+    ] as const;
+    for (const [table, limits, code, limit, styles] of refusals) {
+      const book = await openXlsx(await sharingWorkbook(table, styles), { limits });
+      for (const sheet of ["One", "Two", "One", 0]) {
+        expect(await outcomeOf(book, sheet), `${code} ${sheet}`).toEqual({
+          code,
+          sheet: undefined,
+          cell: undefined,
+          limit,
+        });
+      }
+    }
+    const missing = await openXlsx(
+      await workbookOf(
+        '<sheet name="One" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "sharedStrings", "sharedStrings.xml"),
+        { "xl/worksheets/sheet1.xml": sheetPart("") },
+      ),
+    );
+    expect(await outcomeOf(missing, "One")).toMatchObject({
+      code: "INVALID_WORKBOOK",
+      sheet: undefined,
+    });
+    const unstyled = await openXlsx(
+      await workbookOf(
+        '<sheet name="One" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml") +
+          relationship("rId2", "styles", "styles.xml"),
+        { "xl/worksheets/sheet1.xml": sheetPart("") },
+      ),
+    );
+    expect(await outcomeOf(unstyled, "One")).toEqual({
+      code: "INVALID_WORKBOOK",
+      sheet: undefined,
+      cell: undefined,
+      limit: undefined,
+    });
+  });
+
+  it("reads a cell that names a shared string of a workbook without a table as one that does not exist", async () => {
+    const book = await openXlsx(
+      await workbookOf(
+        '<sheet name="One" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml"),
+        {
+          "xl/worksheets/sheet1.xml": sheetPart(
+            '<row r="1"><c r="A1"><v>1</v></c><c r="B1" t="s"><v>0</v></c></row>',
+          ),
+        },
+      ),
+    );
+    expect(await outcomeOf(book, 0)).toEqual({
+      code: "INVALID_CELL",
+      sheet: "One",
+      cell: "B1",
+      limit: undefined,
+    });
+  });
+
+  it("passes on an error of the Blob itself as it is, and names the sheet of a refusal with the refusal's own message", async () => {
+    const blob = new FailingBlob([fixture("minimal.xlsx")]);
+    const book = await openXlsx(blob);
+    expect(await readRows(book, 0)).toHaveLength(5);
+    blob.failing = true;
+    await expect(readRows(book, 0)).rejects.toBe(blob.error);
+    const bare = await openXlsx(
+      await workbookOf(
+        '<sheet name="Bare" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml"),
+        { "xl/worksheets/sheet1.xml": sheetPart('<row r="1"><c r="A1" t="b"><v>2</v></c></row>') },
+      ),
+    );
+    await expect(readRows(bare, 0)).rejects.toMatchObject({
+      code: "INVALID_CELL",
+      sheet: "Bare",
+      cell: "A1",
+      message: "a cell's value is not of its type or names no shared string",
+    });
+  });
+
+  it("keeps every field and the stack of a refusal it names the sheet of", async () => {
+    const book = await openXlsx(fixture("minimal.xlsx"));
+    const rows = book.rows(0)[Symbol.asyncIterator]();
+    await rows.next();
+    const refusal = new XlsxReadError("MISSING_HEADER", "the header row lacks a column", {
+      cell: "C1",
+      limit: "cellPositions",
+      header: "Total",
+    });
+    const named = await Promise.resolve(rows.throw?.(refusal)).catch((error: unknown) => error);
+    const fields = (error: object) => Object.fromEntries(Object.entries(error));
+    expect(named).toBeInstanceOf(XlsxReadError);
+    expect(fields(named as XlsxReadError)).toEqual({ ...fields(refusal), sheet: book.sheets[0] });
+    expect((named as XlsxReadError).message).toBe(refusal.message);
+    expect((named as XlsxReadError).stack).toBe(refusal.stack);
+  });
+
+  it("reads two sheets at once and one sheet twice at once, each iteration with limits of its own", async () => {
+    const book = await openXlsx(fixture("multi-sheet.xlsx"));
+    const alone = [await readRows(book, 0), await readRows(book, 1)];
+    const positions = alone.map((rows) =>
+      rows.reduce((sum, [, ...cells]) => sum + cells.length, 0),
+    );
+    const limited = await openXlsx(fixture("multi-sheet.xlsx"), {
+      limits: { cellPositions: Math.max(...positions) },
+    });
+    for (const sheets of [
+      [0, 1],
+      [1, 1],
+      [0, 0, 1, 1],
+    ]) {
+      const iterators = sheets.map((sheet) => limited.rows(sheet)[Symbol.asyncIterator]());
+      const read: Rows[] = sheets.map(() => []);
+      for (let busy = true; busy;) {
+        busy = false;
+        for (const [at, iterator] of iterators.entries()) {
+          const step = await iterator.next();
+          if (step.done) continue;
+          busy = true;
+          read[at]!.push([step.value.number, ...step.value.cells]);
+        }
+      }
+      expect(read).toEqual(sheets.map((sheet) => alone[sheet]));
+    }
+  });
+
+  it("stops reading a sheet's part when the loop is left early, and reads nothing for an iteration not started", async () => {
+    const rows = Array.from({ length: 40_000 }, (_, at) => [`row ${at}`, at, at % 2 === 0]);
+    const bytes = await writeXlsx({ sheets: [{ name: "Long", rows }] }, { compression: "none" });
+    const sheet = unzip(bytes).find(({ name }) => name === "xl/worksheets/sheet1.xml")!;
+    const ofSheet = (blob: WatchedBlob) =>
+      blob.reads.filter(
+        ([start]) =>
+          start >= sheet.localHeaderOffset &&
+          start < sheet.localHeaderOffset + sheet.compressedSize,
+      ).length;
+    const blob = new WatchedBlob([bytes]);
+    const book = await openXlsx(blob);
+    const opened = ofSheet(blob);
+    book.rows(0)[Symbol.asyncIterator]();
+    expect(ofSheet(blob)).toBe(opened);
+    await readRows(book, 0);
+    expect(ofSheet(blob) - opened).toBeGreaterThan(4);
+    for (const leave of ["break", "throw"]) {
+      const before = ofSheet(blob);
+      try {
+        for await (const row of book.rows(0)) {
+          if (leave === "throw") throw new Error(`left at row ${row.number}`);
+          break;
+        }
+      } catch (error) {
+        expect(error).toEqual(new Error("left at row 1"));
+      }
+      expect(ofSheet(blob) - before, leave).toBeLessThanOrEqual(2);
+    }
+    const columns = [{ key: "name", header: "row 0" }];
+    const before = ofSheet(blob);
+    objectsFromRows(book.rows(0), columns)[Symbol.asyncIterator]();
+    expect(ofSheet(blob)).toBe(before);
+    for await (const { number } of objectsFromRows(book.rows(0), columns)) {
+      expect(number).toBe(2);
+      break;
+    }
+    expect(ofSheet(blob) - before, "objects").toBeLessThanOrEqual(2);
   });
 });
+
+async function objectsOutcome(
+  rows: AsyncIterable<ReadRow>,
+  columns: readonly ReadColumn<string>[],
+): Promise<unknown[] | object> {
+  const read: unknown[] = [];
+  try {
+    for await (const { number, values } of objectsFromRows(rows, columns)) {
+      read.push([number, values]);
+    }
+    return read;
+  } catch (error) {
+    if (!(error instanceof XlsxReadError)) throw error;
+    const { code, sheet, cell, header } = error;
+    return { code, sheet, cell, header };
+  }
+}
+
+describe("objectsFromRows", () => {
+  interface Order {
+    readonly id: string;
+    readonly customer: string;
+    readonly total: number;
+    readonly placed: Date;
+    readonly paid: boolean;
+    readonly note: string | null;
+    readonly tags: readonly string[];
+  }
+  const orders: readonly Order[] = [
+    {
+      id: "A-1",
+      customer: "Kari",
+      total: 10.5,
+      placed: new Date(Date.UTC(2026, 0, 1, 9, 30)),
+      paid: true,
+      note: null,
+      tags: ["new"],
+    },
+    {
+      id: "A-2",
+      customer: "Ola",
+      total: 1249.9,
+      placed: new Date(Date.UTC(2026, 1, 28)),
+      paid: false,
+      note: "late",
+      tags: [],
+    },
+  ];
+  const columns: ObjectColumn<Order>[] = [
+    { key: "id", header: "Order", width: 12 },
+    { key: "customer", header: "__proto__" },
+    { key: "total", header: "Total", style: { numberFormat: '#,##0.00 "kr"' } },
+    { key: "placed", header: "2024", style: { numberFormat: "yyyy-mm-dd hh:mm" } },
+    { key: "paid", hidden: true },
+    { key: "note", header: "Total" },
+    { key: "tags", header: "Tags", value: (order) => order.tags.join(", ") },
+  ];
+
+  it("reads back the objects sheetFromObjects wrote, by the same column list", async () => {
+    const book = await openXlsx(
+      await writeXlsx({ sheets: [sheetFromObjects(orders, { name: "Orders", columns })] }),
+    );
+    expect(await objectsOutcome(book.rows("Orders"), columns)).toEqual([
+      [
+        2,
+        {
+          id: "A-1",
+          customer: "Kari",
+          total: 10.5,
+          placed: orders[0]!.placed,
+          paid: true,
+          note: null,
+          tags: "new",
+        },
+      ],
+      [
+        3,
+        {
+          id: "A-2",
+          customer: "Ola",
+          total: 1249.9,
+          placed: orders[1]!.placed,
+          paid: false,
+          note: "late",
+          tags: null,
+        },
+      ],
+    ]);
+  });
+
+  it("refuses with MISSING_HEADER a header row that lacks a declared column, a column with an empty header and a sheet without rows, and passes a refusal of the sheet through with the sheet and the cell", async () => {
+    const book = await openXlsx(
+      await writeXlsx({
+        sheets: [
+          sheetFromObjects(orders, { name: "Orders", columns }),
+          { name: "Empty", rows: [] },
+        ],
+      }),
+    );
+    const more = [...columns, { key: "id", header: "Discount" }];
+    expect(await objectsOutcome(book.rows("Orders"), more)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "Discount",
+    });
+    expect(await objectsOutcome(book.rows("Empty"), columns)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "Order",
+    });
+    const blank: ObjectColumn<Order>[] = [{ key: "id", header: "" }];
+    const unnamed = await openXlsx(
+      await writeXlsx({ sheets: [sheetFromObjects(orders, { name: "Blank", columns: blank })] }),
+    );
+    expect(await objectsOutcome(unnamed.rows(0), blank)).toEqual({
+      code: "MISSING_HEADER",
+      sheet: undefined,
+      cell: undefined,
+      header: "",
+    });
+    const damaged = await openXlsx(
+      await workbookOf(
+        '<sheet name="Cells" sheetId="1" r:id="rId1"/>',
+        relationship("rId1", "worksheet", "worksheets/sheet1.xml"),
+        {
+          "xl/worksheets/sheet1.xml": sheetPart(
+            '<row r="1"><c r="A1" t="inlineStr"><is><t>Total</t></is></c></row>' +
+              '<row r="2"><c r="A2"><v>1</v></c></row><row r="3"><c r="A3"><v>0x10</v></c></row>',
+          ),
+        },
+      ),
+    );
+    expect(await objectsOutcome(damaged.rows(0), [{ key: "total", header: "Total" }])).toEqual({
+      code: "INVALID_CELL",
+      sheet: "Cells",
+      cell: "A3",
+      header: undefined,
+    });
+  });
+});
+
+class FailingBlob extends Blob {
+  failing = false;
+  readonly error = new Error("the disk is gone");
+
+  override slice(start?: number, end?: number): Blob {
+    if (this.failing) throw this.error;
+    return super.slice(start, end);
+  }
+}
 
 class WatchedBlob extends Blob {
   readonly reads: (readonly [start: number, end: number])[] = [];

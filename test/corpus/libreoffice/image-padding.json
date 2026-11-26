@@ -1,0 +1,15 @@
+{
+  "sheets": [
+    {
+      "name": "Padding",
+      "rows": [
+        [1, "Item", "Padded", "None", "Width set"],
+        [2, "A-1"],
+        [3, "A-2"],
+        [4, "A-3"],
+        [5, "Row height set"],
+        [6, "No padding"]
+      ]
+    }
+  ]
+}

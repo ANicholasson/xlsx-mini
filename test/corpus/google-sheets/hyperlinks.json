@@ -1,0 +1,21 @@
+{
+  "sheets": [
+    {
+      "name": "Links",
+      "rows": [
+        [1, "Kind", "Link"],
+        [2, "Web", "Example docs"],
+        [3, "Mail", "Write to us"],
+        [4, "Sheet", "#gid=1705198117&range=B2"],
+        [5, "Here", "#gid=1797195029"]
+      ]
+    },
+    {
+      "name": "Summary",
+      "rows": [
+        [1, "Total", 42],
+        [2, "#gid=1797195029&range=A1:B5"]
+      ]
+    }
+  ]
+}

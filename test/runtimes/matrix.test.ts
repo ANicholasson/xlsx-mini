@@ -11,8 +11,9 @@ import { beforeAll, describe, expect, it } from "vite-plus/test";
 import { XLSX_MIME_TYPE, streamXlsx, writeXlsx } from "../../src/index.js";
 import { createPackage } from "../../src/opc/index.js";
 import { type Command, binary as binaryIn, direct } from "../helpers/bin.js";
+import { expectedRows } from "../helpers/expected-rows.js";
 import { readPart as readPartOf, unzip } from "../helpers/unzip.js";
-import { type HostReport, workbook } from "./scenario.mjs";
+import { type HostReport, type ReadBack, workbook } from "./scenario.mjs";
 
 const execFile = promisify(execFileCallback);
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -25,31 +26,37 @@ interface Host {
   readonly run: () => Promise<HostReport>;
   /** 8 where the host implements raw deflate, 0 where the writer falls back to STORE. */
   readonly method: 0 | 8;
+  /** False where the host has no `DecompressionStream`, so a deflated part is `NO_INFLATE`. */
+  readonly inflates: boolean;
 }
 
 const hosts: readonly Host[] = [
   {
     name: "Node ESM",
     method: 8,
+    inflates: true,
     run: () => spawn(node, ["test/runtimes/entry.mjs"]),
   },
   {
     name: "Node CommonJS",
     method: 8,
+    inflates: true,
     run: () => spawn(node, ["test/runtimes/entry.cjs"]),
   },
   {
     name: "Bun",
     method: 8,
+    inflates: true,
     run: () => spawn(binary("bun"), ["run", "test/runtimes/entry.mjs"]),
   },
   {
     name: "Deno",
     method: 8,
+    inflates: true,
     run: () => spawn(binary("deno"), ["run", "--quiet", "--no-lock", "test/runtimes/entry.mjs"]),
   },
-  { name: "Cloudflare workerd", method: 8, run: runInWorkerd },
-  { name: "Vercel edge runtime", method: 0, run: runInEdgeVM },
+  { name: "Cloudflare workerd", method: 8, inflates: true, run: runInWorkerd },
+  { name: "Vercel edge runtime", method: 0, inflates: false, run: runInEdgeVM },
 ];
 
 /** Runs an entry in a separate process and parses the one JSON line it prints. */
@@ -140,6 +147,15 @@ const decode = (base64: string) => new Uint8Array(Buffer.from(base64, "base64"))
 const parts = (bytes: Uint8Array) =>
   unzip(bytes).map((e) => [e.name, new TextDecoder().decode(e.data)] as const);
 
+/** What every host must read back: the scenario's one sheet, its rows derived from the input alone. */
+const readBack: ReadBack = {
+  sheets: workbook.sheets.map(({ name }) => name),
+  rows: expectedRows(workbook.sheets[0]!).map(([number, ...cells]) => [
+    number,
+    ...cells.map((cell) => (cell instanceof Date ? { date: cell.toISOString() } : cell)),
+  ]),
+};
+
 describe("runtime matrix", () => {
   let expected: Uint8Array;
   let expectedStreamed: Uint8Array;
@@ -207,6 +223,26 @@ describe("runtime matrix", () => {
       expect(report.mime).toBe(XLSX_MIME_TYPE);
       expect(report.noDom).toBe("NO_DOM");
     });
+
+    it("reads back the values of the STORE package, dates and all", () => {
+      expect(report.read.stored).toEqual(readBack);
+    });
+
+    it(`reads back its default package, from bytes and from a Blob${host.method === 0 ? ", which is STORE here" : ""}`, () => {
+      expect(report.read.deflated).toEqual(readBack);
+      expect(report.read.blob).toEqual(readBack);
+    });
+
+    it(
+      host.inflates
+        ? "reads back both packages it streamed, whose entries are deflate streams"
+        : "refuses both packages it streamed with NO_INFLATE: their entries are deflate streams, of stored blocks or not",
+      () => {
+        const streamed = host.inflates ? readBack : { refused: "NO_INFLATE", coded: true };
+        expect(report.read.streamed).toEqual(streamed);
+        expect(report.read.streamedDeflated).toEqual(streamed);
+      },
+    );
   });
 
   describe("the package reader", () => {

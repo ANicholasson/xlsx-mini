@@ -64,9 +64,13 @@ interface Listed {
   readonly opened: readonly string[];
 }
 
-async function read(
-  parts: Parts | Uint8Array,
-): Promise<{ readonly sheets: readonly ListedSheet[]; readonly opened: readonly string[] }> {
+async function read(parts: Parts | Uint8Array): Promise<{
+  readonly sheets: readonly ListedSheet[];
+  readonly sharedStrings: string | undefined;
+  readonly styles: string | undefined;
+  readonly date1904: boolean;
+  readonly opened: readonly string[];
+}> {
   const encoder = new TextEncoder();
   const bytes =
     parts instanceof Uint8Array
@@ -80,11 +84,11 @@ async function read(
   const { book: meters } = resolveLimits(undefined);
   const pkg = await openPackage(bytes, meters.parts, meters.structure);
   const opened: string[] = [];
-  const sheets = await readWorkbook((name) => {
+  const { sheets, sharedStrings, styles, date1904 } = await readWorkbook((name) => {
     opened.push(name);
     return pkg.open(partName(name, "structure"), meters.structure);
   }, meters.structure);
-  return { sheets, opened };
+  return { sheets, sharedStrings: sharedStrings?.name, styles: styles?.name, date1904, opened };
 }
 
 async function list(parts: Parts | Uint8Array): Promise<Listed> {
@@ -158,6 +162,172 @@ describe("the sheet list", () => {
       ["Sheet 6", null],
       ["Sheet 7", null],
     ]);
+  });
+
+  it("names the shared-string table its relationships name, in both families, and none when there is none", async () => {
+    const withTable = (type: string, target: string) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          relationship("rId9", type, target),
+      );
+    expect(
+      (await read(withTable(`${TRANSITIONAL}/sharedStrings`, "strings.xml"))).sharedStrings,
+    ).toBe("xl/strings.xml");
+    expect(
+      (await read(withTable(`${STRICT}/sharedStrings`, "/text/table.xml"))).sharedStrings,
+    ).toBe("text/table.xml");
+    expect(
+      (await read(withTable(`${TRANSITIONAL}/sharedString`, "strings.xml"))).sharedStrings,
+    ).toBe(undefined);
+    expect((await read(book())).sharedStrings).toBe(undefined);
+  });
+
+  it("refuses two shared-string tables, and one whose target cannot be followed inside the package", async () => {
+    const tables = (...targets: string[]) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          targets
+            .map((target, at) => relationship(`s${at}`, `${TRANSITIONAL}/sharedStrings`, target))
+            .join(""),
+      );
+    expect(await outcome(tables("a.xml", "b.xml"))).toBe("INVALID_WORKBOOK");
+    expect(await outcome(tables("a.xml", "a.xml"))).toBe("INVALID_WORKBOOK");
+    for (const target of ["../../a.xml", "a.xml?x", "strings/"]) {
+      expect(await outcome(tables(target)), target).toBe("INVALID_WORKBOOK");
+    }
+    expect(await outcome(tables("a.xml"))).toBe("listed");
+  });
+
+  it("names the styles part its relationships name, in both families, and none when there is none", async () => {
+    const withStyles = (...related: string[]) =>
+      listing(
+        sheet("Orders", "rId1"),
+        relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+          related.map((type, at) => relationship(`s${at}`, type, `styles${at}.xml`)).join(""),
+      );
+    expect((await read(withStyles(`${TRANSITIONAL}/styles`))).styles).toBe("xl/styles0.xml");
+    expect((await read(withStyles(`${STRICT}/styles`))).styles).toBe("xl/styles0.xml");
+    expect((await read(withStyles(`${TRANSITIONAL}/style`))).styles).toBe(undefined);
+    expect((await read(book())).styles).toBe(undefined);
+    expect(await outcome(withStyles(`${TRANSITIONAL}/styles`, `${STRICT}/styles`))).toBe(
+      "INVALID_WORKBOOK",
+    );
+    const unfollowed = listing(
+      sheet("Orders", "rId1"),
+      relationship("rId1", WORKSHEET, "worksheets/sheet1.xml") +
+        relationship("rId2", `${TRANSITIONAL}/styles`, "../../styles.xml"),
+    );
+    expect(await outcome(unfollowed)).toBe("INVALID_WORKBOOK");
+  });
+
+  it("reads the date system from date1904 of the workbook's properties: 1 and true are 1904, 0, false and none are 1900", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    const system = async (properties: string) => (await read(shaped(properties + sheets))).date1904;
+    for (const spelling of ["1", "true"]) {
+      expect(await system(`<workbookPr date1904="${spelling}"/>`), spelling).toBe(true);
+    }
+    for (const spelling of ["0", "false"]) {
+      expect(await system(`<workbookPr date1904="${spelling}"/>`), spelling).toBe(false);
+    }
+    expect(await system("<workbookPr/>")).toBe(false);
+    expect(await system("")).toBe(false);
+    expect((await read(shaped(`${sheets}<workbookPr date1904="1"/>`))).date1904).toBe(true);
+  });
+
+  it("refuses any other spelling of date1904, which LibreOffice and openpyxl read in different ways or XML Schema does not have", async () => {
+    const spellings = ["TRUE", "True", "t", "on", "off", "yes", "2", "-1", "01", " 1", "1 ", ""];
+    for (const spelling of spellings) {
+      const inner = `<workbookPr date1904="${spelling}"/><sheets>${sheet("Orders", "rId1")}</sheets>`;
+      expect(await outcome(shaped(inner)), spelling).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("refuses the workbook's properties stated twice or below an AlternateContent, and passes over one in an extension", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    for (const properties of [
+      '<workbookPr date1904="1"/><workbookPr date1904="0"/>',
+      '<workbookPr date1904="0"/><workbookPr/>',
+      alternate("x15", '<workbookPr date1904="1"/>', '<workbookPr date1904="0"/>'),
+      `<workbookPr/>${alternate("x15", "", '<workbookPr date1904="1"/>')}`,
+    ]) {
+      expect(await outcome(shaped(properties + sheets)), properties).toBe("INVALID_WORKBOOK");
+    }
+    const extension = `<extLst><ext uri="x"><x15:workbookPr xmlns:x15="urn:x15" date1904="1"/></ext></extLst>`;
+    expect((await read(shaped(sheets + extension))).date1904).toBe(false);
+  });
+
+  it("reads the date system only from date1904 without a prefix, of SpreadsheetML's workbookPr", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    const foo = 'xmlns:foo="urn:foreign"';
+    for (const properties of [
+      `<workbookPr ${foo} foo:date1904="1"/>`,
+      `<workbookPr xmlns:x="${MAIN}" x:date1904="1"/>`,
+      `<foo:workbookPr ${foo} date1904="1"/>`,
+      '<workbookPr xmlns="urn:foreign" date1904="1"/>',
+    ]) {
+      expect((await read(shaped(properties + sheets))).date1904, properties).toBe(false);
+    }
+    expect(await outcome(shaped(`<foo:workbookPr ${foo} date1904="yes"/>${sheets}`))).toBe(
+      "listed",
+    );
+  });
+
+  it("reads SpreadsheetML under any prefix, and a sheet's relationship only by id in the namespace of relationships", async () => {
+    const prefixed = `<x:workbook xmlns:x="${MAIN}" xmlns:r="${TRANSITIONAL}"><x:sheets><x:sheet name="Data" sheetId="1" r:id="rId1"/></x:sheets></x:workbook>`;
+    expect((await list(book({ "xl/workbook.xml": prefixed }))).sheets).toEqual([
+      ["Data", "xl/worksheets/sheet1.xml"],
+    ]);
+    for (const [listed, outcomeOf] of [
+      [`<sheet name="Orders" sheetId="1" rel:id="rId1" xmlns:rel="${TRANSITIONAL}"/>`, "listed"],
+      [`<sheet name="Orders" sheetId="1" s:id="rId1" xmlns:s="${STRICT}"/>`, "listed"],
+      ['<sheet name="Orders" sheetId="1" id="rId1"/>', "INVALID_WORKBOOK"],
+      [
+        '<sheet name="Orders" sheetId="1" foo:id="rId1" xmlns:foo="urn:foreign"/>',
+        "INVALID_WORKBOOK",
+      ],
+      [`<sheet name="Orders" sheetId="1" x:id="rId1" xmlns:x="${MAIN}"/>`, "INVALID_WORKBOOK"],
+      ['<sheet name="Orders" sheetId="1" r:identity="rId1"/>', "INVALID_WORKBOOK"],
+      [
+        `<sheet name="Orders" sheetId="1" r:id="rId1" s:id="rId1" xmlns:s="${STRICT}"/>`,
+        "INVALID_XML",
+      ],
+    ] as const) {
+      expect(await outcome(listing(listed)), listed).toBe(outcomeOf);
+    }
+  });
+
+  it("refuses a workbook part whose root or sheet list is of another namespace, as it refuses one of another name", async () => {
+    const sheets = `<sheets>${sheet("Orders", "rId1")}</sheets>`;
+    const foreign = `xmlns:r="${TRANSITIONAL}"`;
+    for (const part of [
+      `<workbook xmlns="urn:foreign" ${foreign}>${sheets}</workbook>`,
+      `<workbook ${foreign}>${sheets}</workbook>`,
+    ]) {
+      expect(await outcome(book({ "xl/workbook.xml": part })), part).toBe("NOT_XLSX");
+    }
+    for (const inner of [
+      `<q:sheets xmlns:q="urn:foreign">${sheet("Orders", "rId1")}</q:sheets>`,
+      `<sheets xmlns="urn:foreign">${sheet("Orders", "rId1")}</sheets>`,
+      `<sheets>${sheet("Orders", "rId1")}<q:sheet xmlns:q="urn:foreign" name="Notes" sheetId="2" r:id="rId1"/></sheets>`,
+    ]) {
+      expect(await outcome(shaped(inner)), inner).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("refuses a sheet list below an AlternateContent of any namespace, as before namespaces were read", async () => {
+    const [alpha, beta] = [sheet("Alpha", "rId1"), sheet("Beta", "rId1")];
+    for (const inner of [
+      `<sheets>${alpha}</sheets><q:AlternateContent xmlns:q="urn:foreign"><sheets>${beta}</sheets></q:AlternateContent>`,
+      `<sheets>${alpha}</sheets><AlternateContent><sheets>${beta}</sheets></AlternateContent>`,
+    ]) {
+      expect(await outcome(shaped(inner)), inner).toBe("INVALID_WORKBOOK");
+    }
+    const foreign = `<sheets>${alpha}</sheets>${alternate("r", `<sheets xmlns="urn:foreign">${beta}</sheets>`, "")}`;
+    expect((await list(shaped(foreign))).sheets, "no sheet list of SpreadsheetML below it").toEqual(
+      [["Alpha", "xl/worksheets/sheet1.xml"]],
+    );
   });
 
   it("reads a workbook of the Strict family", async () => {
@@ -429,6 +599,47 @@ describe("a relationships part", () => {
         "xl/_rels/workbook.xml.rels": `<${root} xmlns="${PACKAGE}">${worksheet}</${root}>`,
       });
       expect(await outcome(parts), root).toBe("INVALID_WORKBOOK");
+    }
+  });
+
+  it("is read in the package's namespace of relationships alone, under any prefix", async () => {
+    const rels = (open: string, inner: string, close: string) => `${open}${inner}${close}`;
+    const workbookRelationship = relationship(
+      "rId1",
+      `${TRANSITIONAL}/officeDocument`,
+      "xl/workbook.xml",
+    );
+    const prefixed = rels(
+      `<p:Relationships xmlns:p="${PACKAGE}">`,
+      worksheet.replace("<Relationship", "<p:Relationship"),
+      "</p:Relationships>",
+    );
+    expect(await outcome(book({ "xl/_rels/workbook.xml.rels": prefixed }))).toBe("listed");
+    for (const [part, text] of [
+      ["xl/_rels/workbook.xml.rels", rels("<Relationships>", worksheet, "</Relationships>")],
+      ["_rels/.rels", rels("<Relationships>", workbookRelationship, "</Relationships>")],
+      [
+        "_rels/.rels",
+        rels('<Relationships xmlns="urn:foreign">', workbookRelationship, "</Relationships>"),
+      ],
+      [
+        "xl/_rels/workbook.xml.rels",
+        rels(
+          `<Relationships xmlns="${PACKAGE}">`,
+          worksheet.replace("/>", ' xmlns="urn:foreign"/>'),
+          "</Relationships>",
+        ),
+      ],
+      [
+        "xl/_rels/workbook.xml.rels",
+        rels(
+          `<Relationships xmlns="${PACKAGE}" xmlns:p="${PACKAGE}">`,
+          worksheet.replace(" Id=", " p:Id="),
+          "</Relationships>",
+        ),
+      ],
+    ] as const) {
+      expect(await outcome(book({ [part]: text })), text).toBe("INVALID_WORKBOOK");
     }
   });
 

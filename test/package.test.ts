@@ -2,7 +2,7 @@ import { execFileSync, execSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join, posix, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
 import config from "../vite.config.ts";
 import { binary } from "./helpers/bin.js";
@@ -57,6 +57,48 @@ describe("the entries", () => {
     expect(knipEntries.sort()).toEqual(entries.map(([, file]) => file).sort());
   });
 });
+
+function namesInExportList(names: string): string[] {
+  return names
+    .split(",")
+    .map((name) => name.trim().replace(/^type\s+/, ""))
+    .filter((name) => name !== "");
+}
+
+function exportsOf(declarations: string): { names: string[]; unread: string[] } {
+  const names: string[] = [];
+  const unread: string[] = [];
+  for (const { index } of declarations.matchAll(/^export\b/gm)) {
+    const statement = declarations.slice(index);
+    const list = /^export (?:type )?\{([^}]*)\}/.exec(statement);
+    const declared = /^export (?:declare )?(?:interface|type|class|function|const) (\w+)/.exec(
+      statement,
+    );
+    if (list !== null) names.push(...namesInExportList(list[1]!));
+    else if (declared !== null) names.push(declared[1]!);
+    else unread.push(statement.slice(0, statement.indexOf("\n")));
+  }
+  return { names, unread };
+}
+
+function docOf(
+  files: ReadonlyMap<string, string>,
+  name: string,
+  module: string,
+): string | undefined {
+  const declarations = files.get(module) ?? "";
+  const documented = new RegExp(
+    String.raw`/\*\*((?:(?!\*/)[\s\S])*)\*/\s*export (?:declare )?(?:interface|type|class|function|const) ${name}\b`,
+  ).exec(declarations);
+  if (documented !== null) return documented[1];
+  for (const [, names, from] of declarations.matchAll(
+    /^export (?:type )?\{([^}]*)\} from "([^"]+)";$/gm,
+  )) {
+    if (!namesInExportList(names!).includes(name)) continue;
+    return docOf(files, name, posix.join(posix.dirname(module), from!.replace(/\.js$/, ".d.ts")));
+  }
+  return undefined;
+}
 
 /**
  * What the build emits is what the package carries under `dist/`. A file in it that names
@@ -116,6 +158,23 @@ describe("the built package", () => {
       }
     }
     expect(missing).toEqual([]);
+  });
+
+  it("documents every export of xlsx-mini/read as experimental, with one example", async () => {
+    const { names, unread } = exportsOf(files.get("read.d.ts") ?? "");
+    expect(unread, "export statements this test cannot read").toEqual([]);
+    const values = Object.keys(await import(pathToFileURL(join(dist, "read.js")).href));
+    expect(names, "every value the built entry exports").toEqual(expect.arrayContaining(values));
+    const lacking = names.flatMap((name) => {
+      const doc = docOf(files, name, "read.d.ts");
+      if (doc === undefined) return [`${name} has no TSDoc`];
+      const examples = doc.match(/@example\b/g)?.length ?? 0;
+      return [
+        ...(/@experimental\b/.test(doc) ? [] : [`${name} lacks @experimental`]),
+        ...(examples === 1 ? [] : [`${name} has ${examples} examples`]),
+      ];
+    });
+    expect(lacking).toEqual([]);
   });
 });
 

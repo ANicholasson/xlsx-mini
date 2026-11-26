@@ -66,10 +66,8 @@ function tokensByPattern(xml: string): { tokens: Token[]; asked: string[] } {
     if (parent !== undefined) parent.leaf = false;
     const found: Record<string, string> = {};
     for (const [, written, value] of attributes.matchAll(/([\w.:-]+)="([^"]*)"/g)) {
-      const declaration = written === "xmlns" || written!.startsWith("xmlns:");
-      const key = declaration ? written! : written!.slice(written!.indexOf(":") + 1);
-      asked.add(key);
-      found[key] = withoutReferences(value!.replace(/\r\n?|[\n\t]/g, " "));
+      asked.add(written!);
+      found[written!] = withoutReferences(value!.replace(/\r\n?|[\n\t]/g, " "));
     }
     tokens.push(["open", local, open.length + 1, found]);
     if (empty === "/") tokens.push(["close", local, open.length + 1, ""]);

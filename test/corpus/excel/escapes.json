@@ -1,0 +1,24 @@
+{
+  "sheets": [
+    {
+      "name": "Escapes",
+      "rows": [
+        [1, "Case", "Text"],
+        [2, "The escape of A", "_x0041_"],
+        [3, "An escape inside text", "part _x00e6_ no"],
+        [4, "The escape of an underscore", "_x005F_"],
+        [5, "The escape of a carriage return", "_x000D_"],
+        [6, "Letters that are not hexadecimal", "_xZZZZ_"],
+        [7, "Two digits", "_x41_"],
+        [8, "A capital X", "_X0041_"],
+        [9, "Two escapes that share an underscore", "_x0041_x0042_"],
+        [10, "An escape after an _x that is not one", "_x_x0041_"],
+        [11, "An escape closed by a carriage return", "Ax000D_"],
+        [12, "A carriage return", "a\rb"],
+        [13, "A carriage return and a line feed", "a\nb"],
+        [14, "A line feed", "a\nb"],
+        [15, "A formula's cached text", { "result": "_x005F_x0041_" }]
+      ]
+    }
+  ]
+}

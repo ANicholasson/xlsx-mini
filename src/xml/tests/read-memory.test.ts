@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
-import { rolldown } from "rolldown";
 import { beforeAll, describe, expect, it } from "vite-plus/test";
+import { reportOf } from "../../../test/helpers/child.ts";
+import type { DecodeReport } from "./read-decode.child.ts";
 import type { Flood, Report } from "./read-memory.child.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -13,11 +10,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const MEBIBYTE = 1_048_576;
 
 const HEAP_MEBIBYTES = 512;
-const REFUSAL_MILLISECONDS = 2_000;
+/** Thirty times what the slowest flood, the attributes of one tag, takes on a developer's machine. */
+const REFUSAL_MILLISECONDS = 15_000;
 /** A token is read again once the buffer has doubled: twice the longest token, and two chunks. */
 const TOKEN_FLOOD_BYTES = 2 * 4_194_304 + 2 * 16_384;
 const FLOOD_HEAP_BYTES = 64 * MEBIBYTE;
 const KEPT_HEAP_BYTES = 2 * MEBIBYTE;
+const DECODE_HEAP_MEBIBYTES = 64;
 
 describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
   let report: Report;
@@ -26,27 +25,7 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     report.floods.filter((flood) => flood.name === name);
 
   beforeAll(async () => {
-    const directory = mkdtempSync(join(tmpdir(), "xlsx-mini-xml-"));
-    try {
-      // The child is TypeScript, which Node 20 does not run: bundled, it is one file it does.
-      const build = await rolldown({
-        input: join(here, "read-memory.child.ts"),
-        platform: "node",
-        logLevel: "silent",
-      });
-      const { output } = await build.generate({ format: "esm" });
-      await build.close();
-      const script = join(directory, "child.mjs");
-      writeFileSync(script, output[0].code);
-      const { stdout } = await promisify(execFile)(
-        process.execPath,
-        [`--max-old-space-size=${HEAP_MEBIBYTES}`, "--expose-gc", script],
-        { encoding: "utf8" },
-      );
-      report = JSON.parse(stdout) as Report;
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
+    report = (await reportOf(join(here, "read-memory.child.ts"), HEAP_MEBIBYTES)) as Report;
   }, 120_000);
 
   it("runs with that limit, and every flood is as large as a part may be under the default limits", () => {
@@ -103,6 +82,28 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
   });
 
+  it("refuses nested declarations whose namespace names are longer than a token may be, before it holds them", () => {
+    const [flood] = floodsOf("the long namespace names of nested declarations");
+    expect(flood).toMatchObject({ outcome: "INVALID_XML" });
+    expect(flood!.bytesRead).toBeLessThan(10 * 500_030);
+    expect(flood!.heapGrowth).toBeLessThan(FLOOD_HEAP_BYTES);
+  });
+
+  it("reads a declaration on every element to the end of the part, holding none that is out of scope", () => {
+    const [flood] = floodsOf(
+      "a declaration on every element, each out of scope when the next comes",
+    );
+    expect(flood).toMatchObject({ outcome: "read" });
+    expect(flood!.bytesRead).toBeGreaterThan(report.floodBytes);
+    expect(flood!.heapGrowth).toBeLessThan(4 * MEBIBYTE);
+  });
+
+  it("holds the declarations in scope, not the chunks they were written in", () => {
+    expect(report.nested).toBe(200);
+    expect(report.heldInScope, "measured at the deepest element").not.toBeNaN();
+    expect(report.heldInScope).toBeLessThan(MEBIBYTE);
+  });
+
   it("holds the text of one element that long comments split, not the chunks it was cut from", () => {
     const [flood] = floodsOf("the text of one element, in runs between long comments");
     expect(flood).toMatchObject({ outcome: "read" });
@@ -145,9 +146,96 @@ describe("the tokenizer in a process whose heap is held to 512 MiB", () => {
     expect(report.heldAfterAttributes).toBeLessThan(MEBIBYTE);
   });
 
+  it("holds no more for 300 000 attributes under a prefix than for as many without one, when the next tag opens", () => {
+    expect(report.heldAtNextTag, "measured").not.toBeNaN();
+    expect(report.heldAtNextTagPrefixed - report.heldAtNextTag).toBeLessThan(2 * MEBIBYTE);
+  });
+
   it("sees a chunk that is kept alive: slices of the buffer, which the contract forbids keeping, hold the part", () => {
     const sliced = report.kept[3]!;
     expect(sliced.what).toBe("a slice of the buffer, which a visitor must not keep");
     expect(sliced.heapGrowth).toBeGreaterThan(report.partBytes / 2);
+  });
+});
+
+describe("decoding in a process whose heap is held to 64 MiB", () => {
+  let report: DecodeReport;
+
+  beforeAll(async () => {
+    report = (await reportOf(
+      join(here, "read-decode.child.ts"),
+      DECODE_HEAP_MEBIBYTES,
+    )) as DecodeReport;
+  }, 120_000);
+
+  it("reads a token of the longest length made only of what XML replaces, as it reads one of letters", () => {
+    const longest = report.tokenCharacters - 64;
+    expect(report.decoded.slice(0, 10)).toEqual([
+      { name: "letters in a text", outcome: "read", characters: longest, wrong: 0 },
+      { name: "carriage returns in a text", outcome: "read", characters: longest, wrong: 0 },
+      { name: "CR LF pairs in a text", outcome: "read", characters: longest / 2, wrong: 0 },
+      {
+        name: "carriage returns in a CDATA section",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "character references in a text",
+        outcome: "read",
+        characters: Math.floor(longest / 5),
+        wrong: 0,
+      },
+      {
+        name: "entity references in a text",
+        outcome: "read",
+        characters: longest / 4,
+        wrong: 0,
+      },
+      { name: "tabs in an attribute value", outcome: "read", characters: longest, wrong: 0 },
+      { name: "line feeds in an attribute value", outcome: "read", characters: longest, wrong: 0 },
+      {
+        name: "CR LF pairs in an attribute value",
+        outcome: "read",
+        characters: longest / 2,
+        wrong: 0,
+      },
+      {
+        name: "character references in an attribute value",
+        outcome: "read",
+        characters: longest / 4,
+        wrong: 0,
+      },
+    ]);
+  });
+
+  it("reads the longest text that comments, instructions or CDATA sections split into runs of one letter", () => {
+    const longest = report.tokenCharacters - 64;
+    expect(report.decoded.slice(10)).toEqual([
+      {
+        name: "letters between comments in a text",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "letters outside Latin-1 between comments",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "letters between instructions in a text",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+      {
+        name: "CDATA sections of one letter in a text",
+        outcome: "read",
+        characters: longest,
+        wrong: 0,
+      },
+    ]);
   });
 });

@@ -6,4 +6,4 @@ To report a vulnerability, use GitHub's private vulnerability reporting: the Sec
 
 You get an acknowledgement within a week and a fix or a decision within thirty days. Credit goes to the reporter in the release notes unless they prefer otherwise.
 
-The package has no runtime dependencies and no install scripts, writes only what it is given, and never reads files or the network.
+The package has no runtime dependencies and no install scripts. It writes only what it is given, reads only the bytes or the `Blob` it is given, and never opens a file or a network connection itself.

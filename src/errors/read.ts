@@ -1,5 +1,5 @@
 /**
- * Every failure the reader reports, as a string literal so callers can switch on it.
+ * Every code an `XlsxReadError` carries, as a string literal so callers can switch on it.
  *
  * About the file:
  * - `NOT_XLSX`: not a package at all, or a package that is not a workbook: an old `.xls`, an
@@ -9,19 +9,33 @@
  *   size than declared, a wrong CRC-32, a compression method other than stored or deflate.
  * - `INVALID_XML`: a part is not well-formed XML in UTF-8, holds a DOCTYPE, nests deeper or holds
  *   a longer token than any workbook does.
- * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list or a sheet's data cannot
- *   be found, a relationship leaves the package, two sheets share a name.
- * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a number is not
- *   decimal, a shared string or a style does not exist. `sheet` and `cell` say where.
+ * - `INVALID_WORKBOOK`: the parts do not make a workbook: the sheet list, a sheet's data, the
+ *   shared strings or the styles cannot be found or are damaged, a relationship leaves the package,
+ *   two sheets share a name, the date system is neither true nor false.
+ * - `INVALID_CELL`: a row or a cell is out of order, a reference is malformed, a cell is of an
+ *   unknown type or holds what its type does not, a number is not decimal, a shared string or a
+ *   style does not exist, a date stored as text (`t="d"`) is malformed or one the writer cannot
+ *   write. `sheet` and `cell` say where.
  * - `LIMIT_EXCEEDED`: the file asks for more than a limit allows. `limit` names the key of
  *   `ReadLimits` to raise.
- * - `MISSING_HEADER`: the header row lacks a declared column. `header` is its text.
+ * - `MISSING_HEADER`: the rows given to `objectsFromRows` have no header row, or one that lacks a
+ *   declared column. `header` is the header of the first declared column it lacks.
  *
  * About the platform or the call:
  * - `NO_INFLATE`: a part is deflated and the platform has no `DecompressionStream`, or one that
  *   reads a deflate stream cut short as whole and reads on past the end of a gzip member.
  * - `UNKNOWN_SHEET`: `rows` was asked for a name or an index the workbook does not have.
  * - `INVALID_LIMIT`: a limit that is not a positive finite number. `limit` names it.
+ *
+ * A part whose compressed data is damaged can be refused with another of the four codes of a
+ * damaged file on another runtime: Bun and Deno have given `INVALID_PACKAGE` where Node gave
+ * `INVALID_XML` or `INVALID_CELL`. Branch on the four together, as the example does.
+ *
+ * @example
+ * const damaged: readonly ReadErrorCode[] = [
+ *   "INVALID_PACKAGE", "INVALID_XML", "INVALID_WORKBOOK", "INVALID_CELL",
+ * ];
+ * if (error instanceof XlsxReadError && damaged.includes(error.code)) console.log("damaged");
  *
  * @experimental
  */
@@ -38,7 +52,7 @@ export type ReadErrorCode =
   | "INVALID_LIMIT";
 
 /**
- * How much the reader accepts before it refuses a file. Every limit has a default sized for a file
+ * How much `openXlsx` accepts before it refuses a file. Every limit has a default sized for a file
  * a person uploads; a caller sets one per `openXlsx` call, and no value turns one off: each must be
  * a positive finite number.
  *
@@ -61,14 +75,17 @@ export interface ReadLimits {
   readonly cellPositions?: number;
   /**
    * Characters of text one row may hold, counted as its values are placed. A row is held whole, so
-   * this bounds what one `rows` iteration keeps in memory at a time. Default 4 194 304.
+   * this bounds the text of the values one `rows` iteration holds at a time. Default 4 194 304.
    */
   readonly rowCharacters?: number;
   /** Entries in the shared-string table. Default 1 000 000. */
   readonly sharedStrings?: number;
   /**
-   * Bytes the shared-string table may inflate to, on top of counting against `inflatedBytes`:
-   * the table is held in memory at several times its size. Default 33 554 432 (32 MiB).
+   * Bytes the shared-string table may inflate to, on top of counting against `inflatedBytes`. The
+   * table is held in memory as long as the workbook. In trials at the default, it held at most 2.9
+   * times this on Node and 4.2 times on Bun, for a million entries of 16 characters with one
+   * outside Latin-1, which makes an entry two bytes a character. A measurement, not a bound.
+   * Default 33 554 432 (32 MiB).
    */
   readonly sharedStringBytes?: number;
   /**
@@ -82,16 +99,17 @@ type ReadLimit = keyof ReadLimits;
 
 /** Where a refusal happened, as far as the code that refuses knows. */
 interface ReadErrorDetail {
-  readonly sheet?: string;
-  readonly cell?: string;
-  readonly limit?: ReadLimit;
-  readonly header?: string;
+  readonly sheet?: string | undefined;
+  readonly cell?: string | undefined;
+  readonly limit?: ReadLimit | undefined;
+  readonly header?: string | undefined;
 }
 
 /**
- * The one error class the reader throws. `code` says what was refused; `sheet` and `cell` say
- * where, when that is known. The writer's `XlsxMiniError` is never thrown by the reader, and this
- * class never by the writer.
+ * The one error class the read side throws. `code` says what was refused; `sheet` and `cell` say
+ * where, when that is known. The writer's `XlsxMiniError` is never thrown by the read side, and
+ * this class never by the writer. An error of a `Blob` being read, or of the rows handed to
+ * `objectsFromRows`, passes through as it is.
  *
  * @example
  * try {
@@ -107,15 +125,35 @@ export class XlsxReadError extends Error {
   readonly code: ReadErrorCode;
   /**
    * The name of the sheet the refusal is about, when it is about one: a sheet being read, a sheet
-   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for.
+   * the opening refuses, and for `UNKNOWN_SHEET` the name asked for. It is whole, unlike `cell`: a
+   * name the workbook lists can be nearly as long as a token, 4 194 304 characters.
    */
   readonly sheet: string | undefined;
-  /** The reference of the cell, such as `C41`, when the refusal is about one cell. */
+  /**
+   * Where in the sheet an `INVALID_CELL` is, such as `C41`: the cell; for a row, the first cell of
+   * the row; for what stands in a row outside a cell, the position after the row's last cell.
+   * `undefined` when the place has no reference, as for a row whose number is not a number.
+   *
+   * A refused reference is given as the file writes it, not decoded: `A&#49;` stays `A&#49;`. One
+   * longer than the longest reference, `XFD1048576`, is cut after its first ten UTF-16 code units,
+   * or nine when the tenth is the first half of a surrogate pair, and ends in `…`; the cut may fall
+   * inside a character reference. Never longer than 16 code units.
+   */
   readonly cell: string | undefined;
   /** For `LIMIT_EXCEEDED` and `INVALID_LIMIT`: the key of `ReadLimits` to look at. */
   readonly limit: ReadLimit | undefined;
-  /** For `MISSING_HEADER`: the header text that the header row lacks. */
+  /**
+   * For `MISSING_HEADER`: the header that the header row lacks, or the key of a column declared
+   * without one. It is the caller's own text, whole, and never text from the file. `undefined` when
+   * the caller declared no column.
+   */
   readonly header: string | undefined;
+  /**
+   * Starts at the place in the read side that refused. Whether the caller's frames that led there
+   * follow is the runtime's choice: Node and Deno give them, Bun 1.4 does not. A refusal that
+   * `rows` names the sheet of keeps the stack it was made with.
+   */
+  declare stack: string;
 
   constructor(code: ReadErrorCode, message: string, detail: ReadErrorDetail = {}) {
     super(message);
@@ -191,7 +229,7 @@ export interface PartMeter<in out Use extends PartUse> extends Meter<(typeof PAR
 }
 
 /** A meter that starts again for every row: what one row may hold, not what a sheet may. */
-interface RowMeter<Limit extends ReadLimit> extends Meter<Limit> {
+export interface RowMeter<Limit extends ReadLimit> extends Meter<Limit> {
   /** Starts the next row: what is left returns to the whole allowance. */
   next(): void;
 }

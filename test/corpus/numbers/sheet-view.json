@@ -1,0 +1,46 @@
+{
+  "sheets": [
+    {
+      "name": "Export Summary",
+      "rows": [
+        [
+          3,
+          null,
+          "This document was exported from Numbers. Each table was converted to an Excel worksheet. All other objects on each Numbers sheet were placed on separate worksheets. Please be aware that formula calculations may differ in Excel."
+        ],
+        [7, null, "Numbers Sheet Name", "Numbers Table Name", "Excel Worksheet Name"],
+        [9, null, "No gridlines"],
+        [10, null, null, "Table 1", "No gridlines"],
+        [11, null, "Zoom 150"],
+        [12, null, null, "Table 1", "Zoom 150"],
+        [13, null, "Right to left"],
+        [14, null, null, "Table 1", "Right to left"]
+      ]
+    },
+    {
+      "name": "No gridlines",
+      "rows": [
+        [1, "Quarter", "Revenue"],
+        [2, "Q1", 120000],
+        [3, "Q2", 135500],
+        [4, "Total", { "result": 255500 }]
+      ]
+    },
+    {
+      "name": "Zoom 150",
+      "rows": [
+        [1, "Shown at 150 %"],
+        [2, 1, 2, 3]
+      ]
+    },
+    {
+      "name": "Right to left",
+      "rows": [
+        [1, "الطلب", "العميل", "المبلغ"],
+        [2, "A-1001", "كاري", 1234.5],
+        [3, "A-1002", "أولا", 99],
+        [4, "A-1003", "ليف", 560.25]
+      ]
+    }
+  ]
+}

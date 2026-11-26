@@ -1,0 +1,21 @@
+{
+  "sheets": [
+    {
+      "name": "Links",
+      "rows": [
+        [1, "Kind", "Link"],
+        [2, "Web", "Example docs"],
+        [3, "Mail", "Write to us"],
+        [4, "Sheet", "See the summary"],
+        [5, "Here", "Back to the top"]
+      ]
+    },
+    {
+      "name": "Summary",
+      "rows": [
+        [1, "Total", 42],
+        [2, "Back to the links"]
+      ]
+    }
+  ]
+}

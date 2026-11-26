@@ -155,6 +155,81 @@ The reader (ADR 0032) is an entry of its own, `xlsx-mini/read`, and has a budget
 
 The reader's bundle is its error class alone so far: nothing reads a file yet, so nothing the entry exports reaches the limits' meters.
 
+### The reader's budget raised for the rows of a sheet, 2026-11-23
+
+| Bundle           | Before the rows | With them | Budget, before | Budget, now |
+| ---------------- | --------------: | --------: | -------------: | ----------: |
+| `xlsx-mini/read` |         7 280 B |   9 323 B |        8 000 B |    12 000 B |
+
+The rows of a sheet cost 2 043 bytes gzipped and 5 529 bytes minified. By the minified bytes the source map gives each file, the first 5 067 are the worksheet visitor 1 678, the shared-string table and the string items inline strings share with it 1 390, the value of a cell by its type 947, the entry's tables and the sheet's name on a refusal 410 more than before, the table's relationship in the workbook reader 279 more, a cell reference read in place 195, and the writer's column letters and sheet bounds 161. The other 298 came with a second round of review: the worksheet visitor cuts a refused reference to ten characters (125), a string item and `decode` join their pieces in batches of 1 024 (79 and 42), and the entry keeps every field and the stack of a refusal it names the sheet of (53). A third round added 164, measured commit by commit: the tokenizer joins the runs of a text that comments split in batches of 1 024 (76), so does `decodeEscapes` with its escapes (42), and the cut of a refused reference stops before half of a surrogate pair (46). They buy what a caller opens a workbook for. The package and XML layers below had taken 7 280 of the first budget's 8 000 bytes, so the rows alone pass it. The new budget leaves room for dates and for objects by declared columns, which are still to come.
+
+### Dates in the reader, 2026-11-23
+
+| Bundle           | Before dates | With them |   Budget |
+| ---------------- | -----------: | --------: | -------: |
+| `xlsx-mini/read` |      9 323 B |  10 684 B | 12 000 B |
+
+Dates cost 1 361 bytes gzipped and 3 705 minified. By the minified bytes the source map gives each file: what a number format shows 1 025, a serial or a date stored as text to a `Date` 797, the styles visitor 724, the date system and the styles' relationship in the workbook reader 480, the writer's serial arithmetic 200, the worksheet visitor 195, the value of a cell 138, the entry's styles table 137, and 9 more in the package and XML layers, which dates do not edit. A second round of review changed them by 260, measured commit by commit: white space and any number of decimals in a date stored as text 221, a minute after a second that no minute stands before and a bracket inside a bracket 67, a style read only where it can change the value 4 fewer, and an undefined format id read as no date 24 fewer. The budget stays.
+
+### Namespaces in the reader, 2026-11-25
+
+| Bundle           | Before namespaces | With them |   Budget |
+| ---------------- | ----------------: | --------: | -------: |
+| `xlsx-mini/read` |          10 965 B |  11 687 B | 12 000 B |
+
+Reading elements by their namespace (ADR 0032) costs 722 bytes gzipped and 1 851 minified: the declarations in scope and their lookup in the tokenizer, the namespace names of SpreadsheetML in both families and of the package's relationships, and a test of the namespace in each part reader. The budget stays, with 313 bytes left.
+
+## The reader's baseline, 2026-11-25, Apple M5 Pro, 48 GiB
+
+Reading is timed on the writer's three workbooks, each as the build under test writes it by default, with DEFLATE entries and a shared-string table. The variant `read` opens the file and reads every row of every sheet through `rows`. The variant `objects` reads the wide table through `objectsFromRows`, with a column for each of its ten headers. `pnpm bench` writes each file once, and every measuring process of either build reads that one file, once to warm up and four times timed, in four processes. The minimum of the sixteen is compared, as for writing. Each read counts its rows, and the run stops when a count is not the suite's.
+
+Minimum of sixteen reads, in milliseconds. The budgets are the minima on Node rounded up to the next ten milliseconds, as the writer's have been since 2026-11-11, and like the writer's they are Node's alone.
+
+| Suite, what one read gives                      | Variant   | Node 24.22.1 | Bun 1.4.4 | Deno 2.9.6 | Budget |
+| ----------------------------------------------- | --------- | -----------: | --------: | ---------: | -----: |
+| Wide table, 100 001 rows of 10 cells            | `read`    |          314 |       257 |        316 | 320 ms |
+| Wide table, 100 000 objects of 10 keys          | `objects` |          342 |       275 |        341 | 350 ms |
+| Many sheets, 40 sheets of 2 501 rows of 6 cells | `read`    |          191 |       147 |        197 | 200 ms |
+| String-heavy, 200 001 rows of 5 cells           | `read`    |          288 |       246 |        301 | 290 ms |
+
+The tokenizer limits every read, on one core. A CPU profile of six reads of each suite on Node put 37 to 43 % of the time in the tokenizer and 10 to 11 % in handing its tokens to the visitor. The worksheet visitor took 12 to 14 %, the value of a cell 7 to 8 %, and the CRC-32 4 to 7 %. The tokenizer alone reads the wide table's worksheet in 128 ms on Node, 41 % of a read of it, which the `tokens` row shows. The platform inflates on a thread of its own, so inflating adds little. In ten reads in one process, the wide table took 274 ms stored against 297 ms deflated on Node 26, 249 against 271 ms on Bun, and 277 against 324 ms on Deno. Objects by declared columns add 7 to 9 % to the rows they are made from.
+
+The first read in a process is slower than the ones after it. In ten reads in one process, the first took 2 to 22 % longer than the fastest of the other nine, and 18 % and 22 % longer on the many-sheets workbook on Node 26 and Bun. The harness warms up once and compares minima, so that cost stays outside the report, as it does for writing. The machine was otherwise idle, with a load average between 2.0 and 5.3 on 18 cores, and the four processes of a benchmark gave minima within 2.7 % of each other on Bun. The wide table read stored took 274 ms on Node 26 here and 277 ms in the verification of the namespace change on the same machine.
+
+### Memory of a read
+
+The memory of a read is the most it holds above what was held before it, sampled after a collection every 10 000 rows. A sample that would raise that figure is taken again after a pause of 20 ms, up to three times, and the lowest counts, and what was held before the read is the lowest of four samples taken the same way. V8 counts an array buffer it has collected until it frees the buffer's memory, so one sample can count mebibytes that nothing holds, and a baseline that counts what the read before it left makes the read measured look smaller. The first figures recorded here were taken without this, and Node's were 0.1 to 0.2 MiB lower. Each read runs in a process of its own after a read of 1 000 rows, which compiles the reader's code, so that nothing an earlier read left is collected during the read measured. What is held is V8's heap and its array buffers, or JavaScriptCore's heap, which counts its array buffers. Deno reports no array buffers, so its figures leave them out. `pnpm bench:memory` prints these figures for Node, and `bun bench/memory.ts` and `deno run --allow-all bench/memory.ts` for the other two. The budgets are Node's figures rounded up to the next whole mebibyte.
+
+| Suite        | Node 24.22.1 | Bun 1.4.4 | Deno 2.9.6 | Budget |
+| ------------ | -----------: | --------: | ---------: | -----: |
+| Wide table   |      5.0 MiB |  11.8 MiB |    4.6 MiB |  6 MiB |
+| Many sheets  |      1.0 MiB |   0.4 MiB |    0.6 MiB |  1 MiB |
+| String-heavy |      1.4 MiB |   0.5 MiB |    0.8 MiB |  2 MiB |
+
+Most of the wide table's figure is its shared-string table of 101 264 strings, which the first read of a sheet reads and the opened workbook keeps. The same rows written with inline strings hold 1.2 MiB on Node. The other two tables have 1 061 and 1 890 strings. JavaScriptCore holds a table larger, as `sharedStringBytes` in ADR 0032 says.
+
+A read holds as much at a million rows as at 100 000. The wide table streamed with inline strings is read with `inflatedBytes` of 1 GiB and `cellPositions` of 20 million, since its million rows inflate to 493 MiB and hold ten million positions:
+
+| Rows      | Read from | Node 24.22.1 | Node 26.13.1 | Bun 1.4.4 | Deno 2.9.6 |
+| --------- | --------- | -----------: | -----------: | --------: | ---------: |
+| 100 000   | bytes     |      1.2 MiB |      0.9 MiB |   0.3 MiB |    0.7 MiB |
+| 1 000 000 | bytes     |      1.4 MiB |      1.1 MiB |   0.3 MiB |    0.8 MiB |
+| 100 000   | a `Blob`  |      1.4 MiB |      1.2 MiB |   0.6 MiB |    0.7 MiB |
+| 1 000 000 | a `Blob`  |      1.7 MiB |      1.4 MiB |   0.7 MiB |    0.9 MiB |
+
+What a read holds is one row, the text of the part around it, the inflate's buffers and, from a `Blob`, the block of the file being read. That is about a mebibyte, as the trials of ADR 0032 found. Between samples it varies by a few hundred kibibytes, and ten times the samples meet more of that variation. From bytes, the package is most of what the process holds. Before the read of a million rows on Node 24 the process held 82.1 MiB, 72.1 MiB of them the package, which is 86 % of what it held at the peak. A `Blob` from `fs.openAsBlob` holds none of the file on Node and Bun. Deno has `fs.openAsBlob` too, but it reads the file whole. A file of 286 MiB raised Deno's resident memory by 573 MiB. Deno offers no other `Blob` backed by a file, so its `Blob` rows read the file from memory. `test/read-memory.test.ts` holds the ratio of the two peaks under 2 on Node, each read in a process with 64 MiB of old space. The ratio was 1.21 to 1.38 on Node 24 and 26, and 5.8 to 6.7 on Node 26 for a reader changed to keep the number of every row it read.
+
+A column of text kept from a large sheet holds its text, not the sheet's. The sheet has 100 000 rows under a header row, each with a kept text of 19 characters and 491 characters of filler that nothing keeps. The text comes from shared strings, from inline strings, from a formula's cached text, and from objects by the header. Once the column is read and the workbook collected, the column is let go, and what a collection frees then is what the column held:
+
+| Text from         | Its part | Node 24.22.1 | Bun 1.4.4 | Deno 2.9.6 |
+| ----------------- | -------: | -----------: | --------: | ---------: |
+| Shared strings    | 53.7 MiB |      7.8 MiB |  12.0 MiB |    7.7 MiB |
+| Inline strings    | 61.8 MiB |      7.8 MiB |  12.0 MiB |    7.7 MiB |
+| Formula text      | 64.0 MiB |      7.8 MiB |   9.0 MiB |    7.7 MiB |
+| Objects by header | 61.8 MiB |      7.8 MiB |  12.0 MiB |    7.7 MiB |
+
+The column's 1.9 million characters take 4.3 bytes each on V8 and 4.9 to 6.6 on JavaScriptCore, where a text the caller builds takes 2.5 bytes on V8 and 2.2 on JavaScriptCore. A kept text is a copy one character longer and a view of that copy, which is how the reader keeps it from holding its chunk. When `detach` returned its argument instead, every kept text held its chunk, and the column freed 58 to 69 MiB on Node, as much as its part. `test/read-memory.test.ts` fails a column that frees more than 8 bytes per kept character.
+
 ## CI baseline, 2026-11-05, GitHub-hosted ubuntu-latest, seven runs
 
 The runner is about twice as slow as the machine above, and machines in the pool differ among themselves by up to forty percent; these numbers are a reference, not budgets and not a comparison base. Deflate first, STORE second, in milliseconds.
@@ -167,7 +242,9 @@ The runner is about twice as slow as the machine above, and machines in the pool
 
 ## What the pull-request report measures
 
-Wall time of the pull request's build and of `main`'s build on the same runner, every benchmark of each build in a process of its own, the two builds one after the other and in turns, sixteen runs each over four processes, compared by their minimum. Neither build writes anything before the suite it is timed on. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged. Below the tables the report states the bundle size of the two builds, measured once, on the Node job.
+Wall time of the pull request's build and of `main`'s build on the same runner, every benchmark of each build in a process of its own, the two builds one after the other and in turns, sixteen runs each over four processes, compared by their minimum. Neither build writes anything before the suite it is timed on. Taking the minimum discards the noise, which only ever adds time; measuring both sides on one machine discards the difference between runners, which is the larger effect by far. Changes inside five percent are labelled noise, beyond five percent flagged, beyond fifteen percent called a regression or an improvement outright, and the job never gates a merge. The STORE variant is the JavaScript path alone; the deflate variant adds zlib, which differs per runtime and is the number users feel. Cross-runtime differences are shown, not judged. Below the tables the report states the bundle size of the two builds, measured once, on the Node job that times writing.
+
+Reading is timed the same way, in a job of its own per runtime beside the one that times writing. The reading job measures `tokens`, `read` and `objects`, the writing job the writer's four variants, and the report joins the two jobs of a runtime into one table, the read rows of each suite after its write rows. With the reads in the writing jobs, the harness took 101 s on the machine above where it took 73 s, and the benchmark step of Node's job took 9.2 minutes on the runner, where its three runs before had taken 4.3 to 6.7. Apart, and without a second build to compare with, the writing half takes 68 s on that machine and the reading half 29 s; with a base build, as the report runs it, the reading half takes 58 s. On the runner, the benchmark step took 1.6 to 3.4 minutes in the reading jobs and 4.3 to 6.3 minutes in the writing jobs, which run beside them: about 25 minutes of runner time for the six jobs where the three took about 16.
 
 ## What the profiling pass found
 
