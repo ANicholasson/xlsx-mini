@@ -1,10 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, describe, expect, it, vi } from "vite-plus/test";
-import { XLSX_MIME_TYPE } from "../src/index.js";
+import { resolveLimits } from "../src/errors/read.js";
+import { type Row, XLSX_MIME_TYPE, writeXlsx } from "../src/index.js";
 import { badgePng, stripesPng } from "./fixtures/workbooks.js";
+import { packageOf } from "./helpers/package.js";
 import { readPart, unzip } from "./helpers/unzip.js";
 
 /**
@@ -302,6 +304,108 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
       "Row 4 is not an order",
     );
   },
+  "read-rows": async (snippet) => {
+    const path = join(scratch, "totals.xlsx");
+    const orders: Row[] = [
+      ["Order", "Customer", "Total"],
+      ["A-1", "C-1", 10.5],
+      [],
+      ["A-2", "C-2", 20],
+      ["A-3", "C-3", "free"],
+      [null, null, 1.25],
+    ];
+    const notes: Row[] = [["Total"], [1000]];
+    const sheets = [
+      { name: "Notes", rows: notes },
+      { name: "Orders", rows: orders },
+    ];
+    writeFileSync(path, await writeXlsx({ sheets }));
+    expect(await (snippet["default"] as (path: string) => Promise<number>)(path)).toBe(31.75);
+  },
+  "read-errors": async (snippet) => {
+    const countRows = snippet["default"] as (upload: Blob) => Promise<number | string>;
+    const rows: Row[] = [["Order", "Total"], ["A-1", 10], [], ["A-2", 20]];
+    const stored = await writeXlsx({ sheets: [{ name: "Orders", rows }] }, { compression: "none" });
+    expect(await countRows(new Blob([stored]))).toBe(3);
+    expect(await countRows(new Blob(["Order,Total\nA-1,10\n"]))).toBe("This is not an .xlsx file.");
+
+    const value = Buffer.from(stored).indexOf("<v>20</v>");
+    expect(value, "the stored value in the package").toBeGreaterThan(0);
+    const changed = stored.slice();
+    changed[value + 3] = "3".charCodeAt(0);
+    expect(await countRows(new Blob([changed]))).toBe("This file is damaged.");
+
+    const parts = unzip(stored).map(({ name, data }) => ({
+      path: name,
+      data:
+        name === "xl/worksheets/sheet1.xml"
+          ? new TextDecoder().decode(data).replace('r="B2"', 'r="A2"')
+          : data,
+    }));
+    expect(await countRows(new Blob([packageOf(parts)]))).toBe(
+      "This file is damaged at cell A2 of Orders.",
+    );
+
+    // A value in the last column charges its row 16 384 positions, and 306 rows pass 5 000 000.
+    const far: Row[] = Array.from({ length: 306 }, () => [...Array<null>(16_383).fill(null), 1]);
+    expect(
+      await countRows(new Blob([await writeXlsx({ sheets: [{ name: "Far", rows: far }] })])),
+    ).toBe("This file asks for more than limits.cellPositions allows.");
+
+    class Unreadable extends Blob {
+      override arrayBuffer(): Promise<ArrayBuffer> {
+        return Promise.reject(new Error("the disk failed"));
+      }
+      override slice(): Blob {
+        return new Unreadable();
+      }
+    }
+    await expect(countRows(new Unreadable([stored]))).rejects.toThrow("the disk failed");
+  },
+  "read-upload": async (snippet) => {
+    const post = snippet["POST"] as (request: Request) => Promise<Response>;
+    const send = (file?: Blob) => {
+      const form = new FormData();
+      if (file !== undefined) form.set("file", file);
+      return post(new Request("https://example.com/counts", { method: "POST", body: form }));
+    };
+    const count = async (rows: Row[]) =>
+      send(new Blob([await writeXlsx({ sheets: [{ name: "Count", rows }] })]));
+
+    const counted = await count([
+      ["SKU", "Counted"],
+      ["S-1", 4],
+      ["S-2", 0],
+      ["S-1", 5],
+    ]);
+    expect(counted.status).toBe(200);
+    expect(await counted.json()).toEqual({ counted: 2 });
+
+    const wrong = await count([
+      ["SKU", "Counted"],
+      ["S-1", 4],
+      ["S-2", "many"],
+    ]);
+    expect([wrong.status, await wrong.text()]).toEqual([422, "Row 3 needs a SKU and a count."]);
+
+    // 25 001 rows of two cells are 50 002 positions: past the snippet's limit, inside the default.
+    const large = Array.from({ length: 25_000 }, (_, index): Row => [`S-${index}`, index]);
+    const refused = await count([["SKU", "Counted"], ...large]);
+    expect([refused.status, await refused.text()]).toEqual([
+      422,
+      "The file was refused: LIMIT_EXCEEDED.",
+    ]);
+
+    const renamed = await count([
+      ["Item", "Counted"],
+      ["S-1", 4],
+    ]);
+    expect(await renamed.text()).toBe("The file was refused: MISSING_HEADER.");
+    expect(await (await send(new Blob(["SKU,Counted\nS-1,4\n"]))).text()).toBe(
+      "The file was refused: NOT_XLSX.",
+    );
+    expect((await send()).status).toBe(400);
+  },
 };
 
 describe("README snippets", () => {
@@ -323,5 +427,56 @@ describe("README snippets", () => {
     const name = file.slice("examples/snippets/".length, -".ts".length);
     const snippet = (await import(join(root, file))) as Snippet;
     await runs[name]!(snippet);
+  });
+});
+
+/** Each row of the README's table of reading limits: the limit, and its default as a number. */
+function limitsTable(): [limit: string, allowance: number][] {
+  const table = /^\| Limit +\| Default +\| What it bounds +\|\n\|[- |]+\n((?:\|[^\n]*\n)+)/m.exec(
+    readme,
+  );
+  expect(table, "the README's table of reading limits").not.toBeNull();
+  return table![1]!
+    .trimEnd()
+    .split("\n")
+    .map((line) => {
+      const row = /^\| `(\w+)` +\| (\d[\d ]*?)( MiB)? +\|/.exec(line);
+      expect(row, line).not.toBeNull();
+      const [, limit, digits, mebibytes] = row!;
+      return [limit!, Number(digits!.replaceAll(" ", "")) * (mebibytes ? 1_048_576 : 1)];
+    });
+}
+
+describe("the README's table of reading limits", () => {
+  /** Fresh meters of every limit, as one `openXlsx` call and one `rows` iteration get them. */
+  const meters = () => {
+    const limits = resolveLimits(undefined);
+    return [...Object.values(limits.book), ...Object.values(limits.rows())];
+  };
+  const takes = (meter: { charge(amount: number): void }, amount: number): boolean => {
+    try {
+      meter.charge(amount);
+      return true;
+    } catch (error) {
+      expect(error).toMatchObject({ code: "LIMIT_EXCEEDED" });
+      return false;
+    }
+  };
+
+  it("names every limit once", () => {
+    const named = limitsTable().map(([limit]) => limit);
+    expect(new Set(named).size, "a limit named twice").toBe(named.length);
+    expect(new Set(named)).toEqual(new Set(meters().map(({ limit }) => limit)));
+  });
+
+  it("gives each limit the default the read side holds it to", () => {
+    for (const [limit, allowance] of limitsTable()) {
+      const of = (amount: number) =>
+        meters()
+          .filter((meter) => meter.limit === limit)
+          .map((meter) => takes(meter, amount));
+      expect(of(allowance), `a meter of ${limit} takes ${allowance}`).toContain(true);
+      expect(of(allowance + 1), `no meter of ${limit} takes more`).not.toContain(true);
+    }
   });
 });

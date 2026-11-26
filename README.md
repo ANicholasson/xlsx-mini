@@ -5,7 +5,7 @@
 [![size](https://img.shields.io/bundlejs/size/xlsx-mini?exports=writeXlsx)](https://bundlejs.com/?q=xlsx-mini&treeshake=[{writeXlsx}])
 [![license](https://img.shields.io/npm/l/xlsx-mini)](./LICENSE)
 
-Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
+Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript runtime. You describe sheets, rows and cells; it returns the bytes. An experimental entry, `xlsx-mini/read`, reads the values of an `.xlsx` file and refuses one that is damaged or hostile. The files open without a repair dialog in Excel, Numbers, Google Sheets and LibreOffice, and the writer is measured on every change. Every TypeScript snippet in this README is run by the test suite.
 
 ## Install
 
@@ -811,7 +811,32 @@ Empty cells cost nothing: `null`, `undefined` and rows without cells are skipped
 
 ## Reading (experimental)
 
-Reading is experimental and not in a release yet, and any 0.x minor may change it. `objectsFromRows` from `xlsx-mini/read` is the mirror of `sheetFromObjects`: one column list writes a sheet of objects and reads it back. The first row is the header, and each later row comes back as `{ number, values }` with the declared keys only.
+`xlsx-mini/read` reads the values of an `.xlsx` file: text, numbers, booleans, dates, the text of an error cell and the result a formula stores. It gives no styles, formulas, comments, pictures or merges, and it never writes to the file it reads. It is built for files from strangers, so a damaged or hostile file is refused with a code, never repaired and never read as an empty workbook. Reading is experimental, and any 0.x minor may change it.
+
+<!-- snippet: read-rows -->
+
+```ts
+import { openAsBlob } from "node:fs";
+import { openXlsx } from "xlsx-mini/read";
+
+export default async function sumOfTotals(path = "orders.xlsx"): Promise<number> {
+  // A Blob is read in slices, never whole.
+  const book = await openXlsx(await openAsBlob(path));
+  let sum = 0;
+  // Each row that holds a value: its number in the sheet from 1, its cells from column A.
+  for await (const { number, cells } of book.rows("Orders")) {
+    const total = cells[2];
+    if (number > 1 && typeof total === "number") sum += total;
+  }
+  return sum;
+}
+```
+
+`openXlsx` takes a `Uint8Array`, an `ArrayBuffer` or a `Blob`, such as an uploaded `File`, and reads the package's directory and the sheet list, nothing more. `book.sheets` holds the name of every sheet in workbook order, hidden ones included. `book.rows` takes a name or an index from 0 and reads nothing until you iterate it. Then it yields each row that holds a value as `{ number, cells }`, where `cells` starts at column A, holds `null` for an empty cell and ends at the row's last value. A value is a `string`, a `number`, a `boolean`, a `Date` or `null`. Empty text is `null`, an error cell gives its text, such as `"#DIV/0!"`, and a formula gives the result the file stores, or `null` when the file stores none. Hidden rows and columns read like the others, a merge has its value in its top-left cell, and a chart sheet has no rows. Two sheets can be read at once, and a sheet again.
+
+### Objects by declared columns
+
+`objectsFromRows` is the mirror of `sheetFromObjects`, so one column list writes a sheet of objects and reads it back. The first row is the header, and each later row comes back as `{ number, values }` with the declared keys only.
 
 <!-- snippet: read-objects -->
 
@@ -851,6 +876,146 @@ export async function importOrders(file: Uint8Array | Blob): Promise<Order[]> {
 
 Write the column list `as const`, as here, when the list is the declaration: a key it does not declare is then a type error. Type it `ObjectColumn<T>[]` when `T` is the declaration: `values` then has every key of `T` in its type, and a key the list does not declare reads as `undefined`.
 
+### When a file is refused
+
+<!-- snippet: read-errors -->
+
+```ts
+import { XlsxReadError, openXlsx } from "xlsx-mini/read";
+
+/** The number of rows in an upload's first sheet, or what to tell the person who sent it. */
+export default async function countRows(upload: Blob): Promise<number | string> {
+  let count = 0;
+  try {
+    const book = await openXlsx(upload);
+    for await (const _row of book.rows(0)) count++;
+  } catch (error) {
+    if (!(error instanceof XlsxReadError)) throw error;
+    switch (error.code) {
+      case "NOT_XLSX":
+        return "This is not an .xlsx file.";
+      case "LIMIT_EXCEEDED":
+        return `This file asks for more than limits.${error.limit} allows.`;
+      case "INVALID_PACKAGE":
+      case "INVALID_XML":
+      case "INVALID_WORKBOOK":
+      case "INVALID_CELL":
+        // A damaged file. Another runtime can refuse it with another of these four codes.
+        return error.cell === undefined
+          ? "This file is damaged."
+          : `This file is damaged at cell ${error.cell} of ${error.sheet}.`;
+      default:
+        // NO_INFLATE, UNKNOWN_SHEET and INVALID_LIMIT are about the runtime or the code;
+        // MISSING_HEADER comes from objectsFromRows.
+        throw error;
+    }
+  }
+  // A sheet is checked at its last byte, after its rows: trust them once the loop has ended.
+  return count;
+}
+```
+
+Every refusal is an `XlsxReadError` with a `code`, and a workbook whose sheet list or sheet data cannot be found is refused, never read as empty. `rows` yields each row as it reads the sheet, and checks the sheet's size and checksum at its last byte, so act on what you read once the loop has ended without an error. On Bun and Deno, a part whose compressed data is damaged can be refused with `INVALID_PACKAGE` where Node gives `INVALID_XML` or `INVALID_CELL`, so branch on the four codes of a damaged file together, as the snippet does. An error that is not an `XlsxReadError`, such as a failed read of the `Blob`, passes through as it is. The table of error codes at the end of this section lists every code.
+
+### Limits for an upload
+
+<!-- snippet: read-upload -->
+
+```ts
+import { XlsxReadError, objectsFromRows, openXlsx } from "xlsx-mini/read";
+
+const columns = [
+  { key: "sku", header: "SKU" },
+  { key: "counted", header: "Counted" },
+] as const;
+
+/** A route handler that takes a stock count of a few thousand rows, uploaded from a form. */
+export async function POST(request: Request): Promise<Response> {
+  const file = (await request.formData()).get("file");
+  if (!(file instanceof Blob)) return new Response("Choose a file.", { status: 400 });
+  const counts = new Map<string, number>();
+  try {
+    // Far below the defaults, which are sized for any file a person uploads.
+    const limits = { inflatedBytes: 8 * 1024 * 1024, cellPositions: 50_000 };
+    const book = await openXlsx(file, { limits });
+    for await (const { number, values } of objectsFromRows(book.rows(0), columns)) {
+      if (typeof values.sku !== "string" || typeof values.counted !== "number") {
+        return new Response(`Row ${number} needs a SKU and a count.`, { status: 422 });
+      }
+      counts.set(values.sku, values.counted);
+    }
+  } catch (error) {
+    if (!(error instanceof XlsxReadError)) throw error;
+    return new Response(`The file was refused: ${error.code}.`, { status: 422 });
+  }
+  return Response.json({ counted: counts.size });
+}
+```
+
+Every limit has a default sized for a file a person uploads, and you can set any of them lower or higher for one `openXlsx` call. No value turns a limit off. A file past a limit is refused with `LIMIT_EXCEEDED`, and `error.limit` names the limit. The table of limits at the end of this section says what each one bounds.
+
+The limits hold per read. Each iteration of `rows` has its own `inflatedBytes`, `cellPositions` and `rowCharacters`, so two sheets read at once each take up to what one read may, and no limit spans the reads of one workbook. The file decides how many sheets there are, and any number of them may name one part. A file of 6 KB whose 150 sheets name one part, a row of 4 194 304 characters, exhausted a 512 MiB heap when every sheet was read at once. Read the sheets of a file from a stranger one at a time. In trials with the default limits, the most one read reached was 106 MiB of heap on Node, for a row of six cells that each hold the longest text of character references, and 309 MiB resident on Bun, for 30 rows that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds, and they move with when the engine collects. The opened workbook also holds its shared-string table for as long as you keep the workbook. In trials it was held at up to 2.9 times `sharedStringBytes` on Node and 4.2 times on Bun, for a million entries of 16 characters with one outside Latin-1. `docs/adr/0032-a-values-only-reader-as-a-separate-entry.md` records the design and these trials.
+
+### Where reading runs
+
+On every change, the runtime matrix reads stored and deflated packages in Node, as ESM and as CommonJS, in Bun, in Deno and in Cloudflare workerd. Where the runtime has no `DecompressionStream`, as in the Vercel edge runtime in the matrix, a package of stored parts reads and a deflated part is refused with `NO_INFLATE`. There `writeXlsx` writes stored parts, so its workbooks read back, but a workbook `streamXlsx` wrote does not, because a streamed part is always a deflate stream, even with `compression: "none"`. Deno has no `Blob` backed by a file. Its `fs.openAsBlob` reads the whole file, so on Deno a file opened that way is held in memory whole. No browser is in the matrix.
+
+### What it costs
+
+In a bundle, minified and gzipped, `xlsx-mini/read` alone takes on under 12 kB, and a test holds it to that budget. An application that imports only the writer bundles the same bytes as it would if the package held no read side, which another test checks. Read times and the memory of a read are under Benchmarks.
+
+### Before you trust a value
+
+- A number becomes a `Date` when its cell's number format shows a year, a month or a day, and a date stored as text always does. The `Date`'s UTC fields are the sheet's wall clock, as the writer writes a `Date`, so read it with the UTC getters or `toISOString()`, not in local time. A time of day or an elapsed time stays a number, a fraction of a day, and so does a serial no calendar shows, such as 0 or the 29 February 1900 that never was.
+- Text in the format's escape, `_xHHHH_`, reads as the character it names, so `_x0041_` reads as `A`, as Excel and LibreOffice show it. Google Sheets writes such text as it is, without escaping it, so text it showed as `_x0041_` reads as `A` from a file it wrote.
+
+### How it is tested
+
+Every change reads the 87 workbooks in `test/corpus/`, which Excel, Numbers, LibreOffice and Google Sheets wrote, and compares every cell with LibreOffice's reading of the same file, except where `docs/compatibility.md` shows LibreOffice is not the truth. Every change also reads 277 hostile files, each in a process of its own under a time bound and a heap cap, and each must end in the refusal or the values its case states. It reads 5 000 seeded mutations of the corpus too, and each must end in a refusal with a code or a clean read. None may read a sheet that holds a value as a sheet without rows. A scheduled job reads mutations from a fresh seed for 30 minutes every week, and the runtime matrix has each host read what it wrote, as the section on where reading runs says.
+
+### The API of `xlsx-mini/read`
+
+| Export                           | Shape                                                                                                                                                |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `openXlsx(file, options?)`       | `Promise<OpenedWorkbook>`; `file` is a `Uint8Array`, an `ArrayBuffer` or a `Blob`                                                                    |
+| `ReadOptions`                    | `{ limits?: ReadLimits }`                                                                                                                            |
+| `OpenedWorkbook`                 | `{ sheets: readonly string[]; rows(sheet: string \| number): AsyncIterable<ReadRow> }`                                                               |
+| `ReadRow`, `ReadValue`           | `{ number: number; cells: readonly ReadValue[] }`; `string \| number \| boolean \| Date \| null`                                                     |
+| `objectsFromRows(rows, columns)` | `AsyncIterable<ReadObject<Key>>` from any `AsyncIterable<ReadRow>` and a `readonly ReadColumn<Key>[]`                                                |
+| `ReadColumn`, `ReadObject`       | `{ key: Key; header?: string }`; `{ number: number; values: { [K in Key]: ReadValue } }`, where `values` has no prototype                            |
+| `ReadLimits`                     | `{ inflatedBytes?; cellPositions?; rowCharacters?; sharedStrings?; sharedStringBytes?; parts? }`, each a positive finite number                      |
+| `XlsxReadError`, `ReadErrorCode` | `{ code: ReadErrorCode; sheet; cell; limit; header; message }`; each of `sheet`, `cell`, `limit` and `header` is `undefined` where it does not apply |
+
+### Limits
+
+| Limit               | Default   | What it bounds                                                                                                                            |
+| ------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `inflatedBytes`     | 128 MiB   | What one operation inflates. Opening the workbook, with its shared strings and styles, is one operation, and so is each `rows` iteration. |
+| `cellPositions`     | 5 000 000 | The positions one `rows` iteration yields, empty cells before a value included.                                                           |
+| `rowCharacters`     | 4 194 304 | The text one row holds. A row is held whole, so this bounds the text of the values one read holds at a time.                              |
+| `sharedStrings`     | 1 000 000 | Entries in the shared-string table.                                                                                                       |
+| `sharedStringBytes` | 32 MiB    | What the shared-string table inflates to.                                                                                                 |
+| `parts`             | 100 000   | The parts in the package, read or not. A workbook with one picture per row has about one part per row.                                    |
+
+A part's declared size is charged before a byte of it is inflated. The parts that become lists in memory and the package's directory share an eighth of `inflatedBytes`. Three rules are fixed and are not limits: elements nest at most 256 deep, one token holds at most 4 194 304 characters, and the names of the open elements and the namespace declarations in scope hold as many together, each declaration counting 4 096 more than its prefix and its namespace name. A part that breaks one is refused with `INVALID_XML`.
+
+### Error codes
+
+A refusal while `rows` reads a sheet names the sheet in `sheet`, except a refusal of the shared strings or the styles, which belong to the whole workbook.
+
+| Code               | Means                                                                                                                                                                                                                                | Carries                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------- |
+| `NOT_XLSX`         | Not a package, or a package that is not a workbook, such as an old `.xls`, an encrypted workbook, a CSV or another kind of zip.                                                                                                      | nothing                                             |
+| `INVALID_PACKAGE`  | The package is damaged or contradicts itself, for example in its directory, a local header, two parts with one name, a part's size or CRC-32, or a compression method.                                                               | `sheet` while `rows` reads one                      |
+| `INVALID_XML`      | A part is not well-formed XML in UTF-8, holds a DOCTYPE, or breaks one of the fixed rules above.                                                                                                                                     | `sheet` while `rows` reads one                      |
+| `INVALID_WORKBOOK` | The parts do not make a workbook: the sheet list, a sheet's data, the shared strings or the styles are missing or damaged, a relationship leaves the package, two sheets share a name, or the date system is neither true nor false. | `sheet` when the refusal is about one sheet         |
+| `INVALID_CELL`     | A row or a cell is out of order, a reference is malformed, a value is not what its cell's type says, or a shared string or a style does not exist.                                                                                   | `sheet`, and `cell` where the place has a reference |
+| `LIMIT_EXCEEDED`   | The file asks for more than a limit allows.                                                                                                                                                                                          | `limit`, and `sheet` while `rows` reads one         |
+| `MISSING_HEADER`   | `objectsFromRows` found no header row, or one that lacks a declared column.                                                                                                                                                          | `header`, the caller's own text                     |
+| `NO_INFLATE`       | A part is deflated, and the runtime has no `DecompressionStream`, or one that cannot be held to the end of a deflate stream.                                                                                                         | `sheet` while `rows` reads one                      |
+| `UNKNOWN_SHEET`    | `rows` was called with a name or an index the workbook does not have. It throws at the call.                                                                                                                                         | `sheet` when called with a name                     |
+| `INVALID_LIMIT`    | A limit that is not a positive finite number.                                                                                                                                                                                        | `limit`                                             |
+
 ## API
 
 | Export                              | Shape                                                                                                                                                                                                                                                                          |
@@ -889,16 +1054,16 @@ Below 1.0.0 a minor version may change this API; 1.0.0 follows once it has survi
 
 Four things are outside this library on purpose. Each is large against a writer of this size, and leaving them out is what keeps it small:
 
-- **Reading or editing a workbook.** It writes and never parses. To change an existing file, read it with another tool and write the result with this one.
+- **Editing a workbook.** `xlsx-mini/read` reads the values of a workbook and nothing else, so a workbook cannot be opened, changed and saved. Read its values and write a new workbook with `writeXlsx`. Styles, formulas, pictures and everything else that is not a value stay behind.
 - **Charts.** A chart is a drawing format of its own, larger than everything here together. Write the data; the chart is made in the application.
 - **Pivot tables.** A pivot table needs a cache of its source data in a second format beside the sheet.
-- **Password encryption.** An encrypted workbook is a different container around the package, with cryptography of its own. Encrypt the bytes with a tool made for that.
+- **Password encryption.** An encrypted workbook is a different container around the package, with cryptography of its own. Encrypt the bytes with a tool made for that. `xlsx-mini/read` refuses an encrypted workbook with `NOT_XLSX`.
 
 `docs/adr/0026-non-goals.md` records the reasons and what would reopen each.
 
 ## Security
 
-No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
+No runtime dependencies and no install scripts. The writer touches no file, network or global state; it reads what you give it and returns bytes. Text is escaped for XML and characters XML cannot carry are dropped, so cell content cannot break the file. Text never becomes a formula, whatever it starts with; a formula or link is only ever a plain object you build with `formula`, `href` or `cell`, so convert untrusted objects to text before putting them in a cell. Link targets whose scheme runs code (`javascript:`, `vbscript:`, `data:`) are refused. The read side opens no file and fetches nothing. It reads the bytes or the `Blob` you give it, refuses a damaged file with a code instead of repairing it, holds each read to its limits, makes no property name from text in the file, and resolves nothing outside the package. Releases are published through npm trusted publishing with provenance, so every version on npm traces to a commit and a workflow run in this repository. To report a vulnerability, see `SECURITY.md`.
 
 ## Benchmarks
 
@@ -911,6 +1076,17 @@ Every pull request gets one comment: the pull request and `main` built and timed
 | String-heavy, 200 000 rows by 5 text columns |  370 ms |  89 ms |   698 ms |
 
 STORE is the writer's own path; deflate adds the runtime's zlib and is the default. Streamed is `streamXlsx` with its defaults into a sink that discards the bytes: inline strings cost more where text repeats, which is what `strings: "shared"` is for. Streaming the wide table at a million rows holds about 10 MiB of heap, the same as at a hundred thousand. The comment also shows what the pull request does to the size of the package in a bundle. Budgets and the method are in `docs/adr/0021-performance-baseline-and-budgets.md`.
+
+Reading is timed the same way, on the file the writer makes of each suite by default. On the same machine with Node 24, the minimum of sixteen reads of every row of every sheet, each benchmark in processes of its own:
+
+| Suite, what one read gives                                       |   Read |
+| ---------------------------------------------------------------- | -----: |
+| Wide table, 100 001 rows of 10 cells                             | 314 ms |
+| Wide table through `objectsFromRows`, 100 000 objects of 10 keys | 342 ms |
+| Many sheets, 40 sheets of 2 501 rows of 6 cells                  | 191 ms |
+| String-heavy, 200 001 rows of 5 cells                            | 288 ms |
+
+A read holds about as much at a million rows as at 100 000. Read from bytes on Node 24, the wide table streamed with inline strings held at most 1.0 MiB of heap and array buffers above what the process held before the read at 100 000 rows, and 1.3 MiB at a million, with `inflatedBytes` and `cellPositions` raised because a million of its rows pass both defaults.
 
 ## Compatibility
 
