@@ -1079,7 +1079,7 @@ Reading is timed the same way, on the file the writer makes of each suite by def
 | Many sheets, 40 sheets of 2 501 rows of 6 cells                  | 191 ms |
 | String-heavy, 200 001 rows of 5 cells                            | 288 ms |
 
-What a read keeps does not grow with the rows. Read from bytes on Node 24 and sampled after a collection every 10 000 rows, the wide table streamed with inline strings held at most 1.0 MiB of heap and array buffers above what the process held before the read at 100 000 rows, and 1.3 MiB at a million, with `inflatedBytes` and `cellPositions` raised because a million of its rows pass both defaults. The samples show growth with the number of rows, not the peak of a read, which the section on limits gives trials of.
+What a read keeps does not grow with the rows. Read from bytes on Node 24 and sampled after a collection every 10 000 rows, the wide table streamed with inline strings held at most 1.2 MiB of heap and array buffers above what the process held before the read at 100 000 rows, and 1.4 MiB at a million, with `inflatedBytes` and `cellPositions` raised because a million of its rows pass both defaults. The samples show growth with the number of rows, not the peak of a read, which the section on limits gives trials of.
 
 ## Compatibility
 
