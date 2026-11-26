@@ -22,13 +22,15 @@ const SMALL_ROWS = 1_000;
 
 const FLAT_ROWS = [100_000, 1_000_000] as const;
 const SOURCES = ["bytes", "blob"] as const;
-/** A read of the wide table holds 0.6 to 1.4 MiB above what was held before it, on Node 24 and 26. */
+/** A read of the wide table holds 0.6 to 1.7 MiB above what was held before it, on Node 20 to 26. */
 const FLAT_HEAP_MEBIBYTES = 64;
 /**
  * A read holds a row and the text of its part around it, so a million rows hold what 100 000 hold.
  * What is held between rows varies by a few hundred kibibytes, and ten times the samples meet more
- * of it: the ratio of the two peaks was 1.21 to 1.38 on Node 24 and 26. A reader that keeps the
- * number of every row it read reaches 5.8 to 6.7.
+ * of it: the ratio of the two peaks was 1.12 to 1.19 on Node 24 and 26 on a developer's machine, and
+ * 1.15 to 1.53 in 88 reads on the runners of the checks, on Node 20, 22 and 24. A reader that keeps
+ * the number of every row it read reaches 5.2 to 6.5, and one that keeps one inflated chunk in
+ * twenty reaches 8.3 to 8.5.
  */
 const FLAT_RATIO = 2;
 
@@ -88,8 +90,8 @@ describe("reading the wide table, each read in a process whose heap is held to 6
   });
 
   it.each(SOURCES)("holds as much at a million rows as at 100 000, read from %s", (source) => {
-    const [fewer, more] = FLAT_ROWS.map((rows) => reads.get(`${rows} ${source}`)!.peak);
-    expect(more! / fewer!).toBeLessThan(FLAT_RATIO);
+    const [fewer, more] = FLAT_ROWS.map((rows) => reads.get(`${rows} ${source}`)!);
+    expect(more!.peak / fewer!.peak, JSON.stringify({ fewer, more })).toBeLessThan(FLAT_RATIO);
   });
 });
 

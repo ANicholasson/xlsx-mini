@@ -198,26 +198,26 @@ The first read in a process is slower than the ones after it. In ten reads in on
 
 ### Memory of a read
 
-The memory of a read is the most it holds above what was held before it, sampled after a collection every 10 000 rows. Each read runs in a process of its own after a read of 1 000 rows, which compiles the reader's code, so that nothing an earlier read left is collected during the read measured. What is held is V8's heap and its array buffers, or JavaScriptCore's heap, which counts its array buffers. Deno reports no array buffers, so its figures leave them out. `pnpm bench:memory` prints these figures for Node, and `bun bench/memory.ts` and `deno run --allow-all bench/memory.ts` for the other two. The budgets are Node's figures rounded up to the next whole mebibyte.
+The memory of a read is the most it holds above what was held before it, sampled after a collection every 10 000 rows. A sample that would raise that figure is taken again after a pause of 20 ms, up to three times, and the lowest counts, and what was held before the read is the lowest of four samples taken the same way. V8 counts an array buffer it has collected until it frees the buffer's memory, so one sample can count mebibytes that nothing holds, and a baseline that counts what the read before it left makes the read measured look smaller. The first figures recorded here were taken without this, and Node's were 0.1 to 0.2 MiB lower. Each read runs in a process of its own after a read of 1 000 rows, which compiles the reader's code, so that nothing an earlier read left is collected during the read measured. What is held is V8's heap and its array buffers, or JavaScriptCore's heap, which counts its array buffers. Deno reports no array buffers, so its figures leave them out. `pnpm bench:memory` prints these figures for Node, and `bun bench/memory.ts` and `deno run --allow-all bench/memory.ts` for the other two. The budgets are Node's figures rounded up to the next whole mebibyte.
 
 | Suite        | Node 24.22.1 | Bun 1.4.4 | Deno 2.9.6 | Budget |
 | ------------ | -----------: | --------: | ---------: | -----: |
-| Wide table   |      5.0 MiB |  11.6 MiB |    4.3 MiB |  6 MiB |
-| Many sheets  |      0.8 MiB |   0.3 MiB |    0.3 MiB |  1 MiB |
-| String-heavy |      1.3 MiB |   0.4 MiB |    0.5 MiB |  2 MiB |
+| Wide table   |      5.0 MiB |  11.8 MiB |    4.6 MiB |  6 MiB |
+| Many sheets  |      1.0 MiB |   0.4 MiB |    0.6 MiB |  1 MiB |
+| String-heavy |      1.4 MiB |   0.5 MiB |    0.8 MiB |  2 MiB |
 
-Most of the wide table's figure is its shared-string table of 101 264 strings, which the first read of a sheet reads and the opened workbook keeps. The same rows written with inline strings hold 1.0 MiB on Node. The other two tables have 1 061 and 1 890 strings. JavaScriptCore holds a table larger, as `sharedStringBytes` in ADR 0032 says.
+Most of the wide table's figure is its shared-string table of 101 264 strings, which the first read of a sheet reads and the opened workbook keeps. The same rows written with inline strings hold 1.2 MiB on Node. The other two tables have 1 061 and 1 890 strings. JavaScriptCore holds a table larger, as `sharedStringBytes` in ADR 0032 says.
 
 A read holds as much at a million rows as at 100 000. The wide table streamed with inline strings is read with `inflatedBytes` of 1 GiB and `cellPositions` of 20 million, since its million rows inflate to 493 MiB and hold ten million positions:
 
 | Rows      | Read from | Node 24.22.1 | Node 26.13.1 | Bun 1.4.4 | Deno 2.9.6 |
 | --------- | --------- | -----------: | -----------: | --------: | ---------: |
-| 100 000   | bytes     |      1.0 MiB |      0.8 MiB |   0.2 MiB |    0.4 MiB |
-| 1 000 000 | bytes     |      1.3 MiB |      1.0 MiB |   0.2 MiB |    0.6 MiB |
-| 100 000   | a `Blob`  |      1.3 MiB |      1.1 MiB |   0.4 MiB |    0.5 MiB |
-| 1 000 000 | a `Blob`  |      1.6 MiB |      1.3 MiB |   0.5 MiB |    0.6 MiB |
+| 100 000   | bytes     |      1.2 MiB |      0.9 MiB |   0.3 MiB |    0.7 MiB |
+| 1 000 000 | bytes     |      1.4 MiB |      1.1 MiB |   0.3 MiB |    0.8 MiB |
+| 100 000   | a `Blob`  |      1.4 MiB |      1.2 MiB |   0.6 MiB |    0.7 MiB |
+| 1 000 000 | a `Blob`  |      1.7 MiB |      1.4 MiB |   0.7 MiB |    0.9 MiB |
 
-What a read holds is one row, the text of the part around it, the inflate's buffers and, from a `Blob`, the block of the file being read. That is about a mebibyte, as the trials of ADR 0032 found. Between samples it varies by a few hundred kibibytes, and ten times the samples meet more of that variation. From bytes, the package is most of what the process holds. Before the read of a million rows on Node 24 the process held 82.3 MiB, 72.1 MiB of them the package, which is 86 % of what it held at the peak. A `Blob` from `fs.openAsBlob` holds none of the file on Node and Bun. Deno has `fs.openAsBlob` too, but it reads the file whole. A file of 286 MiB raised Deno's resident memory by 573 MiB. Deno offers no other `Blob` backed by a file, so its `Blob` rows read the file from memory. `test/read-memory.test.ts` holds the ratio of the two peaks under 2 on Node, each read in a process with 64 MiB of old space. The ratio was 1.21 to 1.38 on Node 24 and 26, and 5.8 to 6.7 on Node 26 for a reader changed to keep the number of every row it read.
+What a read holds is one row, the text of the part around it, the inflate's buffers and, from a `Blob`, the block of the file being read. That is about a mebibyte, as the trials of ADR 0032 found. Between samples it varies by a few hundred kibibytes, and ten times the samples meet more of that variation. From bytes, the package is most of what the process holds. Before the read of a million rows on Node 24 the process held 82.1 MiB, 72.1 MiB of them the package, which is 86 % of what it held at the peak. A `Blob` from `fs.openAsBlob` holds none of the file on Node and Bun. Deno has `fs.openAsBlob` too, but it reads the file whole. A file of 286 MiB raised Deno's resident memory by 573 MiB. Deno offers no other `Blob` backed by a file, so its `Blob` rows read the file from memory. `test/read-memory.test.ts` holds the ratio of the two peaks under 2 on Node, each read in a process with 64 MiB of old space. The ratio was 1.21 to 1.38 on Node 24 and 26, and 5.8 to 6.7 on Node 26 for a reader changed to keep the number of every row it read.
 
 A column of text kept from a large sheet holds its text, not the sheet's. The sheet has 100 000 rows under a header row, each with a kept text of 19 characters and 491 characters of filler that nothing keeps. The text comes from shared strings, from inline strings, from a formula's cached text, and from objects by the header. Once the column is read and the workbook collected, the column is let go, and what a collection frees then is what the column held:
 
