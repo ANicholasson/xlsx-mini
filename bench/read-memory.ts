@@ -40,6 +40,26 @@ function heapHeld(): number {
 export interface ReadPeak {
   readonly rows: number;
   readonly peak: number;
+  /** The highest sample as first taken, where `peak` is of samples taken again. */
+  readonly unsettled: number;
+}
+
+const SETTLE_TRIES = 3;
+const SETTLE_MILLISECONDS = 20;
+
+/**
+ * A sample that would raise `peak`, taken again after a pause for as long as it still would: the
+ * lowest counts. V8 counts an array buffer it has collected until it frees the buffer's memory, in
+ * its own time, so one sample in many holds mebibytes that nothing holds any more. The read waits
+ * meanwhile, so what it does hold is in every one of them.
+ */
+async function settled(first: number, before: number, peak: number): Promise<number> {
+  let lowest = first;
+  for (let tries = 0; lowest > peak && tries < SETTLE_TRIES; tries++) {
+    await new Promise((resolve) => setTimeout(resolve, SETTLE_MILLISECONDS));
+    lowest = Math.min(lowest, held() - before);
+  }
+  return lowest;
 }
 
 /**
@@ -54,12 +74,19 @@ export async function peakOfReading(
 ): Promise<ReadPeak> {
   let rows = 0;
   let peak = 0;
+  let unsettled = 0;
+  const sample = async (): Promise<void> => {
+    const first = held() - before;
+    unsettled = Math.max(unsettled, first);
+    peak = Math.max(peak, await settled(first, before, peak));
+  };
   for (const sheet of sheets) {
     for await (const _ of sheet) {
-      if (++rows % every === 0) peak = Math.max(peak, held() - before);
+      if (++rows % every === 0) await sample();
     }
   }
-  return { rows, peak: Math.max(peak, held() - before) };
+  await sample();
+  return { rows, peak, unsettled };
 }
 
 /** Where the text of a kept column comes from: each way a cell holds text, and objects by a header. */

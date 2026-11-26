@@ -88,8 +88,8 @@ describe("reading the wide table, each read in a process whose heap is held to 6
   });
 
   it.each(SOURCES)("holds as much at a million rows as at 100 000, read from %s", (source) => {
-    const [fewer, more] = FLAT_ROWS.map((rows) => reads.get(`${rows} ${source}`)!.peak);
-    expect(more! / fewer!).toBeLessThan(FLAT_RATIO);
+    const [fewer, more] = FLAT_ROWS.map((rows) => reads.get(`${rows} ${source}`)!);
+    expect(more!.peak / fewer!.peak, JSON.stringify({ fewer, more })).toBeLessThan(FLAT_RATIO);
   });
 });
 
