@@ -13,7 +13,7 @@ Writes `.xlsx` files from TypeScript with no dependencies, on every JavaScript r
 pnpm add xlsx-mini
 ```
 
-ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs, and the runtime matrix in CI proves each host on every change.
+ESM only. Node 20.12 or later (22 or later for `require`), Bun, Deno, Cloudflare Workers, Vercel's edge runtime and evergreen browsers: the core uses only web-standard APIs. The runtime matrix in CI runs Node, Bun, Deno, workerd and the Vercel edge runtime on every change. No browser is in it.
 
 In a bundle, minified and gzipped, an application that imports only `writeXlsx` takes on under 19 kB, and every export together under 22 kB. A test holds both on every change, and the badge above is the same measurement of the version on npm by a service outside this repository.
 
