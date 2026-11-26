@@ -1,6 +1,6 @@
 # xlsx-mini
 
-Writes workbooks as `.xlsx` files. One context: the spreadsheet as the caller describes it, and the package Excel reads.
+Writes workbooks as `.xlsx` files, and reads the values of one back. One context: the spreadsheet as the caller describes it, and the package Excel reads.
 
 ## Language
 
@@ -131,6 +131,20 @@ The other day zero a workbook can declare, with `date1904` in its workbook part.
 **Repair dialog**:
 Excel's "We found a problem with some content" prompt. The failure this project exists to never cause.
 _Avoid_: corruption warning
+
+### What the read side gives
+
+**Read side**:
+The code that reads the values of a package: the entry `xlsx-mini/read`, `src/read.ts`, and each feature's `read.ts` and `read/`. Nothing outside it imports it, so the writer's bundles are the same bytes without it.
+_Avoid_: reader (the person who looks at a sheet), parser
+
+**Refusal**:
+The read side's answer to a file it will not read: an `XlsxReadError` with a code, in place of a guess, a repair or an empty result.
+_Avoid_: parse error
+
+**Limit**:
+A bound on what one read may take from a file, such as `cellPositions`, with a default sized for a file a person uploads. A caller sets it per `openXlsx` call and cannot turn it off.
+_Avoid_: budget (a ceiling on a measurement of this project), quota
 
 ### How the project checks itself
 
