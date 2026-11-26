@@ -1,6 +1,5 @@
 import { XlsxReadError, openXlsx } from "xlsx-mini/read";
 
-/** The number of rows in an upload's first sheet, or what to tell the person who sent it. */
 export default async function countRows(upload: Blob): Promise<number | string> {
   let count = 0;
   try {
@@ -22,11 +21,9 @@ export default async function countRows(upload: Blob): Promise<number | string> 
           ? "This file is damaged."
           : `This file is damaged at cell ${error.cell} of ${error.sheet}.`;
       default:
-        // NO_INFLATE, UNKNOWN_SHEET and INVALID_LIMIT are about the runtime or the code;
-        // MISSING_HEADER comes from objectsFromRows.
+        // NO_INFLATE, UNKNOWN_SHEET and INVALID_LIMIT are about the runtime or the code.
         throw error;
     }
   }
-  // A sheet is checked at its last byte, after its rows: trust them once the loop has ended.
   return count;
 }

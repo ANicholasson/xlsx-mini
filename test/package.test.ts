@@ -58,18 +58,13 @@ describe("the entries", () => {
   });
 });
 
-/** The names an `export { ... }` statement lists, without their `type` modifier. */
-function listed(names: string): string[] {
+function namesInExportList(names: string): string[] {
   return names
     .split(",")
     .map((name) => name.trim().replace(/^type\s+/, ""))
     .filter((name) => name !== "");
 }
 
-/**
- * The names an entry's declarations export, and every export statement of a form this test does
- * not read, so a new form fails the test instead of hiding its names.
- */
 function exportsOf(declarations: string): { names: string[]; unread: string[] } {
   const names: string[] = [];
   const unread: string[] = [];
@@ -79,17 +74,13 @@ function exportsOf(declarations: string): { names: string[]; unread: string[] } 
     const declared = /^export (?:declare )?(?:interface|type|class|function|const) (\w+)/.exec(
       statement,
     );
-    if (list !== null) names.push(...listed(list[1]!));
+    if (list !== null) names.push(...namesInExportList(list[1]!));
     else if (declared !== null) names.push(declared[1]!);
     else unread.push(statement.slice(0, statement.indexOf("\n")));
   }
   return { names, unread };
 }
 
-/**
- * The TSDoc comment over the declaration of `name`, found in `module` or in the module it
- * re-exports `name` from, as the built declarations name it. `undefined` when it has none.
- */
 function docOf(
   files: ReadonlyMap<string, string>,
   name: string,
@@ -103,7 +94,7 @@ function docOf(
   for (const [, names, from] of declarations.matchAll(
     /^export (?:type )?\{([^}]*)\} from "([^"]+)";$/gm,
   )) {
-    if (!listed(names!).includes(name)) continue;
+    if (!namesInExportList(names!).includes(name)) continue;
     return docOf(files, name, posix.join(posix.dirname(module), from!.replace(/\.js$/, ".d.ts")));
   }
   return undefined;

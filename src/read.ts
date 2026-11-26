@@ -103,7 +103,7 @@ export interface OpenedWorkbook {
  * twice is `INVALID_WORKBOOK`, and so are a sheet whose relationship is missing or not to a kind of
  * sheet, a target outside the package, two sheets with one name, and a date system that is neither
  * true nor false. Every part is read by the namespace and the local name of each element, so an
- * element of another namespace is never read as a sheet, a row or a cell; ADR 0032 has the rules.
+ * element of another namespace is never read as a sheet, a row or a cell.
  *
  * @example
  * const book = await openXlsx(file);

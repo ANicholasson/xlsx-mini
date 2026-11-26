@@ -346,8 +346,12 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
       "This file is damaged at cell A2 of Orders.",
     );
 
-    // A value in the last column charges its row 16 384 positions, and 306 rows pass 5 000 000.
-    const far: Row[] = Array.from({ length: 306 }, () => [...Array<null>(16_383).fill(null), 1]);
+    const lastColumn = 16_384;
+    const defaultCellPositions = 5_000_000;
+    const far: Row[] = Array.from(
+      { length: Math.floor(defaultCellPositions / lastColumn) + 1 },
+      () => [...Array<null>(lastColumn - 1).fill(null), 1],
+    );
     expect(
       await countRows(new Blob([await writeXlsx({ sheets: [{ name: "Far", rows: far }] })])),
     ).toBe("This file asks for more than limits.cellPositions allows.");
@@ -388,8 +392,11 @@ const runs: Record<string, (snippet: Snippet) => Promise<void>> = {
     ]);
     expect([wrong.status, await wrong.text()]).toEqual([422, "Row 3 needs a SKU and a count."]);
 
-    // 25 001 rows of two cells are 50 002 positions: past the snippet's limit, inside the default.
-    const large = Array.from({ length: 25_000 }, (_, index): Row => [`S-${index}`, index]);
+    const snippetCellPositions = 50_000;
+    const large = Array.from({ length: snippetCellPositions / 2 }, (_, index): Row => [
+      `S-${index}`,
+      index,
+    ]);
     const refused = await count([["SKU", "Counted"], ...large]);
     expect([refused.status, await refused.text()]).toEqual([
       422,
@@ -430,7 +437,6 @@ describe("README snippets", () => {
   });
 });
 
-/** Each row of the README's table of reading limits: the limit, and its default as a number. */
 function limitsTable(): [limit: string, allowance: number][] {
   const table = /^\| Limit +\| Default +\| What it bounds +\|\n\|[- |]+\n((?:\|[^\n]*\n)+)/m.exec(
     readme,
@@ -448,7 +454,6 @@ function limitsTable(): [limit: string, allowance: number][] {
 }
 
 describe("the README's table of reading limits", () => {
-  /** Fresh meters of every limit, as one `openXlsx` call and one `rows` iteration get them. */
   const meters = () => {
     const limits = resolveLimits(undefined);
     return [...Object.values(limits.book), ...Object.values(limits.rows())];

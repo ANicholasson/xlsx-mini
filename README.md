@@ -820,10 +820,8 @@ import { openAsBlob } from "node:fs";
 import { openXlsx } from "xlsx-mini/read";
 
 export default async function sumOfTotals(path = "orders.xlsx"): Promise<number> {
-  // A Blob is read in slices, never whole.
   const book = await openXlsx(await openAsBlob(path));
   let sum = 0;
-  // Each row that holds a value: its number in the sheet from 1, its cells from column A.
   for await (const { number, cells } of book.rows("Orders")) {
     const total = cells[2];
     if (number > 1 && typeof total === "number") sum += total;
@@ -832,7 +830,7 @@ export default async function sumOfTotals(path = "orders.xlsx"): Promise<number>
 }
 ```
 
-`openXlsx` takes a `Uint8Array`, an `ArrayBuffer` or a `Blob`, such as an uploaded `File`, and reads the package's directory and the sheet list, nothing more. `book.sheets` holds the name of every sheet in workbook order, hidden ones included. `book.rows` takes a name or an index from 0 and reads nothing until you iterate it. Then it yields each row that holds a value as `{ number, cells }`, where `cells` starts at column A, holds `null` for an empty cell and ends at the row's last value. A value is a `string`, a `number`, a `boolean`, a `Date` or `null`. Empty text is `null`, an error cell gives its text, such as `"#DIV/0!"`, and a formula gives the result the file stores, or `null` when the file stores none. Hidden rows and columns read like the others, a merge has its value in its top-left cell, and a chart sheet has no rows. Two sheets can be read at once, and a sheet again.
+`openXlsx` takes a `Uint8Array`, an `ArrayBuffer` or a `Blob`, such as an uploaded `File`, and reads the package's directory and the sheet list, nothing more. It reads a `Blob` in slices and never whole, so a `Blob` from `openAsBlob` keeps a large file out of memory on Node and Bun. `book.sheets` holds the name of every sheet in workbook order, hidden ones included. `book.rows` takes a name or an index from 0 and reads nothing until you iterate it. Then it yields each row that holds a value as `{ number, cells }`, where `cells` starts at column A, holds `null` for an empty cell and ends at the row's last value. A value is a `string`, a `number`, a `boolean`, a `Date` or `null`. Empty text is `null`, an error cell gives its text, such as `"#DIV/0!"`, and a formula gives the result the file stores, or `null` when the file stores none. Hidden rows and columns read like the others, a merge has its value in its top-left cell, and a chart sheet has no rows. Two sheets can be read at once, and a sheet again.
 
 ### Objects by declared columns
 
@@ -883,7 +881,6 @@ Write the column list `as const`, as here, when the list is the declaration: a k
 ```ts
 import { XlsxReadError, openXlsx } from "xlsx-mini/read";
 
-/** The number of rows in an upload's first sheet, or what to tell the person who sent it. */
 export default async function countRows(upload: Blob): Promise<number | string> {
   let count = 0;
   try {
@@ -905,12 +902,10 @@ export default async function countRows(upload: Blob): Promise<number | string> 
           ? "This file is damaged."
           : `This file is damaged at cell ${error.cell} of ${error.sheet}.`;
       default:
-        // NO_INFLATE, UNKNOWN_SHEET and INVALID_LIMIT are about the runtime or the code;
-        // MISSING_HEADER comes from objectsFromRows.
+        // NO_INFLATE, UNKNOWN_SHEET and INVALID_LIMIT are about the runtime or the code.
         throw error;
     }
   }
-  // A sheet is checked at its last byte, after its rows: trust them once the loop has ended.
   return count;
 }
 ```
@@ -929,13 +924,11 @@ const columns = [
   { key: "counted", header: "Counted" },
 ] as const;
 
-/** A route handler that takes a stock count of a few thousand rows, uploaded from a form. */
 export async function POST(request: Request): Promise<Response> {
   const file = (await request.formData()).get("file");
   if (!(file instanceof Blob)) return new Response("Choose a file.", { status: 400 });
   const counts = new Map<string, number>();
   try {
-    // Far below the defaults, which are sized for any file a person uploads.
     const limits = { inflatedBytes: 8 * 1024 * 1024, cellPositions: 50_000 };
     const book = await openXlsx(file, { limits });
     for await (const { number, values } of objectsFromRows(book.rows(0), columns)) {
@@ -952,7 +945,7 @@ export async function POST(request: Request): Promise<Response> {
 }
 ```
 
-Every limit has a default sized for a file a person uploads, and you can set any of them lower or higher for one `openXlsx` call. No value turns a limit off. A file past a limit is refused with `LIMIT_EXCEEDED`, and `error.limit` names the limit. The table of limits at the end of this section says what each one bounds.
+The handler takes stock counts of a few thousand rows, so it sets two limits far below their defaults. Every limit has a default sized for a file a person uploads, and you can set any of them lower or higher for one `openXlsx` call. No value turns a limit off. A file past a limit is refused with `LIMIT_EXCEEDED`, and `error.limit` names the limit. The table of limits at the end of this section says what each one bounds.
 
 The limits hold per read. Each iteration of `rows` has its own `inflatedBytes`, `cellPositions` and `rowCharacters`, so two sheets read at once each take up to what one read may, and no limit spans the reads of one workbook. The file decides how many sheets there are, and any number of them may name one part. A file of 6 KB whose 150 sheets name one part, a row of 4 194 304 characters, exhausted a 512 MiB heap when every sheet was read at once. Read the sheets of a file from a stranger one at a time. In trials with the default limits, the most one read reached was 106 MiB of heap on Node, for a row of six cells that each hold the longest text of character references, and 309 MiB resident on Bun, for 30 rows that each hold one cell of 4 194 304 carriage returns. These are measurements, not bounds, and they move with when the engine collects. The opened workbook also holds its shared-string table for as long as you keep the workbook. In trials it was held at up to 2.9 times `sharedStringBytes` on Node and 4.2 times on Bun, for a million entries of 16 characters with one outside Latin-1. `docs/adr/0032-a-values-only-reader-as-a-separate-entry.md` records the design and these trials.
 
