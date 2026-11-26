@@ -1,5 +1,5 @@
 /**
- * Every failure the reader reports, as a string literal so callers can switch on it.
+ * Every code an `XlsxReadError` carries, as a string literal so callers can switch on it.
  *
  * About the file:
  * - `NOT_XLSX`: not a package at all, or a package that is not a workbook: an old `.xls`, an
@@ -27,6 +27,12 @@
  * - `UNKNOWN_SHEET`: `rows` was asked for a name or an index the workbook does not have.
  * - `INVALID_LIMIT`: a limit that is not a positive finite number. `limit` names it.
  *
+ * @example
+ * const damaged: readonly ReadErrorCode[] = [
+ *   "INVALID_PACKAGE", "INVALID_XML", "INVALID_WORKBOOK", "INVALID_CELL",
+ * ];
+ * if (error instanceof XlsxReadError && damaged.includes(error.code)) console.log("damaged");
+ *
  * @experimental
  */
 export type ReadErrorCode =
@@ -42,7 +48,7 @@ export type ReadErrorCode =
   | "INVALID_LIMIT";
 
 /**
- * How much the reader accepts before it refuses a file. Every limit has a default sized for a file
+ * How much `openXlsx` accepts before it refuses a file. Every limit has a default sized for a file
  * a person uploads; a caller sets one per `openXlsx` call, and no value turns one off: each must be
  * a positive finite number.
  *
@@ -96,9 +102,10 @@ interface ReadErrorDetail {
 }
 
 /**
- * The one error class the reader throws. `code` says what was refused; `sheet` and `cell` say
- * where, when that is known. The writer's `XlsxMiniError` is never thrown by the reader, and this
- * class never by the writer.
+ * The one error class the read side throws. `code` says what was refused; `sheet` and `cell` say
+ * where, when that is known. The writer's `XlsxMiniError` is never thrown by the read side, and
+ * this class never by the writer. An error of a `Blob` being read, or of the rows handed to
+ * `objectsFromRows`, passes through as it is.
  *
  * @example
  * try {
